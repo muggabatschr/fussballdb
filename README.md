@@ -237,11 +237,21 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 |---|---|
 | `/` | aktueller Spieltag |
 | `/spieltag/<saison>/<nr>` | beliebiger Spieltag, Saison-Dropdown und Blättern, Bilanz der Tipps |
-| `/tabelle` | Tabelle mit xG, xGA und xPts |
+| `/tabelle` | Tabelle mit xG, xGA und xPts, Platzdifferenz zum Modell, darunter die geschätzte Abschlusstabelle |
 | `/team/<name>` | Form, xG-Verlauf, aktuelle Ausfälle |
 | `/chat` | Chat mit dem lokalen Modell |
 | `/cl`, `/cl/<saison>/<runde>` | Champions League: Runde mit Prognosen, Tipps und Bilanz, Saison- und Rundenauswahl |
 | `/kickbase` | Kickbase-Prognose, Kauf- und Verkaufskandidaten |
+
+**Tabelle:** Neben jedem Platz steht klein, wie viele Plätze ein Team besser (+) oder schlechter (−)
+steht, als es die Prognosen vor den bisherigen Spielen erwarten ließen. Dafür zählen je Spiel die erwarteten
+Punkte (3 × Siegchance + Remischance) aus der damaligen Prognose. Elversberg mit +10 holt also deutlich
+mehr, als das Modell vor den Spielen zugetraut hat. Darunter steht die **geschätzte Abschlusstabelle**
+(`model/season_sim.py`): Alle offenen Spiele werden 10.000-mal mit den Wahrscheinlichkeiten der
+Live-Prognosen durchgespielt, bei Punktgleichheit entscheidet die erwartete Tordifferenz. Gezeigt werden
+erwartete Punkte, der heutige Platz und die Chancen auf Meisterschaft, Platz 1–4 und Abstieg. Beides wird
+bei jedem Aufruf neu gerechnet und passt sich damit nach jedem Update an (neue Ergebnisse, xG und
+Live-Prognosen). Die Werte stehen auch im Chat und im MCP-Werkzeug `tabelle`.
 
 **Wo die Quoten stehen:** in jeder Spieltag-Kachel unter „Warum 2:1?“ als letzte Zeile
 („Buchmacher: 1 … · X … · 2 …“, Wahrscheinlichkeiten aus den Ø-Eröffnungsquoten ohne Marge) und im Chat
@@ -681,6 +691,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     verworfenen Erweiterungen: bringt nichts, bleibt aus.
 18. **TV-Sender** in den Kacheln für Deutschland und Österreich, Bundesliga und Champions League, als
     Logos der genauen Kanäle.
+
+19. **Tabelle**: Platzdifferenz zum Modell und geschätzte Abschlusstabelle per Simulation.
 
 Offen:
 

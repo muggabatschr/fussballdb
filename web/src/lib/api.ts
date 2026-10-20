@@ -49,6 +49,16 @@ export type TableRow = {
   xg: number;
   xga: number;
   xpts: number;
+  // Modell-Platz: Platz nach den Punkten, die die Prognosen vor den gespielten Spielen erwarten ließen
+  modell_pkt?: number;
+  modell_platz?: number;
+  platz_diff?: number; // > 0: steht so viele Plätze besser als erwartet
+  // Hochrechnung zum Saisonende (nur solange Spiele offen sind)
+  prognose_platz?: number;
+  erw_punkte?: number;
+  p_meister?: number;
+  p_top4?: number;
+  p_abstieg?: number;
 };
 
 export type FormGame = {

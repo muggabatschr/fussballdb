@@ -37,7 +37,9 @@ export const tools = {
     execute: async ({ team }) => ({ team, ausfaelle: await getAbsences(team) }),
   }),
   get_table: tool({
-    description: "Tabelle einer Saison mit Punkten, Toren, xG, xGA und xPts.",
+    description:
+      "Tabelle einer Saison mit Punkten, Toren, xG, xGA, xPts und Modell-Platz (platz_diff > 0 = steht besser als " +
+      "erwartet), dazu die Hochrechnung zum Saisonende (prognose_platz, erw_punkte, p_meister, p_top4, p_abstieg in %).",
     inputSchema: z.object({ season: z.number().int().optional().describe("Startjahr, z. B. 2026; Standard aktuelle Saison") }),
     execute: ({ season }) => getTable(season),
   }),

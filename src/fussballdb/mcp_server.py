@@ -86,7 +86,9 @@ def ausfaelle(team: str) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def tabelle(saison: int | None = None) -> str:
-    """Tabelle einer Saison mit Punkten, Toren, xG, xGA und xPts. saison = Startjahr, Standard aktuelle Saison."""
+    """Tabelle einer Saison mit Punkten, Toren, xG, xGA, xPts und Modell-Platz (platz_diff > 0 = steht besser
+    als die Prognosen erwarten ließen), dazu die Hochrechnung zum Saisonende (prognose_platz, erw_punkte,
+    p_meister, p_top4, p_abstieg in %). saison = Startjahr, Standard aktuelle Saison."""
     return _call("get_table", {"season": saison})
 
 

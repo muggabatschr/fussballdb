@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from fussballdb.db.session import engine, session_scope
 from fussballdb.ingest.team_mapping import TeamResolver
+from fussballdb.model.ensemble import MODEL_VERSION
 
 SCHEMA_HINT = """
 Tabellen (PostgreSQL):
@@ -69,7 +70,10 @@ TOOLS = [
     },
     {
         "name": "get_table",
-        "description": "Tabelle einer Saison mit Punkten, Toren, xG, xGA und xPts.",
+        "description": "Tabelle einer Saison mit Punkten, Toren, xG, xGA, xPts, Modell-Punkten (laut Prognosen vor "
+                       "den gespielten Spielen erwartet), modell_platz und platz_diff (> 0 = steht besser als erwartet). Solange Spiele offen sind, "
+                       "dazu die Hochrechnung zum Saisonende aus den Modell-Wahrscheinlichkeiten (10.000 Simulationen): "
+                       "prognose_platz, erw_punkte und p_meister, p_top4, p_abstieg in Prozent.",
         "input_schema": {"type": "object", "properties": {"season": {"type": "integer", "description": "Startjahr, z. B. 2026; Standard: aktuelle Saison"}},
                          "additionalProperties": False},
     },
@@ -227,7 +231,43 @@ class Toolbox:
         return rows
 
     def get_table(self, season: int | None = None):
+        """Tabelle mit xG/xPts, Modell-Punkten und Modell-Platz (was die Prognosen für die gespielten Spiele
+        erwarten ließen; platz_diff > 0 = steht besser da) und, solange Spiele offen sind, der Hochrechnung
+        zum Saisonende (prognose_platz, erw_punkte, p_meister, p_top4, p_abstieg in %; model/season_sim.py)."""
+        from fussballdb.model.season_sim import simulate
+
         season = season or _rows("SELECT max(start_year) AS y FROM season")[0]["y"]
+        rows = self._table_rows(season)
+        # Modell-Punkte: in den gespielten Spielen erwartete Punkte laut Prognose vor dem Spiel
+        # (3 × Siegchance + Remischance); Modell-Platz = Platz nach diesen Punkten
+        expected = {r["name"]: float(r["modell_pkt"]) for r in _rows(
+            """
+            SELECT t.name, sum(CASE WHEN t.id = m.home_team_id THEN 3 * p.p_home + p.p_draw
+                                    ELSE 3 * p.p_away + p.p_draw END) AS modell_pkt
+            FROM match m JOIN season s ON s.id = m.season_id
+            JOIN prediction p ON p.match_id = m.id AND p.model_version = :v
+            JOIN team t ON t.id IN (m.home_team_id, m.away_team_id)
+            WHERE m.finished AND s.start_year = :y GROUP BY t.name
+            """, y=season, v=MODEL_VERSION)}
+        if expected:
+            order = sorted(rows, key=lambda r: -expected.get(r["name"], 0.0))
+            model_rank = {r["name"]: i for i, r in enumerate(order, 1)}
+            for i, r in enumerate(rows, 1):
+                if r["name"] in expected:
+                    r["modell_pkt"] = round(expected[r["name"]], 1)
+                    r["modell_platz"] = model_rank[r["name"]]
+                    r["platz_diff"] = model_rank[r["name"]] - i  # > 0: steht besser als laut Prognosen erwartet
+        sim = simulate(season)
+        if not sim.empty:
+            by_name = sim.set_index("name")
+            for r in rows:
+                if r["name"] in by_name.index:
+                    s = by_name.loc[r["name"]]
+                    r.update({k: float(s[k]) for k in ("erw_punkte", "p_meister", "p_top4", "p_abstieg")})
+                    r["prognose_platz"] = int(s["prognose_platz"])
+        return rows
+
+    def _table_rows(self, season: int):
         return _rows(
             """
             SELECT t.name, count(*) AS sp,
@@ -240,7 +280,7 @@ class Toolbox:
             JOIN match_team_stats o ON o.match_id = m.id AND o.team_id <> own.team_id
             JOIN team t ON t.id = own.team_id
             WHERE m.finished AND s.start_year = :y
-            GROUP BY t.name ORDER BY pkt DESC, sum(own.goals) - sum(o.goals) DESC
+            GROUP BY t.name ORDER BY pkt DESC, sum(own.goals) - sum(o.goals) DESC, sum(own.goals) DESC
             """, y=season)
 
     def run_sql(self, query: str):
