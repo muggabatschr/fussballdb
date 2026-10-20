@@ -1,5 +1,7 @@
 import type { Bilanz, Matchday, MatchdayGame, Punkteregel, Season } from "@/lib/api";
+import Image from "next/image";
 import { kickoff, num } from "@/lib/format";
+import { tvLogo } from "@/lib/tv";
 import { Card } from "./Card";
 import { MatchdayNav } from "./MatchdayNav";
 import { ProbabilityBar } from "./ProbabilityBar";
@@ -90,15 +92,60 @@ export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
   );
 }
 
-/** Sender in Deutschland und Österreich (FotMob-TV-Programm, etwa eine Woche vor dem Spiel bekannt). */
-function TvLine({ tv }: { tv?: MatchdayGame["tv"] }) {
-  const parts = (["DE", "AT"] as const).filter((c) => tv?.[c]?.length).map((c) => `${c} ${tv![c]!.join(", ")}`);
-  if (!parts.length) return null;
-  const text = parts.join(" · ");
+/** Ein Sender als Logo (Sky-Logos auf weißem Schild, damit sie auch im Dunkelmodus lesbar sind), sonst Text.
+ * `suffixes`: Kanalnummern, wenn mehrere Kanäle dasselbe Logo haben (Sky Sport Austria 1, 4). */
+function TvChannel({ name, suffixes }: { name: string; suffixes?: string[] }) {
+  const l = tvLogo(name);
+  if (!l) return <span className="rounded border border-border px-1 leading-4">{name}</span>;
+  const h = l.pill ? 16 : 22; // Sky und Prime ohne Rand, mit Schild; DAZN und WOW bringen ihre Fläche mit
+  const suffix = (suffixes ?? [l.suffix]).filter(Boolean).join(", ");
   return (
-    <p className="truncate whitespace-nowrap text-xs text-muted" title={`TV: ${text}`}>
-      <span className="font-medium text-foreground/80">TV</span> {text}
-    </p>
+    <span className={`inline-flex h-[22px] shrink-0 items-center gap-1 rounded ${l.pill ? "bg-white px-1.5" : ""}`} title={name}>
+      <Image src={l.src} alt={name} width={Math.round((h * l.w) / l.h)} height={h} unoptimized loading="eager" style={{ height: h, width: "auto" }} />
+      {suffix && <span className="text-xs font-bold leading-none text-black">{suffix}</span>}
+    </span>
+  );
+}
+
+/** Kanäle mit demselben Logo zusammenfassen: [Sky Sport Austria 1, Sky Sport Austria 4] -> ein Logo mit "1, 4". */
+function groupChannels(names: string[]): { name: string; suffixes?: string[] }[] {
+  const out: { name: string; src?: string; suffixes?: string[] }[] = [];
+  for (const name of names) {
+    const l = tvLogo(name);
+    const prev = out.find((o) => l?.suffix && o.src === l.src);
+    if (prev && l?.suffix) prev.suffixes!.push(l.suffix);
+    else out.push({ name, src: l?.src, suffixes: l?.suffix ? [l.suffix] : undefined });
+  }
+  return out;
+}
+
+// gleiche Darstellung = gleicher Sender (Sky Bundesliga 1 in DE und Sky Sport Bundesliga 1 in AT)
+const channelKey = (name: string) => {
+  const l = tvLogo(name);
+  return l ? `${l.src}#${l.suffix ?? ""}` : name;
+};
+
+/** TV-Kanäle in Deutschland und Österreich (FotMob-TV-Programm, etwa eine Woche vor dem Spiel bekannt).
+ * Laufen in beiden Ländern dieselben Sender, steht nur eine Zeile "DE/AT" da. */
+function TvLine({ tv }: { tv?: MatchdayGame["tv"] }) {
+  const de = tv?.DE ?? [];
+  const at = tv?.AT ?? [];
+  const same = de.length > 0 && de.map(channelKey).join("|") === at.map(channelKey).join("|");
+  const rows: [string, string[]][] = same
+    ? [["DE/AT", de]]
+    : ([["DE", de], ["AT", at]] as [string, string[]][]).filter(([, names]) => names.length);
+  if (!rows.length) return null;
+  return (
+    <div className="space-y-1 text-xs text-muted">
+      {rows.map(([label, names]) => (
+        <div key={label} className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap" title={`TV ${label}: ${names.join(", ")}`}>
+          <span className="w-10 shrink-0 font-medium text-foreground/80">{label}</span>
+          {groupChannels(names).map((c) => (
+            <TvChannel key={c.name} name={c.name} suffixes={c.suffixes} />
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 

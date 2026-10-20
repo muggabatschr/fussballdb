@@ -22,42 +22,29 @@ URL = "https://www.fotmob.com/de/tv-guide/{country}"
 COUNTRIES = ("de", "at")
 LEAGUES = {54: "BL", 42: "CL"}  # FotMob-Wettbewerb -> unsere Kennung
 
-# Sendernamen für die Anzeige zusammenfassen (Reihenfolge der Regeln zählt)
-SIMPLIFY = [
-    (r"^Sky Go$", None),  # Streaming-Zugang zu Sky, kein eigener Sender
-    (r"zu bestätigen|^TBC", None),
-    (r"^Sky", "Sky"),  # alle Sky-Kanäle (Bundesliga 1–5, Top Event, Sky X, Sky Stream …); in AT = Sky Austria
-    (r"^DAZN", "DAZN"),
-    (r"(Amazon )?Prime Video", "Prime Video"),
-    (r"^Canal\+", "Canal+"),
-    (r"^ServusTV", "ServusTV"),
-    (r"^Puls ?24|^PULS 4|^Puls 4", "Puls 4"),
-    (r"^ORF", "ORF"),
-    (r"^Sat\.? ?1", "Sat.1"),
-    (r"^RTL", "RTL"),
-    (r"^ZDF", "ZDF"),
-    (r"^ARD|^Das Erste", "ARD"),
-]
+# Kanäle, die nur Zugänge oder Kopien sind (Streaming-Zugänge, UHD, Showcase) und "noch offen"
+SKIP = re.compile(r"^Sky Go$|^Sky Stream$|^Sky X$|Showcase|UHD|zu bestätigen|^TBC", re.I)
+RENAME = [(r"^DAZN.*", "DAZN"), (r"^(Amazon )?Prime Video.*", "Prime Video"), (r"^Canal\+.*", "Canal+")]
+NUMBERED_SKY = re.compile(r"^Sky .*\d+$")  # Sky Bundesliga 3, Sky Sport Austria 1 …
 
 
-def simplify(channels: list[str], country: str = "DE") -> list[str]:
-    """Sender für die Anzeige: Kanäle desselben Anbieters zusammengefasst, Sky in Österreich als Sky Austria."""
+def channels(raw: list[str]) -> list[str]:
+    """Genaue Kanäle für die Anzeige: ohne Zugänge und Kopien. Gibt es einen nummerierten Sky-Kanal, fallen
+    der allgemeine Kanal (Sky Bundesliga) und die Top-Event-Kopie weg. WOW (Sky-Streaming) ans Ende."""
+    names = [n for n in raw if not SKIP.search(n)]
+    if any(NUMBERED_SKY.match(n) for n in names):
+        names = [n for n in names if not n.startswith("Sky") or NUMBERED_SKY.match(n)]
     out = []
-    for name in channels:
-        short = name
-        for pattern, repl in SIMPLIFY:
-            if re.search(pattern, name):
-                short = repl
-                break
-        if short == "Sky" and country.upper() == "AT":
-            short = "Sky Austria"
-        if short and short not in out:
-            out.append(short)
-    return sorted(out, key=lambda n: n == "WOW")  # WOW (Sky-Streaming) hinter die Sender
+    for name in names:
+        for pattern, repl in RENAME:
+            name = re.sub(pattern, repl, name)
+        if name not in out:
+            out.append(name)
+    return sorted(out, key=lambda n: n == "WOW")
 
 
 def for_matches(competition: str, match_ids: list[int]) -> dict[int, dict[str, list[str]]]:
-    """Match-ID -> {"DE": [...], "AT": [...]} mit zusammengefassten Sendern (für API und Web)."""
+    """Match-ID -> {"DE": [...], "AT": [...]} mit den Kanälen für die Anzeige (API und Web)."""
     from fussballdb.db.session import engine
 
     if not match_ids:
@@ -66,9 +53,9 @@ def for_matches(competition: str, match_ids: list[int]) -> dict[int, dict[str, l
         rows = conn.execute(text("SELECT match_id, country, channels FROM tv_listing WHERE competition = :c "
                                  "AND match_id = ANY(:ids)"), {"c": competition, "ids": list(match_ids)}).all()
     out: dict[int, dict[str, list[str]]] = {}
-    for match_id, country, channels in rows:
-        raw = json.loads(channels)
-        names = simplify(raw, country) or (["noch offen"] if raw else [])  # z. B. "Noch zu bestätigen"
+    for match_id, country, raw_json in rows:
+        raw = json.loads(raw_json)
+        names = channels(raw) or (["noch offen"] if raw else [])  # z. B. "Noch zu bestätigen"
         if names:
             out.setdefault(match_id, {})[country] = names
     return out

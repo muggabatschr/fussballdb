@@ -249,12 +249,21 @@ unter der Prognosekarte („Markt (Ø-Quoten)“). Für einen Spieltag, den foot
 eingestellt hat, fehlt die Zeile. Die Quoten fließen nicht in Prognose oder Tipp ein, sie dienen nur dem
 Vergleich.
 
-**TV-Sender in der Kachel:** Bei offenen Spielen steht unten, wo sie laufen, z. B.
-„TV DE Sky, WOW · AT Sky Austria, WOW“ oder in der CL „TV DE DAZN · AT Sky Austria, WOW“. Quelle ist das
-TV-Programm von FotMob für Deutschland und Österreich (`ingest/tv.py`), täglich geladen und über
-Anstoßzeit und Teamnamen zugeordnet. Kanäle eines Anbieters werden zusammengefasst (Sky Bundesliga 1–5,
-Top Event, Sky X → Sky; in Österreich → Sky Austria; Sky Go fällt weg). FotMob kennt die Sender etwa eine
-Woche im Voraus, für spätere Spieltage fehlt die Zeile noch. Bei gespielten Spielen wird sie ausgeblendet.
+**TV-Sender in der Kachel:** Bei offenen Spielen steht unten je eine Zeile für Deutschland und Österreich
+mit den Logos der genauen Kanäle, z. B. Sky Sport Bundesliga 5 und WOW, in der CL DAZN oder Prime Video
+und in Österreich Sky Sport Austria mit Kanalnummer. Laufen in beiden Ländern dieselben Kanäle (Sky Bundesliga 1 in DE
+und Sky Sport Bundesliga 1 in AT gelten als gleich), steht nur eine Zeile „DE/AT“ da. Quelle ist das TV-Programm von FotMob für beide
+Länder (`ingest/tv.py`), täglich geladen und über Anstoßzeit und Teamnamen zugeordnet. Weggelassen werden
+Zugänge und Kopien (Sky Go, Sky Stream, Sky X, UHD, Showcase) und, sobald ein nummerierter Kanal da ist,
+der allgemeine Sky-Bundesliga-Kanal und Top Event. Steht ein Sender noch nicht fest, heißt es „noch
+offen“. FotMob kennt die Kanäle etwa eine Woche im Voraus; bei gespielten Spielen wird die Zeile
+ausgeblendet.
+
+Die Logos liegen unter `web/public/tv/` (Sky-Kanäle von sky.de, DAZN von FotMob, WOW von wowtv.de, Prime
+Video von Wikimedia Commons); die Zuordnung Kanalname → Logo steht in `web/src/lib/tv.ts`. Sender ohne
+Logo (z. B. RTL, Sat.1, ServusTV) erscheinen als kurzer Text. Die Sky-Logos sind für hellen Hintergrund
+gemacht und stehen deshalb auf einem weißen Schild. Ausgeliefert werden sie unverändert in
+Originalgröße (`unoptimized`), sonst verkleinert Next.js sie und sie wirken unscharf.
 
 **Ausfälle in der Kachel:** Namentlich genannt werden nur fehlende Stammspieler (mindestens 50 % der
 möglichen Minuten in den letzten 8 Spielen). Eingerechnet werden aber alle Verletzten und Gesperrten mit
@@ -668,7 +677,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     eigener Tab, MCP-Werkzeug, Update-Schritt, Rückblick-Test (ClubElo war nicht erreichbar).
 
 17. **Abschlussstärke getestet** (Tore gegenüber xG der letzten Spiele): bringt nichts, bleibt aus.
-18. **TV-Sender** in den Kacheln für Deutschland und Österreich, Bundesliga und Champions League.
+18. **TV-Sender** in den Kacheln für Deutschland und Österreich, Bundesliga und Champions League, als
+    Logos der genauen Kanäle.
 
 Offen:
 
