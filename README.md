@@ -161,6 +161,15 @@ Bayern-Spiel, Frage nach Teams über ihren xPts nicht gefiltert). Thinking brach
 bessere Qualität, kostete aber gut 15 s mehr je Antwort; bei Qwen 3.6 war es zudem unzuverlässig.
 Thinking abschalten geht in LM Studio nur über `reasoning_effort: "none"`.
 
+Nachtest am 20.10.2026 mit **Qwen 3.6 35B-A3B in 8 Bit** (statt 4 Bit) gegen Qwen 3.8, beide ohne
+Thinking, gleiche 10 Fragen, jede Antwort gegen die Daten geprüft. Die 8-Bit-Variante ist rund zehnmal
+schneller (Ø 5,5 s statt 57 s) und nennt jetzt den richtigen Gegner. Beim Zusammenfassen erfindet sie
+aber weiter Details: falsche Bilanz bei der Leverkusen-Form, ausgedachte Positionen bei den
+Gladbach-Ausfällen, verdrehte Bilanz bei den Bayern-Dortmund-Duellen. Qwen 3.8 lag einmal falsch
+(Duell-Bilanz) und brach einmal nach zu vielen Abfragen ohne Antwort ab, war sonst aber genau und
+ausführlicher. Eingestellt bleibt Qwen 3.8; mit Thinking hing die 8-Bit-Variante zweimal bis zum
+Zeitlimit.
+
 1. [LM Studio](https://lmstudio.ai) installieren (`brew install --cask lm-studio`). Bionic nutzt dieselbe Laufzeit.
 2. In LM Studio ein Modell mit Tool-Unterstützung laden, z. B. Qwen3 (27B o. ä., MLX-Variante auf Apple Silicon).
 3. Unter Developer den lokalen Server starten (Port 1234), oder per Kommandozeile:
