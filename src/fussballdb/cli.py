@@ -264,11 +264,14 @@ def cl_prognosen(
 
 
 @app.command("abschluss-test")
-def abschluss_test() -> None:
+def abschluss_test(
+    kombi: Annotated[bool, typer.Option(help="Zusammen mit den einzeln verworfenen Erweiterungen testen (~10 Min.)")] = False,
+) -> None:
     """Über-/Unterperformance (Tore gegenüber xG der letzten Spiele) im Rückblick-Test, 2016–2026."""
-    from fussballdb.model.evaluate import compare_finishing
+    from fussballdb.model.evaluate import compare_finishing, compare_finishing_combo
 
-    res = compare_finishing(progress=lambda y, md: md == 34 and console.print(f"{y}/{(y + 1) % 100:02d} fertig"))
+    progress = lambda y, md: md == 34 and console.print(f"{y}/{(y + 1) % 100:02d} fertig")  # noqa: E731
+    res = compare_finishing_combo(progress=progress) if kombi else compare_finishing(progress=progress)
     console.print(res.round(5).to_string(index=False))
     console.print("delta < 0 = besser. Übernommen wird nur, was im Test in mindestens ~90 % der Ziehungen besser ist.")
 

@@ -455,7 +455,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb kaderwert-test` | Kaderwert als Startstärke im Rückblick-Test |
 | `fussballdb kalibrierung` | Vorhergesagte gegen eingetretene Häufigkeiten (Heim, Remis, Gast, Über 2,5) |
 | `fussballdb tipp-test` | Tipp-Regeln im Rückblick vergleichen |
-| `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test |
+| `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test (`--kombi`: zusammen mit den verworfenen Erweiterungen) |
 | `fussballdb kombi-test` | alle Erweiterungen zusammen, jeweils eine weggelassen |
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
 | `fussballdb xg-varianten` | xG-Varianten (npxG, Spielstand, Rote Karten) im Rückblick-Test vergleichen |
@@ -600,6 +600,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Kombination aus allen Erweiterungen, jeweils eine weggelassen (`fussballdb kombi-test`) | Form + Verletzte: −0,0005 | Form und Verletzte tragen, Heimvorteil je Team, Duelle und Remis-Kalibrierung nicht |
 | Sperren (Rot/Gelb-Rot, 5./10./15. Gelbe) zusätzlich zu den Verletzten | 2016–26: −0,0003 | übernommen; 99 % der Ziehungen, 9 von 11 Saisons, gleichmäßig über alle Jahre |
 | Über-/Unterperformance der letzten 5 Spiele (Tore ÷ xG als Faktor auf die Torerwartung, `fussballdb abschluss-test`) | 2021–26: +0,0085 | verworfen; in keiner der 11 Saisons besser. Mit Dämpfung (5 xG) +0,0035, mit Gegentoren ÷ xGA +0,0165 |
+| Abschluss-Faktor zusammen mit den einzeln verworfenen Erweiterungen (Heimvorteil je Team, Duelle, Remis-Kalibrierung, Halbwertszeit 3 Mon., Tor-Skalierung; einzeln und alle zusammen, `fussballdb abschluss-test --kombi`) | +0,0006 bis +0,0095 | verworfen; in jeder der 21 Kombinationen schlechter als ohne Faktor, keine Kombination besser als das aktuelle Modell. Am knappsten: Tor-Skalierung allein −0,0005 (89 % der Ziehungen), aber im Einstellzeitraum schlechter und nur in 5 von 11 Saisons besser, deshalb nicht übernommen |
 | Abschlussstärke über 1 Jahr, gedämpft (10 bzw. 20 xG), auch mit Gegentoren | +0,0010 bis +0,0033 | verworfen; besser in höchstens 3 % der Ziehungen. Wer zuletzt über oder unter seinem xG lag, tut das danach nicht weiter, reines xG bleibt besser |
 | Spielerwert über On/Off (xG für/gegen mit und ohne Spieler auf dem Platz) statt xG+xA | 2023–26: +0,0010 | verworfen; zu verrauscht, weil Stammspieler selten fehlen (`features/onoff.py`) |
 | Echte Aufstellung (Obergrenze, Wissen aus der Zukunft) | −0,0006 | nur zur Einordnung: Ausfälle sind kaum noch ein Hebel |
@@ -676,7 +677,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
 16. **Champions League**: europaweite Elo aus Liga- und Europapokalspielen mit Kaderwert als Startwert,
     eigener Tab, MCP-Werkzeug, Update-Schritt, Rückblick-Test (ClubElo war nicht erreichbar).
 
-17. **Abschlussstärke getestet** (Tore gegenüber xG der letzten Spiele): bringt nichts, bleibt aus.
+17. **Abschlussstärke getestet** (Tore gegenüber xG der letzten Spiele), allein und zusammen mit allen
+    verworfenen Erweiterungen: bringt nichts, bleibt aus.
 18. **TV-Sender** in den Kacheln für Deutschland und Österreich, Bundesliga und Champions League, als
     Logos der genauen Kanäle.
 

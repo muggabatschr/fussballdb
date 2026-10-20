@@ -427,11 +427,42 @@ FINISH_VARIANTS: dict[str, dict] = {
 def compare_finishing(tune=tuple(range(2016, 2021)), test=tuple(range(2021, 2027)), seed: int = 0,
                       variants: dict[str, dict] | None = None, progress=None) -> pd.DataFrame:
     """Über-/Unterperformance (Tore gegenüber xG) als Faktor auf die Torerwartung, gegen das aktuelle
-    Modell (Form, Verletzte, Sperren). Je Spieltag wird einmal trainiert; die Varianten unterscheiden sich
-    nur bei der Vorhersage. delta < 0 = besser, Bootstrap-Anteil über den Testzeitraum."""
+    Modell (Form, Verletzte, Sperren). delta < 0 = besser, Bootstrap-Anteil über den Testzeitraum."""
+    return compare_finishing_combo({"": {}}, variants or FINISH_VARIANTS, tune, test, seed, progress)
+
+
+# Einzeln verworfene Erweiterungen (siehe README), für den Test in Kombination mit dem Abschluss-Faktor
+REJECTED_PARTS: dict[str, dict] = {
+    "heim je team": {"dc": {"team_home_ridge": 20.0}},
+    "duelle": {"h2h_c": 10.0},
+    "remis-kalibrierung": {"dc": {"draw_calibration": True}},
+    "halbwertszeit 3 Mon.": {"dc": {"xi": 0.008}},
+    "tor-skalierung": {"dc": {"goal_scale": True}},
+}
+FINISH_COMBO_VARIANTS: dict[str, dict] = {
+    "5 Spiele": {"finish_games": 5},
+    "5 Spiele gedämpft": {"finish_games": 5, "finish_c": 5.0},
+    "1 Jahr gedämpft": {"finish_days": 365, "finish_c": 20.0},
+}
+
+
+def finishing_combo_configs() -> dict[str, dict]:
+    cfgs = {"": {}}
+    for name, part in REJECTED_PARTS.items():
+        cfgs[name] = part
+    cfgs["alle verworfenen"] = _merge(*REJECTED_PARTS.values())
+    return cfgs
+
+
+def compare_finishing_combo(fit_configs: dict[str, dict] | None = None, variants: dict[str, dict] | None = None,
+                            tune=tuple(range(2016, 2021)), test=tuple(range(2021, 2027)), seed: int = 0,
+                            progress=None) -> pd.DataFrame:
+    """Modellvarianten (je Spieltag einmal trainiert) jeweils ohne und mit Abschluss-Faktor (nur bei der
+    Vorhersage), alles gegen das aktuelle Modell. Ausfälle wie live: Verletzte aus der Historie und Sperren."""
     from fussballdb.model.data import load_squad_values
 
-    variants = variants or FINISH_VARIANTS
+    fit_configs = fit_configs or finishing_combo_configs()
+    variants = variants if variants is not None else FINISH_COMBO_VARIANTS
     df = load_matches()
     values = load_squad_values()
     injuries = load_injuries()
@@ -441,20 +472,29 @@ def compare_finishing(tune=tuple(range(2016, 2021)), test=tuple(range(2021, 2027
     groups = list(games_all.groupby(["season", "matchday"]))
     meta = pd.DataFrame([{"season": s, "matchday": md} for (s, md), g in groups for _ in range(len(g))])
     outcome = np.array([0 if r.hg > r.ag else 1 if r.hg == r.ag else 2 for _, g in groups for r in g.itertuples()])
-    probs = {name: [] for name in ["basis", *variants]}
     off = {"finish_games": 0, "finish_days": 0, "finish_c": 0.0, "finish_defense": False}
+    labels = {}
+    for fit_name in fit_configs:
+        for fin_name in ["", *variants]:
+            label = " + ".join(x for x in (fit_name, fin_name) if x) or "basis"
+            labels[label] = (fit_name, fin_name)
+    probs = {label: [] for label in labels}
     for (season, md), games in groups:
         cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
-        model = Forecaster(values=values).fit(df, cutoff)
+        impacts = {}
         for r in games.itertuples():
-            out = {}
             for t in (r.home_id, r.away_id):
-                out[t] = av.impact(t, cutoff, av.injured_as_of(t, cutoff, injuries) | av.suspended_as_of(t, cutoff))
-            for name, cfg in [("basis", {}), *variants.items()]:
-                for k, v in (off | cfg).items():
+                impacts[t] = av.impact(t, cutoff, av.injured_as_of(t, cutoff, injuries) | av.suspended_as_of(t, cutoff))
+        for fit_name, cfg in fit_configs.items():
+            kw = {k: v for k, v in cfg.items() if k != "dc"}
+            model = Forecaster(dc=DixonColes(**cfg.get("dc", {})), values=values, **kw).fit(df, cutoff)
+            for fin_name in ["", *variants]:
+                for k, v in (off | variants.get(fin_name, {})).items():
                     setattr(model, k, v)
-                p = model.predict_match(r.home_id, r.away_id, r.match_id, out[r.home_id], out[r.away_id])
-                probs[name].append([p["p_home"], p["p_draw"], p["p_away"]])
+                label = " + ".join(x for x in (fit_name, fin_name) if x) or "basis"
+                for r in games.itertuples():
+                    p = model.predict_match(r.home_id, r.away_id, r.match_id, impacts[r.home_id], impacts[r.away_id])
+                    probs[label].append([p["p_home"], p["p_draw"], p["p_away"]])
         if progress:
             progress(season, md)
     probs = {k: np.array(v) for k, v in probs.items()}
@@ -470,4 +510,4 @@ def compare_finishing(tune=tuple(range(2016, 2021)), test=tuple(range(2021, 2027
                      "delta_tune": d[is_tune].mean(), "delta_test": d[~is_tune].mean(),
                      "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if name != "basis" else np.nan,
                      "saisons_besser": f"{sum(d[(meta['season'] == s).to_numpy()].mean() < 0 for s in seasons)}/{len(seasons)}"})
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).sort_values("delta_test")
