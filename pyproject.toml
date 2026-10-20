@@ -1,0 +1,38 @@
+[project]
+name = "fussballdb"
+version = "0.1.0"
+description = "Bundesliga-Datenbank mit xG, Statistiken, Quoten und Prognosemodell"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.3",
+    "typer>=0.12",
+    "rich>=13.7",
+    "python-dotenv>=1.0",
+    "beautifulsoup4>=4.15.0",
+    "fastapi>=0.146.0",
+    "uvicorn[standard]>=0.54.0",
+    "mcp>=2.3.0",
+]
+
+[project.optional-dependencies]
+claude = ["anthropic>=1.15"]
+
+[project.scripts]
+fussballdb = "fussballdb.cli:app"
+fussballdb-mcp = "fussballdb.mcp_server:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fussballdb"]

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>de.fussballdb.snapshot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PROJEKT__/scripts/update.sh</string>
+  </array>
+  <!-- Vorlage: scripts/install.sh --launchd setzt Projekt- und Home-Pfad ein. Täglich 9:30 Daten prüfen und aktualisieren; verpasste Läufe (Mac im Ruhezustand) holt launchd beim Aufwachen nach -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/fussballdb-snapshot.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/fussballdb-snapshot.log</string>
+</dict>
+</plist>

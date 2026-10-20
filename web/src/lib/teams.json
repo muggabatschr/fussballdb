@@ -1,0 +1,126 @@
+{
+  "1. FC Heidenheim 1846": {
+    "logo": "/logos/10.png",
+    "short": "Heidenheim"
+  },
+  "1. FC Köln": {
+    "logo": "/logos/7.png",
+    "short": "Köln"
+  },
+  "1. FC Nürnberg": {
+    "logo": "/logos/28.png",
+    "short": "Nürnberg"
+  },
+  "1. FC Union Berlin": {
+    "logo": "/logos/21.png",
+    "short": "Union"
+  },
+  "1. FSV Mainz 05": {
+    "logo": "/logos/15.png",
+    "short": "Mainz"
+  },
+  "Bayer 04 Leverkusen": {
+    "logo": "/logos/13.png",
+    "short": "Leverkusen"
+  },
+  "Borussia Dortmund": {
+    "logo": "/logos/4.png",
+    "short": "Dortmund"
+  },
+  "Borussia Mönchengladbach": {
+    "logo": "/logos/14.png",
+    "short": "Gladbach"
+  },
+  "DSC Arminia Bielefeld": {
+    "logo": "/logos/30.png",
+    "short": "Bielefeld"
+  },
+  "Eintracht Frankfurt": {
+    "logo": "/logos/5.png",
+    "short": "Frankfurt"
+  },
+  "FC Augsburg": {
+    "logo": "/logos/1.png",
+    "short": "Augsburg"
+  },
+  "FC Bayern München": {
+    "logo": "/logos/2.png",
+    "short": "Bayern"
+  },
+  "FC Ingolstadt 04": {
+    "logo": "/logos/27.png",
+    "short": "Ingolstadt"
+  },
+  "FC Schalke 04": {
+    "logo": "/logos/18.png",
+    "short": "Schalke"
+  },
+  "FC St. Pauli": {
+    "logo": "/logos/19.png",
+    "short": "St. Pauli"
+  },
+  "Fortuna Düsseldorf": {
+    "logo": "/logos/29.png",
+    "short": "Düsseldorf"
+  },
+  "Hamburger SV": {
+    "logo": "/logos/9.png",
+    "short": "HSV"
+  },
+  "Hannover 96": {
+    "logo": "/logos/26.png",
+    "short": "Hannover"
+  },
+  "Hertha BSC": {
+    "logo": "/logos/25.png",
+    "short": "Hertha"
+  },
+  "Holstein Kiel": {
+    "logo": "/logos/12.png",
+    "short": "Kiel"
+  },
+  "RB Leipzig": {
+    "logo": "/logos/17.png",
+    "short": "Leipzig"
+  },
+  "SC Freiburg": {
+    "logo": "/logos/8.png",
+    "short": "Freiburg"
+  },
+  "SC Paderborn 07": {
+    "logo": "/logos/16.png",
+    "short": "Paderborn"
+  },
+  "SV 07 Elversberg": {
+    "logo": "/logos/6.png",
+    "short": "Elversberg"
+  },
+  "SV Darmstadt 98": {
+    "logo": "/logos/24.png",
+    "short": "Darmstadt"
+  },
+  "SV Werder Bremen": {
+    "logo": "/logos/22.png",
+    "short": "Bremen"
+  },
+  "SpVgg Greuther Fürth": {
+    "logo": "/logos/31.png",
+    "short": "Fürth"
+  },
+  "TSG Hoffenheim": {
+    "logo": "/logos/11.png",
+    "short": "Hoffenheim"
+  },
+  "VfB Stuttgart": {
+    "logo": "/logos/20.png",
+    "short": "Stuttgart"
+  },
+  "VfL Bochum": {
+    "logo": "/logos/3.png",
+    "short": "Bochum"
+  },
+  "VfL Wolfsburg": {
+    "logo": "/logos/23.png",
+    "short": "Wolfsburg"
+  }
+}

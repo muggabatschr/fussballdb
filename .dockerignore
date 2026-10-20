@@ -1,0 +1,6 @@
+.venv
+.cache
+.env
+web
+tests
+**/__pycache__

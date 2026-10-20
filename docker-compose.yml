@@ -1,0 +1,58 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fussball
+      POSTGRES_PASSWORD: fussball
+      POSTGRES_DB: fussballdb
+    ports:
+      - "5442:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fussball -d fussballdb"]
+      interval: 2s
+      retries: 30
+
+  # Web-App und API: docker compose --profile app up -d --build
+  api:
+    profiles: ["app"]
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://fussball:fussball@db:5432/fussballdb
+      # beim Start prüfen, ob Daten fehlen oder veraltet sind, und im Hintergrund aktualisieren
+      AUTO_UPDATE: "1"
+      TIPP_PUNKTE: ${TIPP_PUNKTE:-2,3,4,3}
+    volumes:
+      - apicache:/app/.cache
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 2s
+      retries: 30
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    profiles: ["app"]
+    build: ./web
+    restart: unless-stopped
+    environment:
+      FUSSBALL_API_URL: http://api:8000
+      # LM Studio läuft auf dem Mac, nicht im Container
+      LLM_BASE_URL: http://host.docker.internal:1234/v1
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_REASONING: ${LLM_REASONING:-}
+    ports:
+      - "127.0.0.1:3010:3010"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  apicache:
