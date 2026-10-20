@@ -263,6 +263,16 @@ def cl_prognosen(
     console.print(f"Live: {predict_upcoming()} Prognosen")
 
 
+@app.command("abschluss-test")
+def abschluss_test() -> None:
+    """Über-/Unterperformance (Tore gegenüber xG der letzten Spiele) im Rückblick-Test, 2016–2026."""
+    from fussballdb.model.evaluate import compare_finishing
+
+    res = compare_finishing(progress=lambda y, md: md == 34 and console.print(f"{y}/{(y + 1) % 100:02d} fertig"))
+    console.print(res.round(5).to_string(index=False))
+    console.print("delta < 0 = besser. Übernommen wird nur, was im Test in mindestens ~90 % der Ziehungen besser ist.")
+
+
 @app.command("xg-varianten")
 def xg_varianten(seasons: SeasonsOpt = None) -> None:
     """xG-Varianten (xG, npxG, Spielstand-bereinigt, Rote Karten) im Rückblick-Test vergleichen."""

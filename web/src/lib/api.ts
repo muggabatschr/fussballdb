@@ -174,6 +174,7 @@ export type MatchdayGame = {
   missing_away: string | null;
   points: number | null;
   explanation: string[];
+  tv?: Partial<Record<"DE" | "AT", string[]>>;
 };
 
 export type Bilanz = { spiele: number; punkte: number; tendenz: number; exakt: number };

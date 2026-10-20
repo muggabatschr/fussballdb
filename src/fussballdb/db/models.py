@@ -367,6 +367,20 @@ class EuPrediction(Base):
     explanation: Mapped[str | None] = mapped_column(Text)
 
 
+class TvListing(Base):
+    """TV-Sender eines Spiels je Land laut FotMob-TV-Programm. competition: BL (match) oder CL (eu_match)."""
+
+    __tablename__ = "tv_listing"
+    __table_args__ = (UniqueConstraint("competition", "match_id", "country"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competition: Mapped[str] = mapped_column(String(4))
+    match_id: Mapped[int] = mapped_column(index=True)
+    country: Mapped[str] = mapped_column(String(2))  # DE | AT
+    channels: Mapped[str] = mapped_column(Text)  # JSON-Liste der Sendernamen wie bei FotMob
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 # Spalten, die nach dem ersten Anlegen dazugekommen sind (create_all ergänzt keine Spalten)
 MIGRATIONS = [
     "ALTER TABLE prediction ADD COLUMN IF NOT EXISTS as_of timestamptz",

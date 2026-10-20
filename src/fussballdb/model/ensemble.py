@@ -32,6 +32,13 @@ class Forecaster:
     form_xi: float = 0.02  # ~35 Tage Halbwertszeit
     # Direkte Duelle: Faktor (Σ xG + c) / (Σ erwartete xG + c) aus früheren Duellen (0 = aus)
     h2h_c: float = 0.0
+    # Abschluss-Faktor (Über-/Unterperformance): (Tore + c) / (xG + c) der letzten Spiele multipliziert die
+    # Torerwartung, mit finish_defense auch Gegentore / xGA (Torwart). Aus, weil im Rückblick ohne Nutzen
+    # (fussballdb abschluss-test).
+    finish_games: int = 0  # letzte N Spiele (0 = alle im Zeitraum)
+    finish_days: int = 0  # Zeitraum in Tagen (0 = ohne Grenze)
+    finish_c: float = 0.0  # Dämpfung in xG
+    finish_defense: bool = False
     dc_form: DixonColes | None = None
     train: pd.DataFrame | None = None
 
@@ -76,6 +83,12 @@ class Forecaster:
             adj = (adj[0] * form[0], adj[1] * form[1])
         if self.h2h_c > 0:
             adj = (adj[0] * self._h2h_factor(home_id, away_id), adj[1] * self._h2h_factor(away_id, home_id))
+        if self.finish_games or self.finish_days:
+            att_h, def_h = self._finish_factors(home_id)
+            att_a, def_a = self._finish_factors(away_id)
+            if not self.finish_defense:
+                def_h = def_a = 1.0
+            adj = (adj[0] * att_h * def_a, adj[1] * att_a * def_h)
         out = self.dc.predict(home_id, away_id, adj)
         out["adjustment"] = {"home_goals_factor": adj[0], "away_goals_factor": adj[1]}
         if match_id is not None and self.elo_table is not None and match_id in self.elo_table.index:
@@ -97,6 +110,28 @@ class Forecaster:
         out["impact"] = {"home": hi, "away": ai}
         return out
 
+
+    def _finish_factors(self, team: int) -> tuple[float, float]:
+        """(Tore + c) / (xG + c) und (Gegentore + c) / (xGA + c) der letzten Spiele vor dem Stichtag."""
+        t = self.train
+        m = t[(t["home_id"] == team) | (t["away_id"] == team)].dropna(subset=["hxg", "axg"]).sort_values("kickoff")
+        if self.finish_days:
+            m = m[m["kickoff"] >= self.cutoff - pd.Timedelta(days=self.finish_days)]
+        if self.finish_games:
+            m = m.tail(self.finish_games)
+        if m.empty:
+            return 1.0, 1.0
+        home = (m["home_id"] == team).to_numpy()
+        goals = np.where(home, m["hg"], m["ag"]).sum()
+        xg = np.where(home, m["hxg"], m["axg"]).sum()
+        conceded = np.where(home, m["ag"], m["hg"]).sum()
+        xga = np.where(home, m["axg"], m["hxg"]).sum()
+        c = self.finish_c
+
+        def ratio(a: float, b: float) -> float:
+            return float(np.clip((a + c) / (b + c), 0.5, 2.0)) if b + c > 0 else 1.0
+
+        return ratio(goals, xg), ratio(conceded, xga)
 
     def _h2h_factor(self, team: int, opponent: int) -> float:
         """Wie viel xG hat `team` in früheren Duellen gegen `opponent` erzeugt, verglichen mit dem,

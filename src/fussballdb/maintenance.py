@@ -209,6 +209,19 @@ def _need_europe() -> str | None:
     return None
 
 
+def _need_tv() -> str | None:
+    """TV-Sender: täglich neu laden, solange Spiele in den nächsten 7 Tagen anstehen."""
+    upcoming = _scalar("""SELECT (SELECT count(*) FROM match WHERE NOT finished AND kickoff BETWEEN now() AND now() + interval '7 days')
+                         + (SELECT count(*) FROM eu_match WHERE competition = 'CL' AND NOT finished
+                            AND kickoff BETWEEN now() AND now() + interval '7 days')""")
+    if not upcoming:
+        return None
+    last = _scalar("SELECT max(fetched_at) FROM tv_listing")
+    if last is None or last < datetime.now(timezone.utc) - timedelta(hours=20):
+        return "TV-Sender älter als 20 Stunden" if last else "noch keine TV-Sender"
+    return None
+
+
 # --- Ausführung -------------------------------------------------------------------------------------
 
 def _run_results() -> str:
@@ -294,6 +307,15 @@ def _run_europe() -> str:
             f"Rückblick {eu_backfill()}, Live {eu_predict()} CL-Prognosen")
 
 
+def _run_tv() -> str:
+    from fussballdb.ingest import tv
+
+    with session_scope() as s:
+        res = tv.ingest(s)
+    return f"TV-Sender für {res['zugeordnet']} Spiele/Länder" + (
+        f", nicht zugeordnet: {', '.join(res['nicht_zugeordnet'][:5])}" if res["nicht_zugeordnet"] else "")
+
+
 @dataclass
 class Step:
     name: str
@@ -314,6 +336,7 @@ STEPS = [
     Step("kickbase", "Kickbase-Marktwerte und Liga", _need_kickbase_daily, _run_kickbase_daily, timedelta(hours=6)),
     Step("prognosen", "Live-Prognosen", _need_predictions, _run_predictions, timedelta(hours=1)),
     Step("europa", "Champions League", _need_europe, _run_europe, timedelta(hours=6)),
+    Step("tv", "TV-Sender (DE, AT)", _need_tv, _run_tv, timedelta(hours=6)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,
          timedelta(days=7), slow=True),
     Step("kickbase_punkte", "Kickbase-Punkte und neue Spieler", _need_kickbase_points, _run_kickbase_points,

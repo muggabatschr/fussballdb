@@ -64,6 +64,7 @@ lassen sich im Backtest prüfen.
 | football-data.co.uk, 18 Ligen | Ligaergebnisse aus England, Spanien, Italien, Deutschland, Frankreich, Niederlande, Portugal, Belgien, Türkei, Schottland, Griechenland, Österreich, Schweiz, Dänemark, Norwegen, Schweden, Polen, Rumänien (für die Europa-Elo) |
 | [Understat](https://understat.com) | xG, npxG, xPts, PPDA, Deep, jeder Schuss mit xG, Kader je Spiel mit Minuten/xG/xA |
 | [Transfermarkt](https://www.transfermarkt.de) | aktuelle Verletzte und Kranke, Verletzungshistorie je Spieler, Kaderwerte zum 1. jedes Monats |
+| [FotMob](https://www.fotmob.com/de/tv-guide/de) (TV-Programm DE und AT) | TV-Sender je Bundesliga- und CL-Spiel in Deutschland und Österreich, jeweils für die nächsten 7 Tage |
 | [Ligainsider](https://www.ligainsider.de) | voraussichtliche Aufstellungen vor dem Spiel, tatsächliche danach |
 | [Kickbase](https://www.kickbase.com) (inoffizielle API, eigenes Konto) | Punkte, Marktwerte, Status, Markt und Kader der eigenen Liga |
 
@@ -247,6 +248,13 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 unter der Prognosekarte („Markt (Ø-Quoten)“). Für einen Spieltag, den football-data noch nicht
 eingestellt hat, fehlt die Zeile. Die Quoten fließen nicht in Prognose oder Tipp ein, sie dienen nur dem
 Vergleich.
+
+**TV-Sender in der Kachel:** Bei offenen Spielen steht unten, wo sie laufen, z. B.
+„TV DE Sky, WOW · AT Sky Austria, WOW“ oder in der CL „TV DE DAZN · AT Sky Austria, WOW“. Quelle ist das
+TV-Programm von FotMob für Deutschland und Österreich (`ingest/tv.py`), täglich geladen und über
+Anstoßzeit und Teamnamen zugeordnet. Kanäle eines Anbieters werden zusammengefasst (Sky Bundesliga 1–5,
+Top Event, Sky X → Sky; in Österreich → Sky Austria; Sky Go fällt weg). FotMob kennt die Sender etwa eine
+Woche im Voraus, für spätere Spieltage fehlt die Zeile noch. Bei gespielten Spielen wird sie ausgeblendet.
 
 **Ausfälle in der Kachel:** Namentlich genannt werden nur fehlende Stammspieler (mindestens 50 % der
 möglichen Minuten in den letzten 8 Spielen). Eingerechnet werden aber alle Verletzten und Gesperrten mit
@@ -438,6 +446,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb kaderwert-test` | Kaderwert als Startstärke im Rückblick-Test |
 | `fussballdb kalibrierung` | Vorhergesagte gegen eingetretene Häufigkeiten (Heim, Remis, Gast, Über 2,5) |
 | `fussballdb tipp-test` | Tipp-Regeln im Rückblick vergleichen |
+| `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test |
 | `fussballdb kombi-test` | alle Erweiterungen zusammen, jeweils eine weggelassen |
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
 | `fussballdb xg-varianten` | xG-Varianten (npxG, Spielstand, Rote Karten) im Rückblick-Test vergleichen |
@@ -468,6 +477,7 @@ Geprüft werden:
 | Rückblick-Prognosen | gespielte Spiele ohne Prognose | 6 Std. |
 | Kickbase-Marktwerte und Liga | letzter Abruf älter als 20 Std. (nur mit Kickbase-Token) | 6 Std. |
 | Live-Prognosen | offene Spiele ohne Prognose, neue Daten oder älter als 24 Std. | 1 Std. |
+| TV-Sender (DE, AT) | Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
 | Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |
 | Verletzungshistorie (langsam) | noch nie vollständig geladen | 7 Tage |
 | Kickbase-Punkte (langsam) | neuer Spieltag ohne Punkte oder Spieler älter als 8 Tage | 12 Std. |
@@ -580,6 +590,8 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Ausfälle aus der Verletzungshistorie zum Stichtag, β 0,5 | 2023–26: −0,0010 | übernommen; 97 % der Ziehungen, aber stark von 2023/24 getragen (2024/25 schlechter); der erste Test ohne 2023/24 war negativ |
 | Kombination aus allen Erweiterungen, jeweils eine weggelassen (`fussballdb kombi-test`) | Form + Verletzte: −0,0005 | Form und Verletzte tragen, Heimvorteil je Team, Duelle und Remis-Kalibrierung nicht |
 | Sperren (Rot/Gelb-Rot, 5./10./15. Gelbe) zusätzlich zu den Verletzten | 2016–26: −0,0003 | übernommen; 99 % der Ziehungen, 9 von 11 Saisons, gleichmäßig über alle Jahre |
+| Über-/Unterperformance der letzten 5 Spiele (Tore ÷ xG als Faktor auf die Torerwartung, `fussballdb abschluss-test`) | 2021–26: +0,0085 | verworfen; in keiner der 11 Saisons besser. Mit Dämpfung (5 xG) +0,0035, mit Gegentoren ÷ xGA +0,0165 |
+| Abschlussstärke über 1 Jahr, gedämpft (10 bzw. 20 xG), auch mit Gegentoren | +0,0010 bis +0,0033 | verworfen; besser in höchstens 3 % der Ziehungen. Wer zuletzt über oder unter seinem xG lag, tut das danach nicht weiter, reines xG bleibt besser |
 | Spielerwert über On/Off (xG für/gegen mit und ohne Spieler auf dem Platz) statt xG+xA | 2023–26: +0,0010 | verworfen; zu verrauscht, weil Stammspieler selten fehlen (`features/onoff.py`) |
 | Echte Aufstellung (Obergrenze, Wissen aus der Zukunft) | −0,0006 | nur zur Einordnung: Ausfälle sind kaum noch ein Hebel |
 
@@ -598,6 +610,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `squad_value` | Kaderwerte je Team und Stichtag |
 | `prediction` | Prognosen (`basis` = live oder rueckblick), Tipp, Ausfälle, Begründung als JSON |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
+| `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL → `eu_match`), wie bei FotMob gelistet |
 | `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der Liga |
 | `eu_team`, `eu_team_alias` | Champions League: Vereine aus ganz Europa (Transfermarkt-ID bei Europapokal-Teilnehmern), Namen je Quelle |
 | `eu_match` | Liga- (`competition` = football-data-Kürzel) und Europapokalspiele (`CL`, `EL`) |
@@ -653,6 +666,9 @@ Was in welcher Reihenfolge entstanden ist und warum.
 15. **Nachtest Qwen 3.6 in 8 Bit**: schneller, aber ungenauer, Qwen 3.8 bleibt.
 16. **Champions League**: europaweite Elo aus Liga- und Europapokalspielen mit Kaderwert als Startwert,
     eigener Tab, MCP-Werkzeug, Update-Schritt, Rückblick-Test (ClubElo war nicht erreichbar).
+
+17. **Abschlussstärke getestet** (Tore gegenüber xG der letzten Spiele): bringt nichts, bleibt aus.
+18. **TV-Sender** in den Kacheln für Deutschland und Österreich, Bundesliga und Champions League.
 
 Offen:
 

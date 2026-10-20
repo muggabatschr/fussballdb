@@ -81,11 +81,24 @@ export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
             )}
           </p>
           {g.tip_home != null && <WhyTip tip={`${g.tip_home}:${g.tip_away}`} lines={g.explanation} />}
+          {!g.finished && <TvLine tv={g.tv} />}
         </>
       ) : (
         <p className="text-xs text-muted">Keine Prognose (vor diesem Spieltag gab es noch keine Daten).</p>
       )}
     </Card>
+  );
+}
+
+/** Sender in Deutschland und Österreich (FotMob-TV-Programm, etwa eine Woche vor dem Spiel bekannt). */
+function TvLine({ tv }: { tv?: MatchdayGame["tv"] }) {
+  const parts = (["DE", "AT"] as const).filter((c) => tv?.[c]?.length).map((c) => `${c} ${tv![c]!.join(", ")}`);
+  if (!parts.length) return null;
+  const text = parts.join(" · ");
+  return (
+    <p className="truncate whitespace-nowrap text-xs text-muted" title={`TV: ${text}`}>
+      <span className="font-medium text-foreground/80">TV</span> {text}
+    </p>
   );
 }
 

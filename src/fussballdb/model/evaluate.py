@@ -412,3 +412,62 @@ def compare_combo(tune=tuple(range(2016, 2021)), test=tuple(range(2021, 2027)), 
                      "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if name != "basis" else np.nan,
                      "saisons_besser": f"{sum(d[(meta['season'] == s).to_numpy()].mean() < 0 for s in tune + test)}/{len(tune + test)}"})
     return pd.DataFrame(rows)
+
+
+FINISH_VARIANTS: dict[str, dict] = {
+    "5 Spiele, ungedämpft": {"finish_games": 5},
+    "5 Spiele, Dämpfung 5 xG": {"finish_games": 5, "finish_c": 5.0},
+    "5 Spiele, ungedämpft, mit Gegentoren": {"finish_games": 5, "finish_defense": True},
+    "1 Jahr, Dämpfung 10 xG": {"finish_days": 365, "finish_c": 10.0},
+    "1 Jahr, Dämpfung 20 xG": {"finish_days": 365, "finish_c": 20.0},
+    "1 Jahr, Dämpfung 10 xG, mit Gegentoren": {"finish_days": 365, "finish_c": 10.0, "finish_defense": True},
+}
+
+
+def compare_finishing(tune=tuple(range(2016, 2021)), test=tuple(range(2021, 2027)), seed: int = 0,
+                      variants: dict[str, dict] | None = None, progress=None) -> pd.DataFrame:
+    """Über-/Unterperformance (Tore gegenüber xG) als Faktor auf die Torerwartung, gegen das aktuelle
+    Modell (Form, Verletzte, Sperren). Je Spieltag wird einmal trainiert; die Varianten unterscheiden sich
+    nur bei der Vorhersage. delta < 0 = besser, Bootstrap-Anteil über den Testzeitraum."""
+    from fussballdb.model.data import load_squad_values
+
+    variants = variants or FINISH_VARIANTS
+    df = load_matches()
+    values = load_squad_values()
+    injuries = load_injuries()
+    av = AvailabilityModel()
+    seasons = tune + test
+    games_all = df[df["finished"] & df["season"].isin(seasons)]
+    groups = list(games_all.groupby(["season", "matchday"]))
+    meta = pd.DataFrame([{"season": s, "matchday": md} for (s, md), g in groups for _ in range(len(g))])
+    outcome = np.array([0 if r.hg > r.ag else 1 if r.hg == r.ag else 2 for _, g in groups for r in g.itertuples()])
+    probs = {name: [] for name in ["basis", *variants]}
+    off = {"finish_games": 0, "finish_days": 0, "finish_c": 0.0, "finish_defense": False}
+    for (season, md), games in groups:
+        cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
+        model = Forecaster(values=values).fit(df, cutoff)
+        for r in games.itertuples():
+            out = {}
+            for t in (r.home_id, r.away_id):
+                out[t] = av.impact(t, cutoff, av.injured_as_of(t, cutoff, injuries) | av.suspended_as_of(t, cutoff))
+            for name, cfg in [("basis", {}), *variants.items()]:
+                for k, v in (off | cfg).items():
+                    setattr(model, k, v)
+                p = model.predict_match(r.home_id, r.away_id, r.match_id, out[r.home_id], out[r.away_id])
+                probs[name].append([p["p_home"], p["p_draw"], p["p_away"]])
+        if progress:
+            progress(season, md)
+    probs = {k: np.array(v) for k, v in probs.items()}
+    base = rps_per_match(probs["basis"], outcome)
+    is_tune = meta["season"].isin(tune).to_numpy()
+    rng = np.random.default_rng(seed)
+    test_idx = np.flatnonzero(~is_tune)
+    boot = rng.choice(test_idx, (4000, len(test_idx)))
+    rows = []
+    for name, p in probs.items():
+        d = rps_per_match(p, outcome) - base
+        rows.append({"variante": name, "rps_test": rps_per_match(p, outcome)[~is_tune].mean(),
+                     "delta_tune": d[is_tune].mean(), "delta_test": d[~is_tune].mean(),
+                     "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if name != "basis" else np.nan,
+                     "saisons_besser": f"{sum(d[(meta['season'] == s).to_numpy()].mean() < 0 for s in seasons)}/{len(seasons)}"})
+    return pd.DataFrame(rows)

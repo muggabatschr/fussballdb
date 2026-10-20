@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from fussballdb.assistant.tools import Toolbox, _rows
 from fussballdb.config import TIPP_PUNKTE
+from fussballdb.ingest.tv import for_matches as tv_for
 from fussballdb.maintenance import STATUS, check, ensure_in_background
 from fussballdb.model.ensemble import MODEL_VERSION
 
@@ -165,8 +166,10 @@ def matchday(season: int, matchday: int):
         """,
         y=season, md=matchday, v=MODEL_VERSION,
     )[0]
+    tv = tv_for("BL", [g["id"] for g in games])
     for g in games:
         g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
+        g["tv"] = tv.get(g["id"], {})
     scored = [g for g in games if g["points"] is not None]
     return {
         "season": season,
@@ -233,8 +236,10 @@ def cl_round(season: int, round_no: int):
     )
     if not games:
         raise ValueError(f"Runde {round_no} der CL-Saison {season} gibt es nicht.")
+    tv = tv_for("CL", [g["id"] for g in games])
     for g in games:
         g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
+        g["tv"] = tv.get(g["id"], {})
     scored = [g for g in games if g["points"] is not None]
     season_rows = _rows(
         f"""
