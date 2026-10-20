@@ -187,6 +187,28 @@ def _need_predictions() -> str | None:
     return None
 
 
+def _need_europe() -> str | None:
+    """Champions League: Ergebnisse, Ligaspiele, Kaderwerte und Prognosen."""
+    if not _scalar("SELECT count(*) FROM eu_match WHERE competition = 'CL'"):
+        return None  # Europa noch nie geladen (fussballdb europa), nicht automatisch nachholen
+    open_ = _scalar("SELECT count(*) FROM eu_match WHERE NOT finished AND kickoff < now() - interval '3 hours'")
+    if open_:
+        return f"{open_} Europapokal-Spiele ohne Ergebnis"
+    last_league = _scalar("SELECT max(kickoff) FROM eu_match WHERE competition NOT IN ('CL', 'EL')")
+    if last_league and last_league < datetime.now(timezone.utc) - timedelta(days=4):
+        return "Ligaspiele für die Europa-Elo älter als 4 Tage"
+    missing = _scalar(
+        """SELECT count(*) FROM eu_match m WHERE m.competition = 'CL' AND NOT m.finished AND m.kickoff > now()
+           AND NOT EXISTS (SELECT 1 FROM eu_prediction p WHERE p.match_id = m.id AND p.basis = 'live')"""
+    )
+    if missing:
+        return f"{missing} offene CL-Spiele ohne Prognose"
+    last_pred = _scalar("SELECT max(as_of) FROM eu_prediction WHERE basis = 'live'")
+    if last_pred and last_pred < datetime.now(timezone.utc) - timedelta(hours=24):
+        return "CL-Prognosen älter als 24 Stunden"
+    return None
+
+
 # --- Ausführung -------------------------------------------------------------------------------------
 
 def _run_results() -> str:
@@ -254,6 +276,24 @@ def _run_predictions() -> str:
     return f"{len(predict_upcoming())} Live-Prognosen"
 
 
+def _run_europe() -> str:
+    from fussballdb.ingest import europe
+    from fussballdb.model.europe import backfill as eu_backfill, predict_upcoming as eu_predict
+
+    with session_scope() as s:
+        n_eu = europe.ingest_euro(s)
+    with session_scope() as s:
+        n_league = europe.ingest_domestic(s, [CURRENT_SEASON])
+    n_values = 0
+    last_value = _scalar("SELECT max(stichtag) FROM eu_squad_value")
+    if last_value is None or last_value < date.today() - timedelta(days=30):
+        with session_scope() as s:
+            n_values, _ = europe.ingest_values(s, start=(last_value or date(europe.FIRST_SEASON, 7, 1)) + timedelta(days=1),
+                                               log=lambda m: None)
+    return (f"Europapokal {n_eu}, Ligaspiele {n_league}, Kaderwerte {n_values}, "
+            f"Rückblick {eu_backfill()}, Live {eu_predict()} CL-Prognosen")
+
+
 @dataclass
 class Step:
     name: str
@@ -273,6 +313,7 @@ STEPS = [
     Step("rueckblick", "Rückblick-Prognosen", _need_backfill, _run_backfill, timedelta(hours=6)),
     Step("kickbase", "Kickbase-Marktwerte und Liga", _need_kickbase_daily, _run_kickbase_daily, timedelta(hours=6)),
     Step("prognosen", "Live-Prognosen", _need_predictions, _run_predictions, timedelta(hours=1)),
+    Step("europa", "Champions League", _need_europe, _run_europe, timedelta(hours=6)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,
          timedelta(days=7), slow=True),
     Step("kickbase_punkte", "Kickbase-Punkte und neue Spieler", _need_kickbase_points, _run_kickbase_points,

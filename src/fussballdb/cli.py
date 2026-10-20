@@ -214,6 +214,55 @@ def backtest(
     console.print("RPS/Brier/Log-Loss: kleiner ist besser. Markt = Durchschnittsquoten ohne Buchmachermarge.")
 
 
+@app.command()
+def europa(
+    werte: Annotated[bool, typer.Option(help="Kaderwerte von Transfermarkt laden (beim ersten Mal ~25 Min.)")] = True,
+) -> None:
+    """Champions League: Europapokal-Spiele, Ligaspiele aus 18 Ländern, Kaderwerte und Wappen laden."""
+    from fussballdb.db.session import session_scope
+    from fussballdb.ingest import europe
+
+    with session_scope() as s:
+        console.print(f"Europapokal: {europe.ingest_euro(s)} Spiele")
+    with session_scope() as s:
+        console.print(f"Ligen: {europe.ingest_domestic(s, list(range(europe.FIRST_SEASON, max(DEFAULT_SEASONS) + 1)))} Spiele")
+    if werte:
+        with session_scope() as s:
+            n, unknown = europe.ingest_values(s, log=console.print)
+        console.print(f"Kaderwerte: {n}")
+        for country, clubs in unknown.items():
+            console.print(f"  [dim]{country} ohne Zuordnung (nicht benötigt, solange nie im Europapokal): {len(clubs)}[/]")
+    with session_scope() as s:
+        res = europe.ingest_logos(s)
+    console.print(f"Wappen: {res['geladen']} neu" + (f", fehlen: {', '.join(res['fehlen'])}" if res["fehlen"] else ""))
+
+
+@app.command("cl-test")
+def cl_test() -> None:
+    """Champions-League-Prognose rückwirkend testen: jede Runde nur mit dem Stand vor ihrem ersten Anpfiff."""
+    from fussballdb.model.europe import backtest as run
+
+    res = run(log=lambda m: None)
+    cols = [c for c in res.columns if c.startswith(("rps_", "ll_"))]
+    by_season = res.groupby("season")[cols + ["punkte"]].mean()
+    by_season["spiele"] = res.groupby("season").size()
+    console.print(by_season.round(4).to_string())
+    console.print("\nGesamt:")
+    console.print(res[cols + ["punkte"]].mean().round(4).to_string())
+    console.print("RPS/Log-Loss: kleiner ist besser. Punkte = Kicktipp-Punkte je Spiel nach der Regel der Tipprunde.")
+
+
+@app.command("cl-prognosen")
+def cl_prognosen(
+    force: Annotated[bool, typer.Option(help="Rückblick-Prognosen neu berechnen")] = False,
+) -> None:
+    """Champions League: Rückblick-Prognosen für gespielte Runden und Live-Prognosen für offene Spiele."""
+    from fussballdb.model.europe import backfill, predict_upcoming
+
+    console.print(f"Rückblick: {backfill(force=force)} Prognosen")
+    console.print(f"Live: {predict_upcoming()} Prognosen")
+
+
 @app.command("xg-varianten")
 def xg_varianten(seasons: SeasonsOpt = None) -> None:
     """xG-Varianten (xG, npxG, Spielstand-bereinigt, Rote Karten) im Rückblick-Test vergleichen."""

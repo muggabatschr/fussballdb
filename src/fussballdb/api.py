@@ -184,6 +184,84 @@ def matchday(season: int, matchday: int):
     }
 
 
+@app.get("/cl/rounds")
+def cl_rounds():
+    """Champions-League-Runden aller Saisons (Spieltage der Ligaphase, Play-offs, K.-o.-Runden) mit der
+    aktuellen Runde je Saison (erste mit offenen Spielen)."""
+    rows = _rows(
+        """
+        SELECT season, round_no, min(round_name) AS round_name, count(*) AS spiele,
+               bool_and(finished) AS finished, min(kickoff) AS start
+        FROM eu_match WHERE competition = 'CL' GROUP BY season, round_no ORDER BY season DESC, round_no
+        """
+    )
+    seasons: dict[int, dict] = {}
+    for r in rows:
+        s = seasons.setdefault(r["season"], {"season": r["season"], "label": f"{r['season']}/{(r['season'] + 1) % 100:02d}",
+                                             "rounds": [], "current_round": None})
+        s["rounds"].append({k: r[k] for k in ("round_no", "round_name", "spiele", "finished", "start")})
+        if s["current_round"] is None and not r["finished"]:
+            s["current_round"] = r["round_no"]
+    for s in seasons.values():
+        s["current_round"] = s["current_round"] or s["rounds"][-1]["round_no"]
+    return list(seasons.values())
+
+
+@app.get("/cl/round/{season}/{round_no}")
+def cl_round(season: int, round_no: int):
+    """Spiele einer CL-Runde mit Prognose, Tipp und Tipp-Punkten. Bei gespielten Spielen zählt die
+    Live-Prognose von vor dem Anpfiff, sonst die Rückblick-Prognose (Stand vor der Runde)."""
+    games = _rows(
+        f"""
+        SELECT m.id, m.kickoff, m.round_name, m.neutral, ht.name AS home, at.name AS away,
+               m.home_goals, m.away_goals, m.finished,
+               round(p.p_home::numeric, 3) AS p_home, round(p.p_draw::numeric, 3) AS p_draw,
+               round(p.p_away::numeric, 3) AS p_away,
+               round(p.exp_home_goals::numeric, 2) AS exp_home_goals, round(p.exp_away_goals::numeric, 2) AS exp_away_goals,
+               round(p.elo_home::numeric) AS elo_home, round(p.elo_away::numeric) AS elo_away,
+               p.value_home, p.value_away, p.tip_home, p.tip_away, p.basis, p.as_of, p.explanation,
+               {POINTS_SQL} AS points
+        FROM eu_match m JOIN eu_team ht ON ht.id = m.home_id JOIN eu_team at ON at.id = m.away_id
+        LEFT JOIN LATERAL (
+            SELECT * FROM eu_prediction x WHERE x.match_id = m.id
+            ORDER BY (x.basis = 'live' AND x.as_of <= m.kickoff) DESC, (x.basis = 'rueckblick') DESC LIMIT 1
+        ) p ON true
+        WHERE m.competition = 'CL' AND m.season = :y AND m.round_no = :r
+        ORDER BY m.kickoff, m.id
+        """,
+        y=season, r=round_no,
+    )
+    if not games:
+        raise ValueError(f"Runde {round_no} der CL-Saison {season} gibt es nicht.")
+    for g in games:
+        g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
+    scored = [g for g in games if g["points"] is not None]
+    season_rows = _rows(
+        f"""
+        SELECT {POINTS_SQL} AS points
+        FROM eu_match m
+        LEFT JOIN LATERAL (
+            SELECT * FROM eu_prediction x WHERE x.match_id = m.id
+            ORDER BY (x.basis = 'live' AND x.as_of <= m.kickoff) DESC, (x.basis = 'rueckblick') DESC LIMIT 1
+        ) p ON true
+        WHERE m.competition = 'CL' AND m.season = :y AND m.round_no <= :r
+        """,
+        y=season, r=round_no,
+    )
+    season_scored = [r["points"] for r in season_rows if r["points"] is not None]
+
+    def summary(points: list[int]) -> dict:
+        return {"spiele": len(points), "punkte": sum(points), "tendenz": sum(1 for p in points if p > 0),
+                "exakt": sum(1 for p in points if p == EXACT)}
+
+    return {
+        "season": season, "round_no": round_no, "round_name": games[0]["round_name"], "games": games,
+        "summary": summary([g["points"] for g in scored]), "season_summary": summary(season_scored),
+        "punkteregel": {"sieg_tendenz": WIN_TENDENCY, "sieg_tordifferenz": WIN_DIFF, "exakt": EXACT,
+                        "remis_tendenz": DRAW_TENDENCY},
+    }
+
+
 @app.get("/kickbase/projections")
 def kickbase_projections(matchdays: Annotated[int, Query(ge=1, le=10)] = 1):
     """Erwartete Ereignisse je Spieler für die nächsten Spieltage (Einsatz, Tore, Vorlagen, Zu null, Gelb)."""

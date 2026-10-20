@@ -190,6 +190,29 @@ export type Matchday = {
 };
 
 export const getSeasons = () => api<Season[]>("/seasons");
+
+export type ClRoundInfo = { round_no: number; round_name: string; spiele: number; finished: boolean; start: string };
+export type ClSeason = { season: number; label: string; rounds: ClRoundInfo[]; current_round: number };
+export type ClGame = MatchdayGame & {
+  round_name: string;
+  neutral: boolean;
+  elo_home: number | null;
+  elo_away: number | null;
+  value_home: number | null;
+  value_away: number | null;
+};
+export type ClRound = {
+  season: number;
+  round_no: number;
+  round_name: string;
+  games: ClGame[];
+  summary: Bilanz;
+  season_summary: Bilanz;
+  punkteregel: Punkteregel;
+};
+
+export const getClRounds = () => api<ClSeason[]>("/cl/rounds");
+export const getClRound = (season: number, round: number) => api<ClRound>(`/cl/round/${season}/${round}`);
 export const getMatchday = (season: number, matchday: number) => api<Matchday>(`/matchday/${season}/${matchday}`);
 
 export type KickbaseRow = {

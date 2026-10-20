@@ -11,7 +11,8 @@ from mcp.types import ToolAnnotations
 
 from fussballdb.assistant.tools import SCHEMA_HINT, Toolbox, _json
 
-INSTRUCTIONS = """Daten und Prognosen zur 1. Fußball-Bundesliga seit 2014/15 und zu Kickbase: Ergebnisse, xG, Schüsse,
+INSTRUCTIONS = """Daten und Prognosen zur 1. Fußball-Bundesliga seit 2014/15, zur Champions League (ab 2024/25,
+Werkzeug `champions_league`) und zu Kickbase: Ergebnisse, xG, Schüsse,
 Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistisches Prognosemodell
 (Dixon-Coles auf xG mit Formkomponente + Elo, Kaderwert als Startstärke, Verletzte eingerechnet).
 
@@ -115,6 +116,32 @@ def kickbase(spieltage: int = 3, auswahl: str = "alle", position: str | None = N
     cols = ["name", "team_name", "position", "kb_punkte", "punkte_pro_mio", "marktwert", "trend_7t", "einsatz",
             "tore", "vorlagen", "zu_null", "ausfall", "markt_preis", "im_kader", "gegner"]
     return df.sort_values("kb_punkte", ascending=False)[cols].head(anzahl).to_json(orient="records", force_ascii=False)
+
+
+@mcp.tool(annotations=READ_ONLY)
+def champions_league(saison: int | None = None, runde: int | None = None) -> str:
+    """Champions League: Spiele einer Runde mit Wahrscheinlichkeiten, erwarteten Toren, Tipp, Begründung,
+    Europa-Elo und Kaderwerten; bei gespielten Spielen Ergebnis und Tipp-Punkte. Ohne Angaben die aktuelle
+    Runde. saison = Startjahr (2026 für 2026/27), runde = Nummer aus der Rundenliste (1–8 Ligaphase,
+    9 Play-offs, danach Achtelfinale bis Finale). Mit saison ohne runde: Liste der Runden."""
+    from fussballdb.api import cl_round, cl_rounds
+
+    def run():
+        seasons = cl_rounds()
+        if not seasons:
+            raise ValueError("Keine Champions-League-Daten. Einmal `uv run fussballdb europa` ausführen.")
+        if saison is not None and runde is None:
+            s = next((x for x in seasons if x["season"] == saison), None)
+            if s is None:
+                raise ValueError(f"Saison {saison} gibt es nicht. Vorhanden: {[x['season'] for x in seasons]}")
+            return s
+        s = next((x for x in seasons if x["season"] == saison), seasons[0]) if saison else seasons[0]
+        return cl_round(s["season"], runde or s["current_round"])
+
+    try:
+        return json.dumps(run(), default=str, ensure_ascii=False)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
 
 
 @mcp.tool(annotations=READ_ONLY)

@@ -10,7 +10,8 @@ Was es alles gibt:
   Sperren, Kaderwerten und Quoten
 - **Prognosemodell** mit Wahrscheinlichkeiten, erwarteten Toren und einem Tipp nach der Punkteregel der
   Kicktipp-Runde, für kommende Spiele und im Rückblick mit dem damaligen Datenstand
-- **Web-App** mit Spieltagen, Tabelle, Teamseiten, Chat und einem Kickbase-Tab
+- **Champions League**: Prognosen und Tipps für alle CL-Spiele seit 2024/25 aus einer europaweiten Elo
+- **Web-App** mit Spieltagen, Tabelle, Teamseiten, Champions League, Chat und einem Kickbase-Tab
 - **Chat** mit einem lokalen Sprachmodell (LM Studio, ohne Cloud)
 - **MCP-Server** und Skill `/fussball`, damit Claude direkt auf die Daten zugreift
 - **Automatisches Update** beim Start der App und täglich per launchd
@@ -59,6 +60,8 @@ lassen sich im Backtest prüfen.
 |---|---|
 | [OpenLigaDB](https://www.openligadb.de) | Spielplan, Ergebnisse, Halbzeit, Spieltage |
 | [football-data.co.uk](https://www.football-data.co.uk) | Schüsse, aufs Tor, Ecken, Fouls, Karten, Quoten (B365, Pinnacle, Betfair, Ø, Max; Eröffnung und Schluss), Vorab-Quoten |
+| [OpenLigaDB](https://www.openligadb.de) (`ucl`, `uel`) | Champions League ab 2024/25 und Europa League 2024/25: Spielplan und Ergebnisse |
+| football-data.co.uk, 18 Ligen | Ligaergebnisse aus England, Spanien, Italien, Deutschland, Frankreich, Niederlande, Portugal, Belgien, Türkei, Schottland, Griechenland, Österreich, Schweiz, Dänemark, Norwegen, Schweden, Polen, Rumänien (für die Europa-Elo) |
 | [Understat](https://understat.com) | xG, npxG, xPts, PPDA, Deep, jeder Schuss mit xG, Kader je Spiel mit Minuten/xG/xA |
 | [Transfermarkt](https://www.transfermarkt.de) | aktuelle Verletzte und Kranke, Verletzungshistorie je Spieler, Kaderwerte zum 1. jedes Monats |
 | [Ligainsider](https://www.ligainsider.de) | voraussichtliche Aufstellungen vor dem Spiel, tatsächliche danach |
@@ -108,13 +111,15 @@ scripts/install.sh --launchd
 6. importiert alle Saisons seit 2014/15 (`fussballdb ingest`, ~30 Min.), nur wenn die Datenbank leer ist
 7. lädt Kaderwerte, Ausfälle, Quoten, Verletzungshistorie und rechnet alle Prognosen
    (`fussballdb ensure`, beim ersten Mal ~40 Min. für die Verletzungshistorie)
-8. lädt fehlende Vereinswappen (`fussballdb logos`)
-9. installiert die Web-Abhängigkeiten (`npm install` in `web/`)
-10. zeigt am Ende den Datenstand und die nächsten Schritte
+8. lädt die Daten für die Champions League und rechnet ihre Prognosen (`fussballdb europa`,
+   `fussballdb cl-prognosen`, beim ersten Mal ~1 Std. für die Kaderwerte aus 30 Ländern)
+9. lädt fehlende Vereinswappen (`fussballdb logos`)
+10. installiert die Web-Abhängigkeiten (`npm install` in `web/`)
+11. zeigt am Ende den Datenstand und die nächsten Schritte
 
 | Option | Wirkung |
 |---|---|
-| `--schnell` | ohne die langsamen Schritte (Verletzungshistorie, Kickbase-Punkte), lassen sich später mit `scripts/update.sh` nachholen |
+| `--schnell` | ohne die langsamen Schritte (Verletzungshistorie, Kickbase-Punkte, Champions League); später mit `scripts/update.sh` bzw. `fussballdb europa` nachholen |
 | `--ohne-web` | ohne `npm install` |
 | `--launchd` | tägliches Update um 9:30 einrichten |
 | `--mcp` | MCP-Server in Claude Code eintragen (für alle Projekte) |
@@ -234,6 +239,7 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 | `/tabelle` | Tabelle mit xG, xGA und xPts |
 | `/team/<name>` | Form, xG-Verlauf, aktuelle Ausfälle |
 | `/chat` | Chat mit dem lokalen Modell |
+| `/cl`, `/cl/<saison>/<runde>` | Champions League: Runde mit Prognosen, Tipps und Bilanz, Saison- und Rundenauswahl |
 | `/kickbase` | Kickbase-Prognose, Kauf- und Verkaufskandidaten |
 
 **Wo die Quoten stehen:** in jeder Spieltag-Kachel unter „Warum 2:1?“ als letzte Zeile
@@ -280,6 +286,71 @@ Spieltagen messen.
 täglich (schnell) und nach jedem Spieltag die neuen Punkte. Ohne Token wird Kickbase übersprungen; der
 API-Container hat das Token nicht und überspringt Kickbase immer.
 
+## Champions League
+
+Eigener Tab „CL“ mit allen Runden seit 2024/25 (Ligaphase, Play-offs, Achtelfinale bis Finale), gleich
+aufgebaut wie die Bundesliga-Spieltage: Wahrscheinlichkeiten, erwartete Tore, Tipp nach der Punkteregel,
+Begründung und Bilanz. Gespielte Runden zeigen die Rückblick-Prognose (nur Daten bis zum ersten Anpfiff
+der Runde), offene die Live-Prognose.
+
+**Warum anders als in der Bundesliga:** Für viele Ligen gibt es kein xG, keine Kader und keine Ausfälle,
+und Teams aus verschiedenen Ländern spielen selten gegeneinander. Die Prognose stützt sich deshalb auf:
+
+1. **Europaweite Elo** über gut 22.000 Ligaspiele aus 18 Ländern (football-data, seit 2022/23) und alle
+   Europapokalspiele. Ein Team startet bei seinem ersten Spiel mit einer Elo aus seinem Kaderwert
+   (Transfermarkt: 1500 bei 50 Mio. €, +104 je Verdopplung). So sind die Ligen von Anfang an vergleichbar;
+   Europapokalspiele verschieben die Werte danach zwischen den Ländern. Zu jeder neuen Saison rückt die
+   Elo ein Drittel Richtung Kaderwert (Transfers im Sommer). K-Faktor 20 in der Liga, 30 im Europapokal,
+   Heimvorteil 65 Punkte, Siege mit 2 Toren zählen 1,5-fach, höhere mehr.
+2. **Tormodell**: Poisson mit Dixon-Coles-Korrektur aus Elo-Differenz und Heimvorteil (getrennt für Liga
+   und Europapokal, im Finale keiner). Die Gewichte werden vor jeder Runde aus den Spielen der drei Jahre
+   davor geschätzt.
+3. **Tipp** wie in der Bundesliga: das Ergebnis mit den meisten erwarteten Punkten.
+
+Teams aus Ländern ohne football-data-Liga (Tschechien, Kroatien, Serbien, Ukraine, Slowakei, Zypern,
+Aserbaidschan, Kasachstan, Bulgarien, Ungarn, Israel, Lettland) haben nur ihren Kaderwert und ihre
+Europapokalspiele. Absteiger fehlen auf den Transfermarkt-Ligaseiten, sie starten im unteren Viertel ihrer
+Liga (betrifft unter den CL-Teams nur Girona 2024/25).
+
+**Rückblick-Test** (`fussballdb cl-test`), jede Runde nur mit dem Stand vor ihrem ersten Anpfiff:
+
+| Saison | Spiele | RPS Modell | Elo + Kaderwert-Merkmal | nur Kaderwert | Grundverteilung | Punkte je Spiel |
+|---|---|---|---|---|---|---|
+| 2024/25 | 189 | 0,1958 | 0,1967 | 0,2037 | 0,2416 | 1,49 |
+| 2025/26 | 189 | 0,2020 | 0,2016 | 0,2041 | 0,2326 | 1,37 |
+| 2026/27 (bis 2. Spieltag) | 36 | 0,1796 | 0,1812 | 0,1901 | 0,2361 | 1,69 |
+| gesamt | 414 | 0,1972 | 0,1975 | 0,2027 | 0,2370 | 1,45 |
+
+In der Ligaphase ist das Modell deutlich treffsicherer (RPS 0,192, 1,50 Punkte je Spiel) als in der
+K.-o.-Phase (0,217, 1,29), wo ausgeglichene Teams aufeinandertreffen. Einen Vergleich mit dem Wettmarkt
+gibt es nicht: Kostenlose Quellen haben keine Champions-League-Quoten. Verworfen:
+
+- **Kaderwert-Verhältnis als zusätzliches Merkmal** im Tormodell: nicht besser als die Elo allein (nur
+  29 % der Bootstrap-Ziehungen), er steckt schon im Startwert und im Saison-Rückzug.
+- **Abgestimmte Elo-Parameter** (Kaderwert-Gewicht, K-Faktoren, Saison-Rückzug, Heimvorteil): Was an
+  2024/25 am besten passte, war an 2025/26 und 2026/27 schlechter (RPS 0,2002 statt 0,1977, gemessen
+  noch mit Kaderwert-Merkmal). Die
+  Unterschiede sind Rauschen, es bleiben die Startwerte.
+
+Das Modell sagt im Schnitt 22 % Remis voraus, in der CL endeten seit 2024/25 aber nur 16 % der Spiele
+remis. Remis-Tipps gibt es deshalb keine. Bei K.-o.-Spielen zählt das Endergebnis von OpenLigaDB, also
+inklusive Verlängerung, ohne Elfmeterschießen.
+
+**Einrichten** (einmalig ~1 Std., vor allem Kaderwerte von 30 Ligen zu 19 Stichtagen):
+
+```bash
+uv run fussballdb europa
+```
+
+```bash
+uv run fussballdb cl-prognosen
+```
+
+Danach hält `fussballdb ensure` alles aktuell (Schritt „Champions League“). Für eine neue Saison muss
+das OpenLigaDB-Kürzel in `ingest/europe.py` (`EURO_COMPETITIONS`) ergänzt werden, neue Teilnehmer aus
+kleinen Ländern unter `CLUBS` und `OLDB_NAMES`. Der Import bricht bei unbekannten Namen mit einer klaren
+Meldung ab.
+
 ## Zugriff aus Claude (MCP)
 
 `fussballdb-mcp` ist ein MCP-Server mit den Werkzeugen `naechste_spiele`, `spieltag`, `prognose`,
@@ -320,6 +391,7 @@ nach einem Neustart von Claude Desktop.
 | `ausfaelle` | Verletzte und Gesperrte eines Teams |
 | `tabelle` | Tabelle mit xG und xPts |
 | `kickbase` | erwartete Kickbase-Punkte, Marktwert, Trend, Punkte pro Million; `auswahl` = alle, markt oder kader |
+| `champions_league` | eine CL-Runde mit Prognosen, Tipps, Elo, Kaderwerten und Bilanz; ohne Angaben die aktuelle, mit `saison` allein die Rundenliste |
 | `sql` | freie Abfrage, nur lesend |
 | `datenstand` | wie aktuell die Daten sind, mit Hinweis, wenn eine Quelle noch nichts bereitgestellt hat |
 
@@ -348,6 +420,9 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb init-db` | Tabellen anlegen und Spalten nachziehen (Migrationen) |
 | `fussballdb ensure` | Prüfen und nur nötige Schritte ausführen (`--voll`: alle, `--ohne-langsame`: ohne Verletzungshistorie und Kickbase-Punkte) |
 | `fussballdb status` | Anzeigen, was aktuell ist und was fehlt |
+| `fussballdb europa` | Champions League: Europapokal- und Ligaspiele, Kaderwerte aus 30 Ländern, Wappen laden (`--no-werte` ohne Kaderwerte) |
+| `fussballdb cl-prognosen` | CL-Prognosen rechnen: Rückblick für gespielte Runden, live für offene (`--force` rechnet alle neu) |
+| `fussballdb cl-test` | CL-Prognose rückwirkend testen (Modell, Varianten, Grundverteilung, Tipp-Punkte) |
 | `fussballdb update` | Alle schnellen Schritte (wie `ensure --voll --ohne-langsame`) |
 | `fussballdb ingest -s 2026` | Einzelne Saison(s) importieren |
 | `fussballdb absences` | Verletzte und Sperren neu laden |
@@ -393,6 +468,7 @@ Geprüft werden:
 | Rückblick-Prognosen | gespielte Spiele ohne Prognose | 6 Std. |
 | Kickbase-Marktwerte und Liga | letzter Abruf älter als 20 Std. (nur mit Kickbase-Token) | 6 Std. |
 | Live-Prognosen | offene Spiele ohne Prognose, neue Daten oder älter als 24 Std. | 1 Std. |
+| Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |
 | Verletzungshistorie (langsam) | noch nie vollständig geladen | 7 Tage |
 | Kickbase-Punkte (langsam) | neuer Spieltag ohne Punkte oder Spieler älter als 8 Tage | 12 Std. |
 
@@ -523,6 +599,10 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `prediction` | Prognosen (`basis` = live oder rueckblick), Tipp, Ausfälle, Begründung als JSON |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
 | `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der Liga |
+| `eu_team`, `eu_team_alias` | Champions League: Vereine aus ganz Europa (Transfermarkt-ID bei Europapokal-Teilnehmern), Namen je Quelle |
+| `eu_match` | Liga- (`competition` = football-data-Kürzel) und Europapokalspiele (`CL`, `EL`) |
+| `eu_squad_value` | Kaderwerte je Verein und Stichtag (quartalsweise) |
+| `eu_prediction` | CL-Prognosen (live oder rueckblick) mit Elo, Kaderwerten, Tipp und Begründung |
 
 Direkt abfragen:
 
@@ -570,9 +650,11 @@ Was in welcher Reihenfolge entstanden ist und warum.
 13. **Hinweis bei fehlenden Vorab-Quoten**: „noch nicht da“ mit erwartetem Termin statt einer Meldung, die
     wie ein Fehler aussieht.
 14. **Installationsskript** `scripts/install.sh`, `.env.example` ohne Werte, Repo auf GitHub.
+15. **Nachtest Qwen 3.6 in 8 Bit**: schneller, aber ungenauer, Qwen 3.8 bleibt.
+16. **Champions League**: europaweite Elo aus Liga- und Europapokalspielen mit Kaderwert als Startwert,
+    eigener Tab, MCP-Werkzeug, Update-Schritt, Rückblick-Test (ClubElo war nicht erreichbar).
 
 Offen:
 
-- Vergleich mit Qwen 3.6 35B-A3B in 8 Bit, sobald der Download fertig ist
-- Prognose für die Champions League (eigener Tab, Spielplan von OpenLigaDB, Ligen über europäische
-  Spiele abgeglichen)
+- Weiterkommen in K.-o.-Runden (Hin- und Rückspiel zusammen) und Simulation der Ligaphasen-Tabelle
+- Chat der Web-App kennt die Champions League noch nicht (MCP schon)

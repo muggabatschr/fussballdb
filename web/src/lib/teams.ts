@@ -1,7 +1,9 @@
+import euTeams from "@/lib/eu_teams.json";
 import teams from "@/lib/teams.json";
 
 type TeamInfo = { logo: string | null; short: string };
-const map = teams as Record<string, TeamInfo>;
+// Bundesliga-Teams haben Vorrang, Europapokal-Teams (Champions League) ergänzen
+const map = { ...(euTeams as Record<string, TeamInfo>), ...(teams as Record<string, TeamInfo>) };
 const entries = Object.entries(map);
 
 /** Volle Teamnamen auflösen, auch Kurz- oder Teilnamen ("Freiburg", "Bayern"). */

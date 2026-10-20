@@ -4,7 +4,7 @@
 # Kann gefahrlos erneut laufen: vorhandene Daten bleiben, es wird nur ergänzt.
 #
 #   scripts/install.sh              alles einrichten (beim ersten Mal 1–2 Std., v. a. Import und Verletzungshistorie)
-#   scripts/install.sh --schnell    ohne die langsamen Schritte (Verletzungshistorie, Kickbase-Punkte)
+#   scripts/install.sh --schnell    ohne die langsamen Schritte (Verletzungshistorie, Kickbase-Punkte, Champions League)
 #   scripts/install.sh --ohne-web   ohne npm install für die Web-App
 #   scripts/install.sh --launchd    zusätzlich das tägliche Update um 9:30 einrichten (macOS)
 #   scripts/install.sh --mcp        zusätzlich den MCP-Server in Claude Code eintragen
@@ -80,6 +80,12 @@ else
   uv run fussballdb ensure
 fi
 
+if [ "$SCHNELL" = 0 ]; then
+  schritt "Champions League (Europapokal, Ligaspiele aus 18 Ländern, Kaderwerte; beim ersten Mal ~1 Std.)"
+  uv run fussballdb europa
+  uv run fussballdb cl-prognosen
+fi
+
 schritt "Vereinswappen"
 uv run fussballdb logos
 
@@ -122,5 +128,6 @@ Nächste Schritte:
   Web-App starten:     docker compose --profile app up -d --build   (dann http://localhost:3010)
   Chat lokal:          LM Studio mit Server auf Port 1234 starten, siehe README "Lokales Sprachmodell"
   Kickbase (optional): uv run fussballdb kickbase-login && uv run fussballdb kickbase
+  Champions League:    uv run fussballdb europa && uv run fussballdb cl-prognosen   (falls mit --schnell übersprungen)
   Daten aktualisieren: scripts/update.sh
 TEXT

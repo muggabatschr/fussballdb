@@ -285,6 +285,88 @@ class KbLeagueEntry(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# --- Europa (Champions League) ----------------------------------------------------------------
+# Eigene Tabellen, unabhängig von den Bundesliga-Tabellen. Ligaspiele aus ganz Europa dienen nur dazu,
+# Teams verschiedener Länder vergleichbar zu machen (europaweite Elo).
+
+
+class EuTeam(Base):
+    """Verein in der Europa-Wertung. tm_id ist gesetzt für Europapokal-Teilnehmer (Transfermarkt)."""
+
+    __tablename__ = "eu_team"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    country: Mapped[str | None] = mapped_column(String(8))  # football-data-Liga (E0, SP1, …) oder Land
+    tm_id: Mapped[int | None] = mapped_column(unique=True)
+
+
+class EuTeamAlias(Base):
+    """Name eines Vereins in einer Quelle: fd:<Liga> (football-data), oldb (OpenLigaDB), tm (Transfermarkt)."""
+
+    __tablename__ = "eu_team_alias"
+    __table_args__ = (UniqueConstraint("source", "alias"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("eu_team.id"))
+    source: Mapped[str] = mapped_column(String(12))
+    alias: Mapped[str] = mapped_column(String(80))
+
+
+class EuMatch(Base):
+    """Spiel einer Liga (competition = football-data-Kürzel) oder im Europapokal (CL, EL)."""
+
+    __tablename__ = "eu_match"
+    __table_args__ = (UniqueConstraint("competition", "source_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competition: Mapped[str] = mapped_column(String(8), index=True)
+    season: Mapped[int] = mapped_column(index=True)  # Startjahr
+    round_no: Mapped[int | None]  # Spieltag bzw. Runde (OpenLigaDB groupOrderID)
+    round_name: Mapped[str | None] = mapped_column(String(40))
+    kickoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    home_id: Mapped[int] = mapped_column(ForeignKey("eu_team.id"))
+    away_id: Mapped[int] = mapped_column(ForeignKey("eu_team.id"))
+    home_goals: Mapped[int | None]
+    away_goals: Mapped[int | None]
+    finished: Mapped[bool] = mapped_column(Boolean, default=False)
+    neutral: Mapped[bool] = mapped_column(Boolean, default=False)  # Finale
+    source_id: Mapped[str] = mapped_column(String(60))
+
+
+class EuSquadValue(Base):
+    __tablename__ = "eu_squad_value"
+
+    team_id: Mapped[int] = mapped_column(ForeignKey("eu_team.id"), primary_key=True)
+    stichtag: Mapped[date] = mapped_column(Date, primary_key=True)
+    value_eur: Mapped[float] = mapped_column(Float)
+
+
+class EuPrediction(Base):
+    """Prognose für ein Europapokal-Spiel (live oder rueckblick, wie bei der Bundesliga)."""
+
+    __tablename__ = "eu_prediction"
+    __table_args__ = (UniqueConstraint("match_id", "basis"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("eu_match.id", ondelete="CASCADE"))
+    basis: Mapped[str] = mapped_column(String(12))
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    model_version: Mapped[str] = mapped_column(String(40))
+    p_home: Mapped[float] = mapped_column(Float)
+    p_draw: Mapped[float] = mapped_column(Float)
+    p_away: Mapped[float] = mapped_column(Float)
+    exp_home_goals: Mapped[float] = mapped_column(Float)
+    exp_away_goals: Mapped[float] = mapped_column(Float)
+    elo_home: Mapped[float | None] = mapped_column(Float)
+    elo_away: Mapped[float | None] = mapped_column(Float)
+    value_home: Mapped[float | None] = mapped_column(Float)
+    value_away: Mapped[float | None] = mapped_column(Float)
+    tip_home: Mapped[int | None]
+    tip_away: Mapped[int | None]
+    explanation: Mapped[str | None] = mapped_column(Text)
+
+
 # Spalten, die nach dem ersten Anlegen dazugekommen sind (create_all ergänzt keine Spalten)
 MIGRATIONS = [
     "ALTER TABLE prediction ADD COLUMN IF NOT EXISTS as_of timestamptz",

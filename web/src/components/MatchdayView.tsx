@@ -30,7 +30,7 @@ const stand = (iso: string) =>
     timeZone: "Europe/Berlin",
   });
 
-function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
+export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
   const hasPrediction = g.p_home != null && g.p_draw != null && g.p_away != null;
   return (
     <Card className="space-y-3">
@@ -89,7 +89,7 @@ function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
   );
 }
 
-function BilanzText({ label, b }: { label: string; b: Bilanz }) {
+export function BilanzText({ label, b }: { label: string; b: Bilanz }) {
   if (!b.spiele) return null;
   const stats: [string, string][] = [
     ["Punkte", String(b.punkte)],

@@ -1,0 +1,350 @@
+{
+  "AC Mailand": {
+    "logo": "/logos/eu/5.png",
+    "short": "AC Mailand"
+  },
+  "AEK Athen": {
+    "logo": "/logos/eu/2441.png",
+    "short": "AEK Athen"
+  },
+  "Ajax Amsterdam": {
+    "logo": "/logos/eu/610.png",
+    "short": "Ajax"
+  },
+  "AS Monaco": {
+    "logo": "/logos/eu/162.png",
+    "short": "Monaco"
+  },
+  "AS Rom": {
+    "logo": "/logos/eu/12.png",
+    "short": "AS Rom"
+  },
+  "Aston Villa": {
+    "logo": "/logos/eu/405.png",
+    "short": "Aston Villa"
+  },
+  "Atalanta Bergamo": {
+    "logo": "/logos/eu/800.png",
+    "short": "Atalanta"
+  },
+  "Athletic Bilbao": {
+    "logo": "/logos/eu/621.png",
+    "short": "Bilbao"
+  },
+  "Atlético Madrid": {
+    "logo": "/logos/eu/13.png",
+    "short": "Atlético"
+  },
+  "AZ Alkmaar": {
+    "logo": "/logos/eu/1090.png",
+    "short": "AZ Alkmaar"
+  },
+  "Bayer 04 Leverkusen": {
+    "logo": "/logos/eu/15.png",
+    "short": "Leverkusen"
+  },
+  "Benfica Lissabon": {
+    "logo": "/logos/eu/294.png",
+    "short": "Benfica"
+  },
+  "Besiktas": {
+    "logo": "/logos/eu/114.png",
+    "short": "Besiktas"
+  },
+  "Bodø/Glimt": {
+    "logo": "/logos/eu/501.png",
+    "short": "Bodø/Glimt"
+  },
+  "Borussia Dortmund": {
+    "logo": "/logos/eu/16.png",
+    "short": "Dortmund"
+  },
+  "Celtic Glasgow": {
+    "logo": "/logos/eu/371.png",
+    "short": "Celtic"
+  },
+  "Como 1907": {
+    "logo": "/logos/eu/1047.png",
+    "short": "Como 1907"
+  },
+  "Dinamo Zagreb": {
+    "logo": "/logos/eu/419.png",
+    "short": "Dinamo Zagreb"
+  },
+  "Dynamo Kiew": {
+    "logo": "/logos/eu/338.png",
+    "short": "Dynamo Kiew"
+  },
+  "Eintracht Frankfurt": {
+    "logo": "/logos/eu/24.png",
+    "short": "Frankfurt"
+  },
+  "FC Arsenal": {
+    "logo": "/logos/eu/11.png",
+    "short": "Arsenal"
+  },
+  "FC Barcelona": {
+    "logo": "/logos/eu/131.png",
+    "short": "Barcelona"
+  },
+  "FC Bayern München": {
+    "logo": "/logos/eu/27.png",
+    "short": "Bayern"
+  },
+  "FC Bologna": {
+    "logo": "/logos/eu/1025.png",
+    "short": "Bologna"
+  },
+  "FC Brügge": {
+    "logo": "/logos/eu/2282.png",
+    "short": "Brügge"
+  },
+  "FC Chelsea": {
+    "logo": "/logos/eu/631.png",
+    "short": "Chelsea"
+  },
+  "FC Girona": {
+    "logo": "/logos/eu/12321.png",
+    "short": "Girona"
+  },
+  "FC Kopenhagen": {
+    "logo": "/logos/eu/190.png",
+    "short": "Kopenhagen"
+  },
+  "FC Liverpool": {
+    "logo": "/logos/eu/31.png",
+    "short": "Liverpool"
+  },
+  "FC Midtjylland": {
+    "logo": "/logos/eu/865.png",
+    "short": "FC Midtjylland"
+  },
+  "FC Porto": {
+    "logo": "/logos/eu/720.png",
+    "short": "FC Porto"
+  },
+  "FCSB": {
+    "logo": "/logos/eu/301.png",
+    "short": "FCSB"
+  },
+  "FC Twente": {
+    "logo": "/logos/eu/317.png",
+    "short": "FC Twente"
+  },
+  "FC Villarreal": {
+    "logo": "/logos/eu/1050.png",
+    "short": "Villarreal"
+  },
+  "Fenerbahce": {
+    "logo": "/logos/eu/36.png",
+    "short": "Fenerbahce"
+  },
+  "Ferencváros": {
+    "logo": "/logos/eu/279.png",
+    "short": "Ferencváros"
+  },
+  "Feyenoord Rotterdam": {
+    "logo": "/logos/eu/234.png",
+    "short": "Feyenoord"
+  },
+  "Galatasaray": {
+    "logo": "/logos/eu/141.png",
+    "short": "Galatasaray"
+  },
+  "Glasgow Rangers": {
+    "logo": "/logos/eu/124.png",
+    "short": "Rangers"
+  },
+  "IF Elfsborg": {
+    "logo": "/logos/eu/1101.png",
+    "short": "IF Elfsborg"
+  },
+  "Inter Mailand": {
+    "logo": "/logos/eu/46.png",
+    "short": "Inter"
+  },
+  "Juventus Turin": {
+    "logo": "/logos/eu/506.png",
+    "short": "Juventus"
+  },
+  "Kairat Almaty": {
+    "logo": "/logos/eu/10482.png",
+    "short": "Kairat"
+  },
+  "LASK": {
+    "logo": "/logos/eu/413.png",
+    "short": "LASK"
+  },
+  "Lazio Rom": {
+    "logo": "/logos/eu/398.png",
+    "short": "Lazio"
+  },
+  "Ludogorez Rasgrad": {
+    "logo": "/logos/eu/31614.png",
+    "short": "Ludogorez"
+  },
+  "Maccabi Tel Aviv": {
+    "logo": "/logos/eu/119.png",
+    "short": "Maccabi TA"
+  },
+  "Malmö FF": {
+    "logo": "/logos/eu/496.png",
+    "short": "Malmö FF"
+  },
+  "Manchester City": {
+    "logo": "/logos/eu/281.png",
+    "short": "Man City"
+  },
+  "Manchester United": {
+    "logo": "/logos/eu/985.png",
+    "short": "Man United"
+  },
+  "Newcastle United": {
+    "logo": "/logos/eu/762.png",
+    "short": "Newcastle"
+  },
+  "OGC Nizza": {
+    "logo": "/logos/eu/417.png",
+    "short": "Nizza"
+  },
+  "Olympiakos Piräus": {
+    "logo": "/logos/eu/683.png",
+    "short": "Olympiakos"
+  },
+  "Olympique Lyon": {
+    "logo": "/logos/eu/1041.png",
+    "short": "Lyon"
+  },
+  "Olympique Marseille": {
+    "logo": "/logos/eu/244.png",
+    "short": "Marseille"
+  },
+  "OSC Lille": {
+    "logo": "/logos/eu/1082.png",
+    "short": "Lille"
+  },
+  "Pafos FC": {
+    "logo": "/logos/eu/45457.png",
+    "short": "Pafos FC"
+  },
+  "PAOK Saloniki": {
+    "logo": "/logos/eu/1091.png",
+    "short": "PAOK"
+  },
+  "Paris Saint-Germain": {
+    "logo": "/logos/eu/583.png",
+    "short": "Paris SG"
+  },
+  "PSV Eindhoven": {
+    "logo": "/logos/eu/383.png",
+    "short": "PSV Eindhoven"
+  },
+  "Qarabağ Ağdam": {
+    "logo": "/logos/eu/10625.png",
+    "short": "Qarabağ"
+  },
+  "RB Leipzig": {
+    "logo": "/logos/eu/23826.png",
+    "short": "RB Leipzig"
+  },
+  "RB Salzburg": {
+    "logo": "/logos/eu/409.png",
+    "short": "RB Salzburg"
+  },
+  "RC Lens": {
+    "logo": "/logos/eu/826.png",
+    "short": "RC Lens"
+  },
+  "Real Betis": {
+    "logo": "/logos/eu/150.png",
+    "short": "Real Betis"
+  },
+  "Real Madrid": {
+    "logo": "/logos/eu/418.png",
+    "short": "Real Madrid"
+  },
+  "Real Sociedad": {
+    "logo": "/logos/eu/681.png",
+    "short": "Sociedad"
+  },
+  "RFS Riga": {
+    "logo": "/logos/eu/33783.png",
+    "short": "RFS Riga"
+  },
+  "Roter Stern Belgrad": {
+    "logo": "/logos/eu/159.png",
+    "short": "Roter Stern"
+  },
+  "RSC Anderlecht": {
+    "logo": "/logos/eu/58.png",
+    "short": "Anderlecht"
+  },
+  "Sabah Baku": {
+    "logo": "/logos/eu/63993.png",
+    "short": "Sabah Baku"
+  },
+  "Schachtar Donezk": {
+    "logo": "/logos/eu/660.png",
+    "short": "Schachtar"
+  },
+  "Slavia Prag": {
+    "logo": "/logos/eu/62.png",
+    "short": "Slavia Prag"
+  },
+  "Slovan Bratislava": {
+    "logo": "/logos/eu/540.png",
+    "short": "Slovan"
+  },
+  "Sparta Prag": {
+    "logo": "/logos/eu/197.png",
+    "short": "Sparta Prag"
+  },
+  "Sporting Braga": {
+    "logo": "/logos/eu/1075.png",
+    "short": "Braga"
+  },
+  "Sporting Lissabon": {
+    "logo": "/logos/eu/336.png",
+    "short": "Sporting"
+  },
+  "SSC Neapel": {
+    "logo": "/logos/eu/6195.png",
+    "short": "Neapel"
+  },
+  "Stade Brest": {
+    "logo": "/logos/eu/3911.png",
+    "short": "Brest"
+  },
+  "Sturm Graz": {
+    "logo": "/logos/eu/122.png",
+    "short": "Sturm Graz"
+  },
+  "Tottenham Hotspur": {
+    "logo": "/logos/eu/148.png",
+    "short": "Tottenham"
+  },
+  "TSG Hoffenheim": {
+    "logo": "/logos/eu/533.png",
+    "short": "Hoffenheim"
+  },
+  "Union Saint-Gilloise": {
+    "logo": "/logos/eu/3948.png",
+    "short": "Union SG"
+  },
+  "VfB Stuttgart": {
+    "logo": "/logos/eu/79.png",
+    "short": "Stuttgart"
+  },
+  "Viking Stavanger": {
+    "logo": "/logos/eu/239.png",
+    "short": "Viking"
+  },
+  "Viktoria Pilsen": {
+    "logo": "/logos/eu/941.png",
+    "short": "Pilsen"
+  },
+  "Young Boys Bern": {
+    "logo": "/logos/eu/452.png",
+    "short": "Young Boys"
+  }
+}
