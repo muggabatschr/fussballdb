@@ -241,6 +241,7 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 | `/team/<name>` | Form, xG-Verlauf, aktuelle Ausfälle |
 | `/chat` | Chat mit dem lokalen Modell |
 | `/cl`, `/cl/<saison>/<runde>` | Champions League: Runde mit Prognosen, Tipps und Bilanz, Saison- und Rundenauswahl |
+| `/cl/tabelle`, `/cl/tabelle/<saison>` | Tabelle der CL-Ligaphase mit Platzdifferenz zum Modell, darunter die geschätzte Abschlusstabelle der Ligaphase |
 | `/kickbase` | Kickbase-Prognose, Kauf- und Verkaufskandidaten |
 
 **Tabelle:** Neben jedem Platz steht klein, wie viele Plätze ein Team besser (+) oder schlechter (−)
@@ -363,6 +364,13 @@ Das Modell sagt im Schnitt 22 % Remis voraus, in der CL endeten seit 2024/25 abe
 remis. Remis-Tipps gibt es deshalb keine. Bei K.-o.-Spielen zählt das Endergebnis von OpenLigaDB, also
 inklusive Verlängerung, ohne Elfmeterschießen.
 
+**Tabelle der Ligaphase** (`/cl/tabelle`, `model/cl_table.py`): wie in der Bundesliga mit der Zahl neben
+dem Platz, wie viele Plätze ein Team besser (+) oder schlechter (−) steht, als es die Prognosen vor den
+gespielten Spielen erwarten ließen. Darunter die geschätzte Abschlusstabelle der Ligaphase aus 10.000
+Simulationen der offenen Spiele, mit den Chancen auf Platz 1–8 (direkt ins Achtelfinale), 9–24
+(Play-offs) und das Ausscheiden. Bei Punktgleichheit entscheiden erwartete Tordifferenz und Tore. Auch im
+MCP-Werkzeug `cl_tabelle`.
+
 **Einrichten** (einmalig ~1 Std., vor allem Kaderwerte von 30 Ligen zu 19 Stichtagen):
 
 ```bash
@@ -419,6 +427,7 @@ nach einem Neustart von Claude Desktop.
 | `tabelle` | Tabelle mit xG und xPts |
 | `kickbase` | erwartete Kickbase-Punkte, Marktwert, Trend, Punkte pro Million; `auswahl` = alle, markt oder kader |
 | `champions_league` | eine CL-Runde mit Prognosen, Tipps, Elo, Kaderwerten und Bilanz; ohne Angaben die aktuelle, mit `saison` allein die Rundenliste |
+| `cl_tabelle` | Tabelle der CL-Ligaphase mit Modell-Platz und Hochrechnung (Achtelfinale, Play-offs, Aus) |
 | `sql` | freie Abfrage, nur lesend |
 | `datenstand` | wie aktuell die Daten sind, mit Hinweis, wenn eine Quelle noch nichts bereitgestellt hat |
 
@@ -692,9 +701,10 @@ Was in welcher Reihenfolge entstanden ist und warum.
 18. **TV-Sender** in den Kacheln für Deutschland und Österreich, Bundesliga und Champions League, als
     Logos der genauen Kanäle.
 
-19. **Tabelle**: Platzdifferenz zum Modell und geschätzte Abschlusstabelle per Simulation.
+19. **Tabelle**: Platzdifferenz zum Modell und geschätzte Abschlusstabelle per Simulation, für die
+    Bundesliga und die CL-Ligaphase.
 
 Offen:
 
-- Weiterkommen in K.-o.-Runden (Hin- und Rückspiel zusammen) und Simulation der Ligaphasen-Tabelle
+- Weiterkommen in K.-o.-Runden (Hin- und Rückspiel zusammen)
 - Chat der Web-App kennt die Champions League noch nicht (MCP schon)

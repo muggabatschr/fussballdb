@@ -65,11 +65,16 @@ export function ClNav({ seasons, season, round }: { seasons: ClSeason[]; season:
         )}
       </div>
 
-      {current && round !== current.current_round && current.rounds.some((r) => !r.finished) && (
-        <Link href={href(season, current.current_round)} className="whitespace-nowrap text-sm text-muted hover:text-foreground">
-          zur aktuellen Runde
+      <div className="flex gap-4">
+        <Link href={`/cl/tabelle/${season}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
+          Tabelle Ligaphase
         </Link>
-      )}
+        {current && round !== current.current_round && current.rounds.some((r) => !r.finished) && (
+          <Link href={href(season, current.current_round)} className="whitespace-nowrap text-sm text-muted hover:text-foreground">
+            zur aktuellen Runde
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

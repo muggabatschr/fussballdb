@@ -223,6 +223,25 @@ export type ClRound = {
 };
 
 export const getClRounds = () => api<ClSeason[]>("/cl/rounds");
+
+export type ClTableRow = {
+  name: string;
+  sp: number;
+  pkt: number;
+  tore: number;
+  gegentore: number;
+  platz: number;
+  modell_pkt?: number;
+  modell_platz?: number;
+  platz_diff?: number;
+  prognose_platz?: number;
+  erw_punkte?: number;
+  p_achtelfinale?: number;
+  p_playoffs?: number;
+  p_aus?: number;
+};
+export type ClTable = { season: number; label: string; rows: ClTableRow[] };
+export const getClTable = (season: number) => api<ClTable>(`/cl/table/${season}`);
 export const getClRound = (season: number, round: number) => api<ClRound>(`/cl/round/${season}/${round}`);
 export const getMatchday = (season: number, matchday: number) => api<Matchday>(`/matchday/${season}/${matchday}`);
 

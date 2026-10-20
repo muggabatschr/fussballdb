@@ -147,6 +147,21 @@ def champions_league(saison: int | None = None, runde: int | None = None) -> str
 
 
 @mcp.tool(annotations=READ_ONLY)
+def cl_tabelle(saison: int | None = None) -> str:
+    """Tabelle der Champions-League-Ligaphase: Punkte, Tore, Modell-Platz (platz_diff > 0 = steht besser als
+    laut Prognosen erwartet) und, solange Spiele offen sind, die Hochrechnung aus 10.000 Simulationen:
+    prognose_platz, erw_punkte, p_achtelfinale (Platz 1–8), p_playoffs (9–24), p_aus (25–36) in %.
+    saison = Startjahr, Standard aktuelle Saison."""
+    from fussballdb.api import cl_rounds, cl_table
+
+    try:
+        season = saison or cl_rounds()[0]["season"]
+        return json.dumps(cl_table(season), default=str, ensure_ascii=False)
+    except (ValueError, IndexError) as exc:
+        raise ToolError(str(exc) or "Keine Champions-League-Daten.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
 def datenstand() -> str:
     """Wie aktuell sind die Daten? Zeigt pro Bereich (Ergebnisse, Ausfälle, Quoten, Prognosen …), ob ein
     Update nötig wäre und wann zuletzt aktualisiert wurde. Steht bei einem Bereich ein `hint`, fehlen die Daten

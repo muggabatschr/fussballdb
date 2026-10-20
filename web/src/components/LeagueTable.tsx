@@ -3,7 +3,7 @@ import { num } from "@/lib/format";
 import { TeamName } from "./TeamName";
 
 /** Plätze besser (+) oder schlechter (−) als laut Prognosen für die gespielten Spiele erwartet. */
-function PlaceDiff({ r }: { r: TableRow }) {
+export function PlaceDiff({ r }: { r: Pick<TableRow, "platz_diff" | "modell_platz" | "modell_pkt"> }) {
   if (r.platz_diff == null || r.modell_platz == null) return null;
   const d = r.platz_diff;
   const title = `Laut Prognosen vor den Spielen erwartet: ${num(r.modell_pkt ?? 0, 1)} Punkte, Platz ${r.modell_platz}`;

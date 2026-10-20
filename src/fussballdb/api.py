@@ -210,6 +210,18 @@ def cl_rounds():
     return list(seasons.values())
 
 
+@app.get("/cl/table/{season}")
+def cl_table(season: int):
+    """Tabelle der CL-Ligaphase mit Modell-Platz (platz_diff > 0 = besser als laut Prognosen erwartet) und,
+    solange Spiele offen sind, der Hochrechnung (prognose_platz, erw_punkte, p_achtelfinale, p_playoffs, p_aus)."""
+    from fussballdb.model.cl_table import table
+
+    rows = table(season)
+    if not rows:
+        raise ValueError(f"Keine Ligaphase für die CL-Saison {season}.")
+    return {"season": season, "label": f"{season}/{(season + 1) % 100:02d}", "rows": rows}
+
+
 @app.get("/cl/round/{season}/{round_no}")
 def cl_round(season: int, round_no: int):
     """Spiele einer CL-Runde mit Prognose, Tipp und Tipp-Punkten. Bei gespielten Spielen zählt die
