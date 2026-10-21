@@ -63,11 +63,20 @@ def explain(p: dict, home: str, away: str, market: tuple[float, float, float] | 
         i = impact.get(side) or {}
         missing = i.get("missing_regulars") or []
         att, conc = i.get("attack_mult", 1.0), i.get("concede_mult", 1.0)
+        att = att / (i.get("euro_load") or {}).get("faktor", 1.0)  # Belastung extra (Punkt 3b)
         if missing and (1 - att >= AUSFALL_SCHWELLE or conc - 1 >= AUSFALL_SCHWELLE):
             effect = [f"{signed_pct(att)} eigene Tore"] if 1 - att >= AUSFALL_SCHWELLE else []
             if conc - 1 >= AUSFALL_SCHWELLE:
                 effect.append(f"{signed_pct(conc)} Gegentore")
             lines.append(f"{t} ohne {_last_names(missing)}: " + ", ".join(effect))
+
+    # 3b. Europapokal-Belastung
+    for t, side in ((h, "home"), (a, "away")):
+        load = (impact.get(side) or {}).get("euro_load")
+        if load:
+            comp = {"CL": "der Champions League", "EL": "der Europa League"}.get(load["wettbewerb"], "Europa")
+            days = "einem Tag" if load["tage"] == 1 else f"{load['tage']} Tagen"
+            lines.append(f"{t} spielte vor {days} in {comp}: {signed_pct(load['faktor'])} eigene Tore")
 
     # 4. Warum genau dieser Tipp (erwartete Punkte nach der Punkteregel)
     opts = p.get("tip_options") or []

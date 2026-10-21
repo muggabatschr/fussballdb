@@ -32,6 +32,23 @@ const stand = (iso: string) =>
     timeZone: "Europe/Berlin",
   });
 
+/** Tore minus xG eines Teams: grün = mehr Tore als die Chancen hergaben (überperformt),
+ * orange = weniger (unterperformt), grau = Abweichung unter einem halben Tor. */
+function XgDelta({ goals, xg, className = "" }: { goals: number; xg: number; className?: string }) {
+  const d = goals - xg;
+  const color = d >= 0.5 ? "text-home" : d <= -0.5 ? "text-away" : "text-muted";
+  const label = d >= 0.5 ? "überperformt" : d <= -0.5 ? "unterperformt" : "im Rahmen";
+  return (
+    <span
+      className={`whitespace-nowrap text-xs font-normal tabular ${color} ${className}`}
+      title={`${goals} ${goals === 1 ? "Tor" : "Tore"} bei ${num(xg, 1)} xG: ${label}`}
+    >
+      {d > 0 ? "+" : d < 0 ? "−" : "±"}
+      {num(Math.abs(d), 1)} ggü. xG
+    </span>
+  );
+}
+
 export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
   const hasPrediction = g.p_home != null && g.p_draw != null && g.p_away != null;
   return (
@@ -68,6 +85,13 @@ export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
           )}
         </div>
         <TeamName name={g.away} short align="end" className="justify-self-end" />
+        {g.finished && g.home_xg != null && g.away_xg != null && (
+          <>
+            <XgDelta goals={g.home_goals!} xg={g.home_xg} />
+            <span />
+            <XgDelta goals={g.away_goals!} xg={g.away_xg} className="justify-self-end" />
+          </>
+        )}
       </div>
 
       {hasPrediction ? (

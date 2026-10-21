@@ -194,6 +194,10 @@ def _need_europe() -> str | None:
     open_ = _scalar("SELECT count(*) FROM eu_match WHERE NOT finished AND kickoff < now() - interval '3 hours'")
     if open_:
         return f"{open_} Europapokal-Spiele ohne Ergebnis"
+    no_xg = _scalar("""SELECT count(*) FROM eu_match WHERE competition = 'CL' AND finished AND home_xg IS NULL
+                       AND kickoff > now() - interval '14 days'""")
+    if no_xg:
+        return f"{no_xg} CL-Spiele ohne xG"
     last_league = _scalar("SELECT max(kickoff) FROM eu_match WHERE competition NOT IN ('CL', 'EL')")
     if last_league and last_league < datetime.now(timezone.utc) - timedelta(days=4):
         return "Ligaspiele für die Europa-Elo älter als 4 Tage"
@@ -206,6 +210,17 @@ def _need_europe() -> str | None:
     last_pred = _scalar("SELECT max(as_of) FROM eu_prediction WHERE basis = 'live'")
     if last_pred and last_pred < datetime.now(timezone.utc) - timedelta(hours=24):
         return "CL-Prognosen älter als 24 Stunden"
+    return None
+
+
+def _need_cl_absences() -> str | None:
+    """Ausfälle der CL-Teams: täglich, solange CL-Spiele in den nächsten 7 Tagen anstehen."""
+    if not _scalar("""SELECT count(*) FROM eu_match WHERE competition = 'CL' AND NOT finished
+                      AND kickoff BETWEEN now() AND now() + interval '7 days'"""):
+        return None
+    last = _scalar("SELECT max(fetched_at) FROM eu_absence")
+    if last is None or last < datetime.now(timezone.utc) - timedelta(hours=20):
+        return "CL-Ausfälle älter als 20 Stunden" if last else "noch keine CL-Ausfälle"
     return None
 
 
@@ -297,14 +312,28 @@ def _run_europe() -> str:
         n_eu = europe.ingest_euro(s)
     with session_scope() as s:
         n_league = europe.ingest_domestic(s, [CURRENT_SEASON])
+    from fussballdb.ingest import cl_xg
+
+    with session_scope() as s:
+        n_xg = cl_xg.ingest(s, [CURRENT_SEASON], log=lambda m: None)["mit_xg"]
+    with session_scope() as s:  # Liga-xG der fünf großen Ligen für das xG-Modell
+        n_xg += europe.ingest_league_xg(s, [CURRENT_SEASON], log=lambda m: None)["mit_xg"]
     n_values = 0
     last_value = _scalar("SELECT max(stichtag) FROM eu_squad_value")
     if last_value is None or last_value < date.today() - timedelta(days=30):
         with session_scope() as s:
             n_values, _ = europe.ingest_values(s, start=(last_value or date(europe.FIRST_SEASON, 7, 1)) + timedelta(days=1),
                                                log=lambda m: None)
-    return (f"Europapokal {n_eu}, Ligaspiele {n_league}, Kaderwerte {n_values}, "
+    return (f"Europapokal {n_eu}, CL-xG {n_xg}, Ligaspiele {n_league}, Kaderwerte {n_values}, "
             f"Rückblick {eu_backfill()}, Live {eu_predict()} CL-Prognosen")
+
+
+def _run_cl_absences() -> str:
+    from fussballdb.ingest import cl_absences
+
+    with session_scope() as s:
+        res = cl_absences.ingest(s, log=lambda m: None)
+    return f"{res['ausfaelle']} Ausfälle bei {res['teams']} CL-Teams"
 
 
 def _run_tv() -> str:
@@ -336,6 +365,7 @@ STEPS = [
     Step("kickbase", "Kickbase-Marktwerte und Liga", _need_kickbase_daily, _run_kickbase_daily, timedelta(hours=6)),
     Step("prognosen", "Live-Prognosen", _need_predictions, _run_predictions, timedelta(hours=1)),
     Step("europa", "Champions League", _need_europe, _run_europe, timedelta(hours=6)),
+    Step("cl_ausfaelle", "CL-Ausfälle", _need_cl_absences, _run_cl_absences, timedelta(hours=6)),
     Step("tv", "TV-Sender (DE, AT)", _need_tv, _run_tv, timedelta(hours=6)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,
          timedelta(days=7), slow=True),

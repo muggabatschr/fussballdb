@@ -14,11 +14,16 @@ export function PredictionCard({ home, away, p }: { home: string; away: string; 
   })();
   return (
     <Card className="space-y-3">
-      {typeof p.spiel !== "string" && (
-        <p className="truncate whitespace-nowrap text-xs text-muted">
-          {p.spiel.matchday}. Spieltag · {kickoff(p.spiel.kickoff)}
-        </p>
-      )}
+      <div className="flex items-center justify-between gap-2 whitespace-nowrap text-xs text-muted">
+        <span className="truncate">
+          {typeof p.spiel !== "string" ? `${p.spiel.matchday}. Spieltag · ${kickoff(p.spiel.kickoff)}` : "Prognose"}
+        </span>
+        {p.tipp && (
+          <span className="shrink-0 tabular">
+            Tipp <span className="text-sm font-semibold text-foreground">{p.tipp}</span>
+          </span>
+        )}
+      </div>
       <h3 className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 font-semibold">
         <TeamName name={home} short logoSize={22} />
         <span className="text-muted">–</span>

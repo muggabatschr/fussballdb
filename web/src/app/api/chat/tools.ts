@@ -29,7 +29,11 @@ export const tools = {
       "Verletztenliste) für eine Paarung: Wahrscheinlichkeiten Heimsieg/Remis/Auswärtssieg, erwartete Tore, " +
       "wahrscheinlichste Ergebnisse, Über 2,5, beide treffen, Ausfälle mit Einfluss, Marktquoten.",
     inputSchema: z.object({ home: team.describe("Heimteam"), away: team.describe("Gastteam") }),
-    execute: async ({ home, away }) => ({ home, away, ...(await getPrediction(home, away)) }),
+    execute: async ({ home, away }) => {
+      const p = await getPrediction(home, away);
+      // offizielle Namen aus der Datenbank, damit die Karte Wappen und Kurznamen findet ("BVB" -> Borussia Dortmund)
+      return { ...p, home: p.heim ?? home, away: p.gast ?? away };
+    },
   }),
   get_absences: tool({
     description: "Aktuelle Ausfälle (Verletzungen, Sperren) eines Teams mit Bedeutung des Spielers.",

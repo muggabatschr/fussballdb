@@ -7,10 +7,15 @@ verschiedenen Ländern spielen selten gegeneinander. Deshalb:
    startet bei seinem ersten Spiel mit einer Elo aus seinem Kaderwert (Transfermarkt). So sind die Ligen
    von Anfang an vergleichbar; Europapokalspiele verschieben die Werte danach zwischen den Ländern.
    Zu jeder neuen Saison wird die Elo ein Stück zum Kaderwert zurückgezogen (Transfers im Sommer).
-2. **Tormodell** (Poisson mit Dixon-Coles-Korrektur): erwartete Tore aus Elo-Differenz und Heimvorteil
-   (Finale ohne). Die Gewichte werden vor jedem Spieltag nur aus früheren Spielen geschätzt. Das
-   Kaderwert-Verhältnis als zusätzliches Merkmal ist abschaltbar (USE_VALUE) und brachte nichts.
-3. **Tipp** wie in der Bundesliga: das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel.
+2. **Elo-Tormodell** (Poisson mit Dixon-Coles-Korrektur): erwartete Tore aus Elo-Differenz und
+   Heimvorteil (Finale ohne). Die Gewichte werden vor jedem Spieltag nur aus früheren Spielen geschätzt.
+3. **xG-Modell** (seit Oktober 2026, ACTIVE_XG): Dixon-Coles wie in der Bundesliga über alle Liga- und
+   Europapokalspiele, Zielgröße xG (fünf große Ligen von Understat, CL von FotMob), sonst Tore, Startstärke
+   aus dem Kaderwert, dazu eine Formkomponente (40 %, Halbwertszeit 5 Wochen). Die Wahrscheinlichkeiten
+   sind zu 70 % xG-Modell und zu 30 % Elo-Tormodell. Im Rückblick-Test (fussballdb cl-xg-test) 2024/25 und
+   2025/26 besser als die Elo allein, in den ersten 45 Spielen 2026/27 schlechter; nach der Ligaphase
+   2026/27 erneut prüfen.
+4. **Tipp** wie in der Bundesliga: das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel.
 
 Alle Prognosen im Rückblick nutzen nur Spiele und Kaderwerte vor dem ersten Anpfiff des Spieltags.
 """
@@ -30,7 +35,7 @@ from sqlalchemy import text
 from fussballdb.db.session import engine
 from fussballdb.model.ensemble import kicktipp_points, tip_options
 
-MODEL_VERSION = "eu-elo-v1"
+MODEL_VERSION = "eu-xg-elo-v1"
 # Kaderwert-Verhältnis als eigenes Merkmal im Tormodell brachte im Rückblick nichts (er steckt schon im
 # Startwert und im Saison-Rückzug der Elo), deshalb aus. `fussballdb cl-test` vergleicht beide Varianten.
 USE_VALUE = False
@@ -54,7 +59,7 @@ def load_matches() -> pd.DataFrame:
         df = pd.read_sql(text("""
             SELECT m.id, m.competition, m.season, m.round_no, m.round_name, m.kickoff, m.home_id, m.away_id,
                    m.home_goals, m.away_goals, m.finished, m.neutral, th.name AS home, ta.name AS away,
-                   th.country AS home_country, ta.country AS away_country
+                   th.country AS home_country, ta.country AS away_country, m.home_xg, m.away_xg
             FROM eu_match m JOIN eu_team th ON th.id = m.home_id JOIN eu_team ta ON ta.id = m.away_id
             ORDER BY m.kickoff, m.id"""), conn)
     df["kickoff"] = pd.to_datetime(df["kickoff"], utc=True)
@@ -241,8 +246,10 @@ def all_features(df: pd.DataFrame, st: EloState, values: dict) -> pd.DataFrame:
 
 
 def predict_round(feats: pd.DataFrame, st: EloState, values: dict, cutoff: pd.Timestamp, matches: pd.DataFrame,
-                  use_elo: bool = True, use_value: bool = True, train_years: float = 3.0) -> list[dict]:
-    """Prognosen für `matches` mit dem Stand vor `cutoff`. Das Tormodell sieht nur Spiele davor."""
+                  use_elo: bool = True, use_value: bool = True, train_years: float = 3.0,
+                  xg_model: "XgModel | None" = None) -> list[dict]:
+    """Prognosen für `matches` mit dem Stand vor `cutoff`. Das Tormodell sieht nur Spiele davor.
+    Mit xg_model werden dessen Wahrscheinlichkeiten mit dem Elo-Modell gemischt (Anteil cfg.alpha)."""
     hist = feats[(feats["kickoff"] < cutoff) & (feats["kickoff"] >= cutoff - pd.Timedelta(days=365 * train_years))]
     model = GoalModel.fit(hist, use_elo, use_value)
     out = []
@@ -255,10 +262,93 @@ def predict_round(feats: pd.DataFrame, st: EloState, values: dict, cutoff: pd.Ti
         val_d = math.log(vh / va) if vh and va else 0.0
         mat = model.matrix(elo_d, val_d, bool(m.neutral), m.competition in EURO)
         p = probs_from(mat)
+        form = None
+        if xg_model is not None:
+            a = xg_model.cfg.alpha
+            xmat = xg_model.matrix(m.home_id, m.away_id, bool(m.neutral))
+            xp = probs_from(xmat)
+            p = {k: a * xp[k] + (1 - a) * p[k] for k in p}
+            mat = xmat if a >= 0.5 else mat
+            form = xg_model.form_factors(m.home_id, m.away_id)
         opts = tip_options(mat, p)
         out.append({"match_id": m.id, **p, "elo_home": rh, "elo_away": ra, "value_home": vh, "value_away": va,
-                    "tip": opts[0][0], "tip_options": opts, "params": model.params})
+                    "tip": opts[0][0], "tip_options": opts, "params": model.params, "form": form})
     return out
+
+
+# --- xG-Modell (Dixon-Coles über ganz Europa) -----------------------------------------------------------
+
+@dataclass
+class XgConfig:
+    """Dixon-Coles wie in der Bundesliga, über alle Liga- und Europapokalspiele: Zielgröße xG, wo vorhanden
+    (fünf große Ligen von Understat, CL von FotMob), sonst Tore. Startstärke aus dem Kaderwert relativ zum
+    europäischen Mittel. Optional Formkomponente und Mischung mit dem Elo-Modell."""
+
+    value_k: float = 0.25  # Angriff = k·z, Abwehr = −k·z mit z = log(Kaderwert) − Mittel
+    ridge: float = 5.0
+    xi: float = 0.003  # Halbwertszeit ~ 8 Monate
+    w_xg: float = 1.0  # 0 = nur Tore (Kontrolle)
+    form_weight: float = 0.0  # 0 = aus; sonst zweites Dixon-Coles mit kurzer Halbwertszeit
+    form_xi: float = 0.02
+    alpha: float = 1.0  # Anteil Dixon-Coles an den Wahrscheinlichkeiten, Rest Elo-Modell
+    train_years: float = 3.0
+
+
+def _value_priors(values: dict, teams, cutoff: pd.Timestamp, k: float) -> dict:
+    logv = {t: math.log(v) for t in teams if (v := value_at(values, t, cutoff))}
+    if not logv or k <= 0:
+        return {}
+    mean = sum(logv.values()) / len(logv)
+    return {t: (k * (lv - mean), -k * (lv - mean)) for t, lv in logv.items()}
+
+
+@dataclass
+class XgModel:
+    dc: "DixonColes"
+    form: "DixonColes | None"
+    cfg: XgConfig
+
+    @classmethod
+    def fit(cls, df: pd.DataFrame, values: dict, cutoff: pd.Timestamp, cfg: XgConfig) -> "XgModel":
+        from fussballdb.model.dixon_coles import DixonColes
+
+        hist = df[df["finished"] & (df["kickoff"] < cutoff)
+                  & (df["kickoff"] >= cutoff - pd.Timedelta(days=365 * cfg.train_years))]
+        train = pd.DataFrame({"home_id": hist["home_id"], "away_id": hist["away_id"], "kickoff": hist["kickoff"],
+                              "hg": hist["home_goals"], "ag": hist["away_goals"], "hxg": hist["home_xg"],
+                              "axg": hist["away_xg"], "finished": True})
+        teams = set(df["home_id"]) | set(df["away_id"])
+        dc = DixonColes(xi=cfg.xi, ridge=cfg.ridge, w_xg=cfg.w_xg, priors=_value_priors(values, teams, cutoff, cfg.value_k))
+        dc.fit(train, now=cutoff)
+        form = None
+        if cfg.form_weight > 0:
+            form = DixonColes(xi=cfg.form_xi, ridge=cfg.ridge, w_xg=cfg.w_xg, priors=dc.priors).fit(train, now=cutoff)
+        return cls(dc, form, cfg)
+
+    def with_cfg(self, cfg: XgConfig) -> "XgModel":
+        """Gleiche angepasste Modelle, andere Mischung (Form-Gewicht, alpha) für den Test."""
+        return XgModel(self.dc, self.form, cfg)
+
+    def form_factors(self, home: int, away: int) -> tuple[float, float] | None:
+        """Wirkung der Form auf die Torerwartung (Heim, Gast), z. B. (1,08, 0,95) = +8 % / −5 %."""
+        if self.form is None or self.cfg.form_weight <= 0:
+            return None
+        lh, la = self.dc.rates(home, away)
+        fh, fa = self.form.rates(home, away)
+        return (fh / lh) ** self.cfg.form_weight, (fa / la) ** self.cfg.form_weight
+
+    def matrix(self, home: int, away: int, neutral: bool) -> np.ndarray:
+        def one(h: int, a: int) -> np.ndarray:
+            adj = (1.0, 1.0)
+            if self.form is not None and self.cfg.form_weight > 0:
+                lh, la = self.dc.rates(h, a)
+                fh, fa = self.form.rates(h, a)
+                adj = ((fh / lh) ** self.cfg.form_weight, (fa / la) ** self.cfg.form_weight)
+            return self.dc.score_matrix(h, a, adj)
+
+        if not neutral:
+            return one(home, away)
+        return (one(home, away) + one(away, home).T) / 2  # Finale: Heimvorteil herausmitteln
 
 
 def rounds(df: pd.DataFrame, competition: str = "CL") -> pd.DataFrame:
@@ -336,6 +426,12 @@ def explain(p: dict, home: str, away: str, neutral: bool) -> list[str]:
     fav, fav_p = (home, p["p_home"]) if p["p_home"] >= p["p_away"] else (away, p["p_away"])
     lines = [f"{fav} Favorit, {_pct(fav_p)} Siegchance: erwartet {_de(p['exp_home'], 1)} : {_de(p['exp_away'], 1)} Tore"]
     lines.append(f"Europa-Elo {p['elo_home']:.0f} : {p['elo_away']:.0f}")
+    form = p.get("form")
+    if form:
+        parts = [f"{t} {'+' if f >= 1 else '−'}{round(abs(f - 1) * 100)} % Tore" for t, f in zip((home, away), form)
+                 if abs(f - 1) >= 0.05]
+        if parts:
+            lines.append("Form der letzten Wochen (xG): " + ", ".join(parts))
     if p.get("value_home") and p.get("value_away"):
         ratio = p["value_home"] / p["value_away"]
         rel = f"{_de(ratio if ratio >= 1 else 1 / ratio, 1)}-fach"
@@ -372,6 +468,9 @@ def _row(p: dict, m, basis: str, as_of: pd.Timestamp) -> dict:
             "explanation": json.dumps(explain(p, m.home, m.away, bool(m.neutral)), ensure_ascii=False)}
 
 
+ACTIVE_XG: XgConfig | None = XgConfig(alpha=0.7, form_weight=0.4)  # None = nur Elo
+
+
 def backfill(competition: str = "CL", force: bool = False) -> int:
     """Rückblick-Prognosen für gespielte Runden (Stand vor dem ersten Anpfiff der Runde)."""
     df, values = load_matches(), load_values()
@@ -387,7 +486,9 @@ def backfill(competition: str = "CL", force: bool = False) -> int:
             ms = ms[~ms["id"].isin(done)]
         if ms.empty:
             continue
-        for p, m in zip(predict_round(feats, st, values, r.cutoff, ms, use_value=USE_VALUE), ms.itertuples()):
+        xm = XgModel.fit(df, values, r.cutoff, ACTIVE_XG) if ACTIVE_XG else None
+        for p, m in zip(predict_round(feats, st, values, r.cutoff, ms, use_value=USE_VALUE, xg_model=xm),
+                        ms.itertuples()):
             rows.append(_row(p, m, "rueckblick", r.cutoff))
     return _store(rows)
 
@@ -401,5 +502,76 @@ def predict_upcoming(competition: str = "CL") -> int:
     if ms.empty:
         return 0
     feats = all_features(df, st, values)
-    rows = [_row(p, m, "live", now) for p, m in zip(predict_round(feats, st, values, now, ms, use_value=USE_VALUE), ms.itertuples())]
+    xm = XgModel.fit(df, values, now, ACTIVE_XG) if ACTIVE_XG else None
+    rows = [_row(p, m, "live", now)
+            for p, m in zip(predict_round(feats, st, values, now, ms, use_value=USE_VALUE, xg_model=xm), ms.itertuples())]
     return _store(rows)
+
+
+XG_VARIANTS: dict[str, XgConfig | None] = {
+    "Elo (bisher)": None,
+    "xG": XgConfig(),
+    "xG + Form": XgConfig(form_weight=0.4),
+    "xG/Elo 70/30": XgConfig(alpha=0.7),
+    "xG/Elo 70/30 + Form": XgConfig(alpha=0.7, form_weight=0.4),
+    "xG/Elo 50/50 + Form": XgConfig(alpha=0.5, form_weight=0.4),
+    "Tore statt xG, 70/30 + Form": XgConfig(alpha=0.7, form_weight=0.4, w_xg=0.0),
+    "xG k 0,15, 70/30 + Form": XgConfig(alpha=0.7, form_weight=0.4, value_k=0.15),
+    "xG k 0,35, 70/30 + Form": XgConfig(alpha=0.7, form_weight=0.4, value_k=0.35),
+}
+
+
+def backtest_xg(variants: dict[str, XgConfig | None] | None = None, log=print) -> pd.DataFrame:
+    """Rückblick-Test aller CL-Runden für das Elo-Modell und die xG-Varianten. Je Runde wird jedes
+    xG-Modell (Kaderwert-Gewicht, xG/Tore) einmal mit Formkomponente angepasst; die Varianten
+    unterscheiden sich danach nur in der Mischung. Liefert je Spiel und Variante RPS, Log-Loss und Punkte."""
+    variants = variants or XG_VARIANTS
+    df, values = load_matches(), load_values()
+    st = run_elo(df, values)
+    feats = all_features(df, st, values)
+    rows = []
+    for r in rounds(df, "CL").itertuples():
+        ms = df[(df["competition"] == "CL") & (df["season"] == r.season) & (df["round_no"] == r.round_no) & df["finished"]]
+        if ms.empty:
+            continue
+        fitted: dict = {}
+        preds = {}
+        for name, cfg in variants.items():
+            xm = None
+            if cfg is not None:
+                key = (cfg.value_k, cfg.w_xg, cfg.ridge, cfg.xi)
+                if key not in fitted:
+                    fitted[key] = XgModel.fit(df, values, r.cutoff, XgConfig(value_k=cfg.value_k, w_xg=cfg.w_xg,
+                                                                                ridge=cfg.ridge, xi=cfg.xi, form_weight=0.4))
+                xm = fitted[key].with_cfg(cfg)
+            preds[name] = predict_round(feats, st, values, r.cutoff, ms, use_value=USE_VALUE, xg_model=xm)
+        for i, m in enumerate(ms.itertuples()):
+            o = _outcome(m.home_goals, m.away_goals)
+            row = {"season": m.season, "round": m.round_name, "match_id": m.id}
+            for name, pr in preds.items():
+                p = pr[i]
+                row[f"rps|{name}"] = rps((p["p_home"], p["p_draw"], p["p_away"]), o)
+                row[f"ll|{name}"] = -math.log(max([p["p_home"], p["p_draw"], p["p_away"]][o], 1e-9))
+                row[f"pkt|{name}"] = kicktipp_points(*p["tip"], int(m.home_goals), int(m.away_goals))
+            rows.append(row)
+        log(f"{r.season}/{(r.season + 1) % 100:02d} {r.round_name}: {len(ms)} Spiele")
+    return pd.DataFrame(rows)
+
+
+def compare_xg(res: pd.DataFrame, base: str = "Elo (bisher)", tune=(2024,), seed: int = 0) -> pd.DataFrame:
+    """Zusammenfassung von backtest_xg: RPS gesamt, im Einstell- (2024/25) und Testzeitraum, Bootstrap-Anteil
+    der Ziehungen im Testzeitraum, in denen die Variante besser ist als `base`."""
+    names = [c.split("|", 1)[1] for c in res.columns if c.startswith("rps|")]
+    is_tune = res["season"].isin(tune).to_numpy()
+    rng = np.random.default_rng(seed)
+    test_idx = np.flatnonzero(~is_tune)
+    boot = rng.choice(test_idx, (4000, len(test_idx)))
+    base_rps = res[f"rps|{base}"].to_numpy()
+    out = []
+    for n in names:
+        d = res[f"rps|{n}"].to_numpy() - base_rps
+        out.append({"variante": n, "rps": res[f"rps|{n}"].mean(), "rps_einstellen": res.loc[is_tune, f"rps|{n}"].mean(),
+                    "rps_test": res.loc[~is_tune, f"rps|{n}"].mean(), "logloss": res[f"ll|{n}"].mean(),
+                    "punkte": res[f"pkt|{n}"].mean(),
+                    "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if n != base else np.nan})
+    return pd.DataFrame(out).sort_values("rps_test")

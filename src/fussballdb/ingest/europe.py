@@ -18,7 +18,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from fussballdb.db.models import EuMatch, EuSquadValue, EuTeam, EuTeamAlias
@@ -472,3 +472,70 @@ def ingest_logos(session: Session, force: bool = False) -> dict:
                            "short": SHORT.get(team.name, team.name)}
     (ROOT / EU_TEAM_INFO).write_text(json.dumps(info, ensure_ascii=False, indent=2) + "\n")
     return {"geladen": loaded, "fehlen": missing}
+
+
+# Understat-Ligen (xG) zu football-data-Kürzeln
+UNDERSTAT_LEAGUES = {"E0": "EPL", "SP1": "La_liga", "I1": "Serie_A", "D1": "Bundesliga", "F1": "Ligue_1"}
+
+
+def ingest_league_xg(session: Session, seasons: list[int], log=print) -> dict:
+    """xG der Ligaspiele der fünf großen Ligen von Understat in eu_match eintragen. Zuordnung je Tag über
+    die Teamnamen: Ein Understat-Team wird dem football-data-Team zugeordnet, mit dem es an seinen Spieltagen
+    am häufigsten zusammenfällt (robust auch bei sehr unterschiedlichen Namen wie Wolves/Wolverhampton)."""
+    from collections import Counter
+
+    from fussballdb.ingest.http import get_json
+    from fussballdb.ingest.understat import AJAX, BASE
+
+    total, unmatched = 0, []
+    for comp, league in UNDERSTAT_LEAGUES.items():
+        for year in seasons:
+            try:
+                data = get_json(f"{BASE}/getLeagueData/{league}/{year}", headers=AJAX)
+            except Exception as exc:  # Saison noch nicht da
+                log(f"  {league} {year}: {exc}")
+                continue
+            games = [g for g in data["dates"] if g.get("isResult")]
+            rows = session.execute(text("""
+                SELECT m.id, m.kickoff::date, th.name, ta.name FROM eu_match m
+                JOIN eu_team th ON th.id = m.home_id JOIN eu_team ta ON ta.id = m.away_id
+                JOIN eu_team_alias h ON h.team_id = m.home_id AND h.source = :src
+                JOIN eu_team_alias a ON a.team_id = m.away_id AND a.source = :src
+                WHERE m.competition = :c AND m.season = :y"""), {"c": comp, "y": year, "src": f"fd:{comp}"}).all()
+            fd_names = {r[0]: (r[2], r[3]) for r in rows}
+            by_day: dict = {}
+            for r in rows:
+                by_day.setdefault(r[1], []).append(r)
+            # Abstimmung: an welchen Tagen spielt welches Understat-Team gegen wen → Teamzuordnung
+            votes: dict[str, Counter] = {}
+            for g in games:
+                day = datetime.fromisoformat(g["datetime"]).date()
+                cands = by_day.get(day, [])
+                if len(cands) == 1:
+                    votes.setdefault(g["h"]["title"], Counter())[cands[0][2]] += 1
+                    votes.setdefault(g["a"]["title"], Counter())[cands[0][3]] += 1
+                for c in cands:
+                    for us_name, fd_name in ((g["h"]["title"], c[2]), (g["a"]["title"], c[3])):
+                        if _norm(us_name)[:4] and _norm(us_name)[:4] in _norm(fd_name) or difflib.SequenceMatcher(
+                                None, _norm(us_name), _norm(fd_name)).ratio() > 0.6:
+                            votes.setdefault(us_name, Counter())[fd_name] += 3
+            mapping = {us: c.most_common(1)[0][0] for us, c in votes.items() if c}
+            key = {(r[1], r[2], r[3]): r[0] for r in rows}
+            updates = []
+            for g in games:
+                h, a = mapping.get(g["h"]["title"]), mapping.get(g["a"]["title"])
+                day = datetime.fromisoformat(g["datetime"]).date()
+                match_id = None
+                for d in (day, day.fromordinal(day.toordinal() - 1), day.fromordinal(day.toordinal() + 1)):
+                    match_id = key.get((d, h, a))
+                    if match_id:
+                        break
+                if match_id is None:
+                    unmatched.append(f"{league} {year}: {g['h']['title']} – {g['a']['title']}")
+                    continue
+                updates.append({"id": match_id, "h": float(g["xG"]["h"]), "a": float(g["xG"]["a"])})
+            if updates:
+                session.execute(text("UPDATE eu_match SET home_xg = :h, away_xg = :a WHERE id = :id"), updates)
+            total += len(updates)
+            log(f"  {league} {year}: {len(updates)} von {len(games)} Spielen mit xG")
+    return {"mit_xg": total, "nicht_zugeordnet": unmatched}

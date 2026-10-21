@@ -189,7 +189,8 @@ class Toolbox:
             "SELECT id, kickoff, matchday FROM match WHERE home_team_id = :h AND away_team_id = :a AND NOT finished ORDER BY kickoff LIMIT 1",
             h=h, a=a)
         match_id = match[0]["id"] if match else None
-        p = predict_pair(h, a, match_id, self._forecaster())
+        kickoff = pd.Timestamp(match[0]["kickoff"]) if match else None
+        p = predict_pair(h, a, match_id, self._forecaster(), kickoff=kickoff)
         from fussballdb.model.explain import explain
         from fussballdb.model.predict import market_probs
 
@@ -199,7 +200,9 @@ class Toolbox:
             "SELECT bookmaker, is_closing, home, draw, away FROM odds WHERE match_id = :m AND bookmaker IN ('Avg', 'B365')",
             m=match_id) if match_id else []
         r = lambda x: round(float(x), 3)
+        names = {r["id"]: r["name"] for r in _rows("SELECT id, name FROM team WHERE id IN (:h, :a)", h=h, a=a)}
         return {
+            "heim": names.get(h), "gast": names.get(a),
             "spiel": match[0] if match else "kein angesetztes Spiel gefunden, Prognose als hypothetische Paarung",
             "p_home": r(p["p_home"]), "p_draw": r(p["p_draw"]), "p_away": r(p["p_away"]),
             "exp_goals": [r(p["exp_home_goals"]), r(p["exp_away_goals"])],

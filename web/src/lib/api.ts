@@ -106,6 +106,8 @@ export type SideAbsences = {
 };
 
 export type Prediction = {
+  heim?: string;
+  gast?: string;
   spiel: { id: number; kickoff: string; matchday: number } | string;
   p_home: number;
   p_draw: number;

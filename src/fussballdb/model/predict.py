@@ -7,6 +7,7 @@ from sqlalchemy import select, text
 
 from fussballdb.db.models import EloRating, PlayerAbsence, Prediction
 from fussballdb.db.session import engine, session_scope
+from fussballdb.features import euro_load
 from fussballdb.features.availability import AvailabilityModel
 from fussballdb.ingest.upsert import upsert
 from fussballdb.model.data import load_matches
@@ -52,8 +53,10 @@ def store_elo(model: Forecaster, df: pd.DataFrame) -> None:
 
 def predict_pair(home_id: int, away_id: int, match_id: int | None = None,
                  model: Forecaster | None = None, availability: AvailabilityModel | None = None,
-                 absences: dict[int, set[int]] | None = None) -> dict:
-    """Prognose für ein Spiel inkl. Korrektur um die aktuelle Verletztenliste (β = 0,5)."""
+                 absences: dict[int, set[int]] | None = None, kickoff: pd.Timestamp | None = None,
+                 schedule: dict | None = None) -> dict:
+    """Prognose für ein Spiel inkl. Korrektur um die aktuelle Verletztenliste (β = 0,5) und, mit `kickoff`,
+    um die Europapokal-Belastung (features/euro_load.py)."""
     if model is None:
         model, _ = build_forecaster()
     availability = availability or AvailabilityModel()
@@ -61,6 +64,10 @@ def predict_pair(home_id: int, away_id: int, match_id: int | None = None,
     now = pd.Timestamp.now(tz="UTC")
     hi = availability.impact(home_id, now, absences.get(home_id, set()), absences.get((home_id, "gesperrt")))
     ai = availability.impact(away_id, now, absences.get(away_id, set()), absences.get((away_id, "gesperrt")))
+    if kickoff is not None:
+        schedule = schedule if schedule is not None else euro_load.euro_schedule()
+        hi = euro_load.apply(hi, home_id, kickoff, schedule)
+        ai = euro_load.apply(ai, away_id, kickoff, schedule)
     out = model.predict_match(home_id, away_id, match_id, hi, ai)
     out["absences"] = {"home": hi, "away": ai}
     return out
@@ -106,10 +113,11 @@ def predict_upcoming(matchdays: int | None = None) -> pd.DataFrame:
     availability = AvailabilityModel()
     absences = active_absences()
     markets = market_probs()
+    schedule = euro_load.euro_schedule()
     now = pd.Timestamp.now(tz="UTC")
     rows, out = [], []
     for r in upcoming.itertuples():
-        p = predict_pair(r.home_id, r.away_id, r.match_id, model, availability, absences)
+        p = predict_pair(r.home_id, r.away_id, r.match_id, model, availability, absences, r.kickoff, schedule)
         rows.append(_row(r.match_id, p, now, "live", r.home, r.away, markets.get(r.match_id)))
         out.append({"spieltag": r.matchday, "anstoss": r.kickoff, "heim": r.home, "gast": r.away, **rows[-1],
                     "ausfaelle_heim": rows[-1]["missing_home"], "ausfaelle_gast": rows[-1]["missing_away"]})
@@ -145,6 +153,7 @@ def backfill(seasons: list[int] | None = None, force: bool = False, progress=Non
     injuries = load_injuries()
     availability = AvailabilityModel()
     markets = market_probs()
+    schedule = euro_load.euro_schedule()
     total = 0
     for (season, md), games in played.groupby(["season", "matchday"], sort=True):
         todo = games[~games["match_id"].isin(existing)]
@@ -160,7 +169,8 @@ def backfill(seasons: list[int] | None = None, force: bool = False, progress=Non
             for team in (r.home_id, r.away_id):
                 suspended = availability.suspended_as_of(team, cutoff)
                 missing = availability.injured_as_of(team, cutoff, injuries) | suspended
-                impacts.append(availability.impact(team, cutoff, missing, suspended))
+                impacts.append(euro_load.apply(availability.impact(team, cutoff, missing, suspended),
+                                               team, r.kickoff, schedule))
             hi, ai = impacts
             p = model.predict_match(r.home_id, r.away_id, r.match_id, hi, ai)
             p["absences"] = {"home": hi, "away": ai}

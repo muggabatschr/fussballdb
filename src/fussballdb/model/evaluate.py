@@ -511,3 +511,72 @@ def compare_finishing_combo(fit_configs: dict[str, dict] | None = None, variants
                      "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if name != "basis" else np.nan,
                      "saisons_besser": f"{sum(d[(meta['season'] == s).to_numpy()].mean() < 0 for s in seasons)}/{len(seasons)}"})
     return pd.DataFrame(rows).sort_values("delta_test")
+
+
+def euro_matches_by_team() -> dict[int, list[pd.Timestamp]]:
+    """Anstoßzeiten der Europapokalspiele (CL, EL) je Bundesliga-Team."""
+    from fussballdb.features.euro_load import euro_schedule
+
+    return {t: [k for k, _ in games] for t, games in euro_schedule().items()}
+
+
+EURO_LOAD_VARIANTS = {
+    "Angriff −3 %": (0.03, False),
+    "Angriff −6 %": (0.06, False),
+    "Angriff −10 %": (0.10, False),
+    "Angriff −6 %, Abwehr +6 %": (0.06, True),
+}
+
+
+def compare_euro_load(seasons=(2024, 2025, 2026), days: int = 4, seed: int = 0, progress=None) -> pd.DataFrame:
+    """Europapokal-Belastung: Team mit Europapokalspiel in den `days` Tagen vor dem Bundesliga-Spiel bekommt
+    eine geringere Torerwartung (und optional mehr Gegentore). Gegen das Modell ohne Belastung (Form,
+    Verletzte, Sperren); Bootstrap über die betroffenen Spiele."""
+    from fussballdb.model.data import load_squad_values
+
+    df = load_matches()
+    values = load_squad_values()
+    injuries = load_injuries()
+    av = AvailabilityModel()
+    euro = euro_matches_by_team()
+    games_all = df[df["finished"] & df["season"].isin(seasons)]
+    groups = list(games_all.groupby(["season", "matchday"]))
+    outcome, loaded, season_of, probs = [], [], [], {name: [] for name in ["basis", *EURO_LOAD_VARIANTS]}
+
+    def tired(team: int, kickoff: pd.Timestamp) -> bool:
+        return any(pd.Timedelta(0) < kickoff - k <= pd.Timedelta(days=days) for k in euro.get(team, []))
+
+    for (season, md), games in groups:
+        cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
+        model = Forecaster(values=values).fit(df, cutoff)
+        for r in games.itertuples():
+            imp = {t: av.impact(t, cutoff, av.injured_as_of(t, cutoff, injuries) | av.suspended_as_of(t, cutoff))
+                   for t in (r.home_id, r.away_id)}
+            th, ta = tired(r.home_id, r.kickoff), tired(r.away_id, r.kickoff)
+            loaded.append(th or ta)
+            season_of.append(season)
+            outcome.append(0 if r.hg > r.ag else 1 if r.hg == r.ag else 2)
+            for name, (delta, defence) in [("basis", (0.0, False)), *EURO_LOAD_VARIANTS.items()]:
+                hi, ai = dict(imp[r.home_id]), dict(imp[r.away_id])
+                for side, flag in ((hi, th), (ai, ta)):
+                    if flag:
+                        side["attack_mult"] = side["attack_mult"] * (1 - delta)
+                        if defence:
+                            side["concede_mult"] = side["concede_mult"] * (1 + delta)
+                p = model.predict_match(r.home_id, r.away_id, r.match_id, hi, ai)
+                probs[name].append([p["p_home"], p["p_draw"], p["p_away"]])
+        if progress:
+            progress(season, md)
+    outcome, loaded, season_of = np.array(outcome), np.array(loaded), np.array(season_of)
+    base = rps_per_match(np.array(probs["basis"]), outcome)
+    rng = np.random.default_rng(seed)
+    idx = np.flatnonzero(loaded)
+    boot = rng.choice(idx, (4000, len(idx)))
+    rows = []
+    for name, p in probs.items():
+        d = rps_per_match(np.array(p), outcome) - base
+        rows.append({"variante": name, "spiele_mit_belastung": int(loaded.sum()), "spiele": len(outcome),
+                     "delta_belastet": d[loaded].mean(), "delta_alle": d.mean(),
+                     "besser_pct": 100 * (d[boot].mean(1) < 0).mean() if name != "basis" else np.nan,
+                     "saisons_besser": f"{sum(d[loaded & (season_of == s)].mean() < 0 for s in seasons)}/{len(seasons)}"})
+    return pd.DataFrame(rows)

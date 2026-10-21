@@ -61,10 +61,11 @@ lassen sich im Backtest prüfen.
 | [OpenLigaDB](https://www.openligadb.de) | Spielplan, Ergebnisse, Halbzeit, Spieltage |
 | [football-data.co.uk](https://www.football-data.co.uk) | Schüsse, aufs Tor, Ecken, Fouls, Karten, Quoten (B365, Pinnacle, Betfair, Ø, Max; Eröffnung und Schluss), Vorab-Quoten |
 | [OpenLigaDB](https://www.openligadb.de) (`ucl`, `uel`) | Champions League ab 2024/25 und Europa League 2024/25: Spielplan und Ergebnisse |
+| Understat, fünf große Ligen | xG der Ligaspiele aus England, Spanien, Italien, Deutschland, Frankreich ab 2022/23 (für das CL-Modell) |
 | football-data.co.uk, 18 Ligen | Ligaergebnisse aus England, Spanien, Italien, Deutschland, Frankreich, Niederlande, Portugal, Belgien, Türkei, Schottland, Griechenland, Österreich, Schweiz, Dänemark, Norwegen, Schweden, Polen, Rumänien (für die Europa-Elo) |
 | [Understat](https://understat.com) | xG, npxG, xPts, PPDA, Deep, jeder Schuss mit xG, Kader je Spiel mit Minuten/xG/xA |
 | [Transfermarkt](https://www.transfermarkt.de) | aktuelle Verletzte und Kranke, Verletzungshistorie je Spieler, Kaderwerte zum 1. jedes Monats |
-| [FotMob](https://www.fotmob.com/de/tv-guide/de) (TV-Programm DE und AT) | TV-Sender je Bundesliga- und CL-Spiel in Deutschland und Österreich, jeweils für die nächsten 7 Tage |
+| [FotMob](https://www.fotmob.com/de/tv-guide/de) | TV-Sender je Bundesliga- und CL-Spiel in Deutschland und Österreich (nächste 7 Tage), xG der Champions-League-Spiele |
 | [Ligainsider](https://www.ligainsider.de) | voraussichtliche Aufstellungen vor dem Spiel, tatsächliche danach |
 | [Kickbase](https://www.kickbase.com) (inoffizielle API, eigenes Konto) | Punkte, Marktwerte, Status, Markt und Kader der eigenen Liga |
 
@@ -260,6 +261,11 @@ unter der Prognosekarte („Markt (Ø-Quoten)“). Für einen Spieltag, den foot
 eingestellt hat, fehlt die Zeile. Die Quoten fließen nicht in Prognose oder Tipp ein, sie dienen nur dem
 Vergleich.
 
+**xG in der Kachel:** Bei gespielten Bundesliga-Spielen steht unter dem Ergebnis das xG und unter jedem Team
+die Differenz Tore minus xG: grün = mehr Tore als die Chancen hergaben (überperformt), orange = weniger
+(unterperformt), grau = weniger als ein halbes Tor Abweichung. Das gilt auch für die Champions League;
+deren xG kommen von FotMob (`ingest/cl_xg.py`, seit 2024/25, nach jedem Spieltag nachgeladen).
+
 **TV-Sender in der Kachel:** Bei offenen Spielen steht unten je eine Zeile für Deutschland und Österreich
 mit den Logos der genauen Kanäle, z. B. Sky Sport Bundesliga 5 und WOW, in der CL DAZN oder Prime Video
 und in Österreich Sky Sport Austria mit Kanalnummer. Laufen in beiden Ländern dieselben Kanäle (Sky Bundesliga 1 in DE
@@ -324,15 +330,17 @@ der Runde), offene die Live-Prognose.
 **Warum anders als in der Bundesliga:** Für viele Ligen gibt es kein xG, keine Kader und keine Ausfälle,
 und Teams aus verschiedenen Ländern spielen selten gegeneinander. Die Prognose stützt sich deshalb auf:
 
-1. **Europaweite Elo** über gut 22.000 Ligaspiele aus 18 Ländern (football-data, seit 2022/23) und alle
+1. **xG-Modell** (70 %): Dixon-Coles wie in der Bundesliga über alle Liga- und Europapokalspiele seit
+   2022/23. Zielgröße ist xG, wo vorhanden (fünf große Ligen von Understat, Champions League von FotMob),
+   sonst Tore. Startstärke aus dem Kaderwert relativ zum europäischen Mittel (k = 0,25), dazu eine
+   Formkomponente (40 %, Halbwertszeit 5 Wochen). Die Ligen werden über die Europapokalspiele und den
+   Kaderwert verbunden.
+2. **Europaweite Elo** (30 %) über gut 22.000 Ligaspiele aus 18 Ländern (football-data) und alle
    Europapokalspiele. Ein Team startet bei seinem ersten Spiel mit einer Elo aus seinem Kaderwert
-   (Transfermarkt: 1500 bei 50 Mio. €, +104 je Verdopplung). So sind die Ligen von Anfang an vergleichbar;
-   Europapokalspiele verschieben die Werte danach zwischen den Ländern. Zu jeder neuen Saison rückt die
-   Elo ein Drittel Richtung Kaderwert (Transfers im Sommer). K-Faktor 20 in der Liga, 30 im Europapokal,
-   Heimvorteil 65 Punkte, Siege mit 2 Toren zählen 1,5-fach, höhere mehr.
-2. **Tormodell**: Poisson mit Dixon-Coles-Korrektur aus Elo-Differenz und Heimvorteil (getrennt für Liga
-   und Europapokal, im Finale keiner). Die Gewichte werden vor jeder Runde aus den Spielen der drei Jahre
-   davor geschätzt.
+   (Transfermarkt: 1500 bei 50 Mio. €, +104 je Verdopplung). Zu jeder neuen Saison rückt die Elo ein
+   Drittel Richtung Kaderwert (Transfers im Sommer). K-Faktor 20 in der Liga, 30 im Europapokal,
+   Heimvorteil 65 Punkte, Siege mit 2 Toren zählen 1,5-fach, höhere mehr. Daraus erwartete Tore über ein
+   Poisson-Modell mit Elo-Differenz und Heimvorteil (im Finale keiner).
 3. **Tipp** wie in der Bundesliga: das Ergebnis mit den meisten erwarteten Punkten.
 
 Teams aus Ländern ohne football-data-Liga (Tschechien, Kroatien, Serbien, Ukraine, Slowakei, Zypern,
@@ -340,7 +348,23 @@ Aserbaidschan, Kasachstan, Bulgarien, Ungarn, Israel, Lettland) haben nur ihren 
 Europapokalspiele. Absteiger fehlen auf den Transfermarkt-Ligaseiten, sie starten im unteren Viertel ihrer
 Liga (betrifft unter den CL-Teams nur Girona 2024/25).
 
-**Rückblick-Test** (`fussballdb cl-test`), jede Runde nur mit dem Stand vor ihrem ersten Anpfiff:
+**xG-Modell gegen Elo** (`fussballdb cl-xg-test`, Oktober 2026, 423 Spiele, jede Runde nur mit dem Stand
+vor ihrem ersten Anpfiff):
+
+| Variante | 2024/25 | 2025/26 | 2026/27 (45 Spiele) | gesamt |
+|---|---|---|---|---|
+| Elo allein (bis Oktober 2026) | 0,1958 | 0,2020 | 0,1697 | 0,1958 |
+| **xG/Elo 70/30 + Form (übernommen)** | 0,1910 | 0,1997 | 0,1764 | 0,1934 |
+| xG/Elo 50/50 + Form | 0,1919 | 0,2000 | 0,1742 | 0,1936 |
+| xG allein | 0,1935 | 0,1995 | 0,1790 | 0,1946 |
+| Tore statt xG, 70/30 + Form | 0,1925 | 0,1993 | 0,1778 | 0,1940 |
+
+Die Variante wurde vorab an 2024/25 gewählt. Über alle Spiele ist sie in 91 % der Bootstrap-Ziehungen
+besser als die Elo allein, in 2024/25 und 2025/26 deutlich, in den ersten 45 Spielen 2026/27 schlechter.
+Im strengen Test nur ab 2025/26 sind es 58 %, deshalb wird nach der Ligaphase 2026/27 erneut geprüft.
+Ein Großteil des Gewinns kommt aus Struktur und Form, Tore statt xG sind fast gleich gut.
+
+**Erster Rückblick-Test der Elo** (`fussballdb cl-test`, Stand vor der Umstellung):
 
 | Saison | Spiele | RPS Modell | Elo + Kaderwert-Merkmal | nur Kaderwert | Grundverteilung | Punkte je Spiel |
 |---|---|---|---|---|---|---|
@@ -370,6 +394,12 @@ gespielten Spielen erwarten ließen. Darunter die geschätzte Abschlusstabelle d
 Simulationen der offenen Spiele, mit den Chancen auf Platz 1–8 (direkt ins Achtelfinale), 9–24
 (Play-offs) und das Ausscheiden. Bei Punktgleichheit entscheiden erwartete Tordifferenz und Tore. Auch im
 MCP-Werkzeug `cl_tabelle`.
+
+**Ausfälle in der CL** (`ingest/cl_absences.py`): Verletzte und Gesperrte aller Teams mit CL-Spielen in den
+nächsten 14 Tagen von Transfermarkt (Vereinsseite „Sperren und Verletzungen“), täglich geladen. Ihr Gewicht
+wird über den Anteil am Kaderwert geschätzt. Sie stehen in der Begründung („Es fehlen bei …, zusammen
+18 % des Kaderwerts, nicht eingerechnet“), fließen aber noch nicht in die Prognose ein: Es gibt keine
+Historie, mit der sich das testen ließe. Nach einigen Spieltagen lässt sich das nachholen.
 
 **Einrichten** (einmalig ~1 Std., vor allem Kaderwerte von 30 Ligen zu 19 Stichtagen):
 
@@ -474,6 +504,8 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb kaderwert-test` | Kaderwert als Startstärke im Rückblick-Test |
 | `fussballdb kalibrierung` | Vorhergesagte gegen eingetretene Häufigkeiten (Heim, Remis, Gast, Über 2,5) |
 | `fussballdb tipp-test` | Tipp-Regeln im Rückblick vergleichen |
+| `fussballdb belastung-test` | Europapokal-Belastung im Rückblick-Test (`--tage`) |
+| `fussballdb cl-xg-test` | CL: europaweites xG-Modell gegen die Elo im Rückblick-Test |
 | `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test (`--kombi`: zusammen mit den verworfenen Erweiterungen) |
 | `fussballdb kombi-test` | alle Erweiterungen zusammen, jeweils eine weggelassen |
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
@@ -505,6 +537,7 @@ Geprüft werden:
 | Rückblick-Prognosen | gespielte Spiele ohne Prognose | 6 Std. |
 | Kickbase-Marktwerte und Liga | letzter Abruf älter als 20 Std. (nur mit Kickbase-Token) | 6 Std. |
 | Live-Prognosen | offene Spiele ohne Prognose, neue Daten oder älter als 24 Std. | 1 Std. |
+| CL-Ausfälle | CL-Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
 | TV-Sender (DE, AT) | Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
 | Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |
 | Verletzungshistorie (langsam) | noch nie vollständig geladen | 7 Tage |
@@ -572,6 +605,9 @@ Log: `~/Library/Logs/fussballdb-snapshot.log`. Abschalten mit
    zum Stichtag (ab 2023/24). Sperren aus den Karten des letzten Spiels: Rot/Gelb-Rot oder die
    5./10./15. Gelbe der Saison (seit 2014/15). Understat unterscheidet Gelb-Rot und glatt Rot nicht,
    längere Sperren nach glatt Rot sind deshalb nur für das nächste Spiel erfasst.
+6. **Europapokal-Belastung**: Hatte ein Team in den 4 Tagen vor dem Bundesliga-Spiel ein Spiel in der
+   Champions oder Europa League, sinkt seine Torerwartung um 10 % (`features/euro_load.py`, Spielplan aus
+   der CL-Datenbank, also ab 2024/25; die Europa League ist nur für 2024/25 erfasst).
 
 Backtest 2025/26 und 2026/27 (bis Spieltag 6, 360 Spiele), jeweils nur mit den Daten vor dem Spieltag
 (`fussballdb backtest`), Ausfälle aus der Verletztenliste zum Stichtag:
@@ -621,6 +657,8 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Über-/Unterperformance der letzten 5 Spiele (Tore ÷ xG als Faktor auf die Torerwartung, `fussballdb abschluss-test`) | 2021–26: +0,0085 | verworfen; in keiner der 11 Saisons besser. Mit Dämpfung (5 xG) +0,0035, mit Gegentoren ÷ xGA +0,0165 |
 | Abschluss-Faktor zusammen mit den einzeln verworfenen Erweiterungen (Heimvorteil je Team, Duelle, Remis-Kalibrierung, Halbwertszeit 3 Mon., Tor-Skalierung; einzeln und alle zusammen, `fussballdb abschluss-test --kombi`) | +0,0006 bis +0,0095 | verworfen; in jeder der 21 Kombinationen schlechter als ohne Faktor, keine Kombination besser als das aktuelle Modell. Am knappsten: Tor-Skalierung allein −0,0005 (89 % der Ziehungen), aber im Einstellzeitraum schlechter und nur in 5 von 11 Saisons besser, deshalb nicht übernommen |
 | Abschlussstärke über 1 Jahr, gedämpft (10 bzw. 20 xG), auch mit Gegentoren | +0,0010 bis +0,0033 | verworfen; besser in höchstens 3 % der Ziehungen. Wer zuletzt über oder unter seinem xG lag, tut das danach nicht weiter, reines xG bleibt besser |
+| Europapokal-Belastung: Europapokalspiel in den 4 Tagen davor, Torerwartung −10 % (`fussballdb belastung-test`) | betroffene Spiele −0,0043 | übernommen; 103 Spiele 2024–2026, in allen 3 Saisons besser, 99 % der Ziehungen. −15 bis −25 % waren noch besser, 10 % ist bewusst vorsichtig. Kontrolle: dieselben Teams ohne Europapokal davor abzuwerten schadet (+0,0057), es ist also die Belastung und keine generelle Überschätzung |
+| Europapokal-Belastung mit 3 statt 4 Tagen | −0,0019 | schwächer (62 Spiele, 81 %); 4 Tage erfassen auch Dienstag → Samstag |
 | Spielerwert über On/Off (xG für/gegen mit und ohne Spieler auf dem Platz) statt xG+xA | 2023–26: +0,0010 | verworfen; zu verrauscht, weil Stammspieler selten fehlen (`features/onoff.py`) |
 | Echte Aufstellung (Obergrenze, Wissen aus der Zukunft) | −0,0006 | nur zur Einordnung: Ausfälle sind kaum noch ein Hebel |
 
@@ -644,6 +682,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `eu_team`, `eu_team_alias` | Champions League: Vereine aus ganz Europa (Transfermarkt-ID bei Europapokal-Teilnehmern), Namen je Quelle |
 | `eu_match` | Liga- (`competition` = football-data-Kürzel) und Europapokalspiele (`CL`, `EL`) |
 | `eu_squad_value` | Kaderwerte je Verein und Stichtag (quartalsweise) |
+| `eu_absence` | Verletzte und Gesperrte der CL-Teams je Abruf (`active` = letzter Stand), Anteil am Kaderwert |
 | `eu_prediction` | CL-Prognosen (live oder rueckblick) mit Elo, Kaderwerten, Tipp und Begründung |
 
 Direkt abfragen:
@@ -700,11 +739,17 @@ Was in welcher Reihenfolge entstanden ist und warum.
     verworfenen Erweiterungen: bringt nichts, bleibt aus.
 18. **TV-Sender** in den Kacheln für Deutschland und Österreich, Bundesliga und Champions League, als
     Logos der genauen Kanäle.
-
 19. **Tabelle**: Platzdifferenz zum Modell und geschätzte Abschlusstabelle per Simulation, für die
     Bundesliga und die CL-Ligaphase.
+20. **CL genauer**: xG der CL-Spiele (FotMob) und der fünf großen Ligen (Understat), europaweites
+    xG-Modell mit Form (70/30 mit der Elo), Ausfälle der CL-Teams als Anzeige.
+21. **Europapokal-Belastung** für die Bundesliga (−10 % Torerwartung nach Europapokalspiel).
+22. **Chat**: Tipp in der Prognosekarte, offizielle Teamnamen für Wappen.
 
 Offen:
 
+- **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**
+  (`fussballdb cl-xg-test`); hält es nicht, `ACTIVE_XG` in `model/europe.py` auf `None` setzen
+- Verletzte der CL-Teams ins Modell nehmen, sobald genug Spieltage zum Testen gesammelt sind
 - Weiterkommen in K.-o.-Runden (Hin- und Rückspiel zusammen)
 - Chat der Web-App kennt die Champions League noch nicht (MCP schon)

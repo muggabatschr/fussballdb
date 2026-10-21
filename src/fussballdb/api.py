@@ -210,6 +210,38 @@ def cl_rounds():
     return list(seasons.values())
 
 
+def _cl_absences(match_ids: list[int]) -> dict[tuple[int, str], str]:
+    """Aktuelle Ausfälle der Teams offener CL-Spiele als Begründungszeile (nur Anzeige, nicht im Modell)."""
+    if not match_ids:
+        return {}
+    rows = _rows(
+        """
+        SELECT m.id AS match_id, t.name AS team, a.player_name, a.kind, a.value_share
+        FROM eu_match m JOIN eu_team t ON t.id IN (m.home_id, m.away_id)
+        JOIN eu_absence a ON a.team_id = t.id AND a.active
+        WHERE m.id = ANY(:ids)
+        ORDER BY a.value_share DESC NULLS LAST
+        """,
+        ids=match_ids,
+    )
+    grouped: dict[tuple[int, str], list[dict]] = {}
+    for r in rows:
+        items = grouped.setdefault((r["match_id"], r["team"]), [])
+        same = next((i for i in items if i["player_name"] == r["player_name"]), None)
+        if same:  # verletzt und gesperrt zugleich: einmal nennen
+            same["kind"] = "gesperrt" if "gesperrt" in (same["kind"], r["kind"]) else same["kind"]
+        else:
+            items.append(dict(r))
+    out = {}
+    for key, items in grouped.items():
+        names = [i["player_name"] + (" (gesperrt)" if i["kind"] == "gesperrt" else "") for i in items]
+        share = sum(i["value_share"] or 0 for i in items)
+        shown = ", ".join(names[:4]) + (f" und {len(names) - 4} weitere" if len(names) > 4 else "")
+        out[key] = (f"Es fehlen bei {key[1]}: {shown}"
+                    + (f" (zusammen {round(100 * share)} % des Kaderwerts, nicht eingerechnet)" if share else ""))
+    return out
+
+
 @app.get("/cl/table/{season}")
 def cl_table(season: int):
     """Tabelle der CL-Ligaphase mit Modell-Platz (platz_diff > 0 = besser als laut Prognosen erwartet) und,
@@ -230,6 +262,7 @@ def cl_round(season: int, round_no: int):
         f"""
         SELECT m.id, m.kickoff, m.round_name, m.neutral, ht.name AS home, at.name AS away,
                m.home_goals, m.away_goals, m.finished,
+               round(m.home_xg::numeric, 2) AS home_xg, round(m.away_xg::numeric, 2) AS away_xg,
                round(p.p_home::numeric, 3) AS p_home, round(p.p_draw::numeric, 3) AS p_draw,
                round(p.p_away::numeric, 3) AS p_away,
                round(p.exp_home_goals::numeric, 2) AS exp_home_goals, round(p.exp_away_goals::numeric, 2) AS exp_away_goals,
@@ -249,9 +282,13 @@ def cl_round(season: int, round_no: int):
     if not games:
         raise ValueError(f"Runde {round_no} der CL-Saison {season} gibt es nicht.")
     tv = tv_for("CL", [g["id"] for g in games])
+    missing = _cl_absences([g["id"] for g in games if not g["finished"]])
     for g in games:
         g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
         g["tv"] = tv.get(g["id"], {})
+        for team in (g["home"], g["away"]):
+            if (g["id"], team) in missing:
+                g["explanation"].append(missing[(g["id"], team)])
     scored = [g for g in games if g["points"] is not None]
     season_rows = _rows(
         f"""

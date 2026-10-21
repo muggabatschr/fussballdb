@@ -218,7 +218,7 @@ def backtest(
 def europa(
     werte: Annotated[bool, typer.Option(help="Kaderwerte von Transfermarkt laden (beim ersten Mal ~25 Min.)")] = True,
 ) -> None:
-    """Champions League: Europapokal-Spiele, Ligaspiele aus 18 Ländern, Kaderwerte und Wappen laden."""
+    """Champions League: Europapokal-Spiele, CL-xG (FotMob), Ligaspiele aus 18 Ländern, Kaderwerte und Wappen laden."""
     from fussballdb.db.session import session_scope
     from fussballdb.ingest import europe
 
@@ -232,6 +232,16 @@ def europa(
         console.print(f"Kaderwerte: {n}")
         for country, clubs in unknown.items():
             console.print(f"  [dim]{country} ohne Zuordnung (nicht benötigt, solange nie im Europapokal): {len(clubs)}[/]")
+    from fussballdb.ingest import cl_xg
+
+    with session_scope() as s:
+        res_league = europe.ingest_league_xg(s, list(range(europe.FIRST_SEASON, max(DEFAULT_SEASONS) + 1)),
+                                             log=lambda m: None)
+    console.print(f"Liga-xG (Understat): {res_league['mit_xg']} Spiele")
+    with session_scope() as s:
+        res_xg = cl_xg.ingest(s, sorted({y for _, _, y in europe.EURO_COMPETITIONS}), log=console.print)
+    console.print(f"CL-xG: {res_xg['mit_xg']} Spiele" + (f", ohne Zuordnung: {', '.join(res_xg['nicht_zugeordnet'])}"
+                                                       if res_xg["nicht_zugeordnet"] else ""))
     with session_scope() as s:
         res = europe.ingest_logos(s)
     console.print(f"Wappen: {res['geladen']} neu" + (f", fehlen: {', '.join(res['fehlen'])}" if res["fehlen"] else ""))
@@ -274,6 +284,25 @@ def abschluss_test(
     res = compare_finishing_combo(progress=progress) if kombi else compare_finishing(progress=progress)
     console.print(res.round(5).to_string(index=False))
     console.print("delta < 0 = besser. Übernommen wird nur, was im Test in mindestens ~90 % der Ziehungen besser ist.")
+
+
+@app.command("belastung-test")
+def belastung_test(tage: Annotated[int, typer.Option(help="Europapokalspiel höchstens so viele Tage vorher")] = 4) -> None:
+    """Europapokal-Belastung im Rückblick-Test (Bundesliga 2024–2026): Torerwartung nach Europapokalspiel senken."""
+    from fussballdb.model.evaluate import compare_euro_load
+
+    console.print(compare_euro_load(days=tage).round(5).to_string(index=False))
+    console.print("delta < 0 = besser. besser_pct: Bootstrap über die Spiele mit Belastung.")
+
+
+@app.command("cl-xg-test")
+def cl_xg_test() -> None:
+    """CL: europaweites xG-Modell (Dixon-Coles, Form, Mischung mit Elo) gegen die bisherige Elo, Rückblick-Test."""
+    from fussballdb.model.europe import backtest_xg, compare_xg
+
+    res = backtest_xg(log=lambda m: None)
+    console.print(compare_xg(res).round(4).to_string(index=False))
+    console.print(res.groupby("season")[[c for c in res.columns if c.startswith("rps|")]].mean().round(4).T.to_string())
 
 
 @app.command("xg-varianten")
