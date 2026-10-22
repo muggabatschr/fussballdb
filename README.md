@@ -70,6 +70,7 @@ lassen sich im Backtest prüfen.
 | [Understat](https://understat.com) | xG, npxG, xPts, PPDA, Deep, jeder Schuss mit xG, Kader je Spiel mit Minuten/xG/xA |
 | [Transfermarkt](https://www.transfermarkt.de) | aktuelle Verletzte und Kranke, Verletzungshistorie je Spieler, Kaderwerte zum 1. jedes Monats |
 | [FotMob](https://www.fotmob.com/de/tv-guide/de) | TV-Sender je Bundesliga- und CL-Spiel in Deutschland und Österreich (nächste 7 Tage), xG der Champions-League-Spiele |
+| [LiveOnSat](https://liveonsat.com) | Sky-Bundesliga-Kanalnummer je Bundesliga-Spiel (zweite Quelle zu FotMob, gilt für DE und AT) |
 | [Ligainsider](https://www.ligainsider.de) | voraussichtliche Aufstellungen vor dem Spiel, tatsächliche danach |
 | [Kickbase](https://www.kickbase.com) (inoffizielle API, eigenes Konto) | Punkte, Marktwerte, Status, Markt und Kader der eigenen Liga |
 
@@ -333,7 +334,13 @@ und in Österreich Sky Sport Austria mit Kanalnummer. Laufen in beiden Ländern 
 und Sky Sport Bundesliga 1 in AT gelten als gleich), steht nur eine Zeile „DE/AT“ da. Quelle ist das TV-Programm von FotMob für beide
 Länder (`ingest/tv.py`), täglich geladen und über Anstoßzeit und Teamnamen zugeordnet. Weggelassen werden
 Zugänge und Kopien (Sky Go, Sky Stream, Sky X, UHD, Showcase) und, sobald ein nummerierter Kanal da ist,
-der allgemeine Sky-Bundesliga-Kanal und Top Event. Steht ein Sender noch nicht fest, heißt es „noch
+der allgemeine Sky-Bundesliga-Kanal und Top Event. Sky Österreich zeigt die Bundesliga auf denselben
+Sky-Bundesliga-Kanälen wie Sky Deutschland, die Kanalnummer ist also in beiden Ländern gleich. FotMob gibt
+für Deutschland aber oft eine falsche Nummer an (Leipzig – Elversberg 2026/27: DE 2, AT 4, richtig 4).
+Deshalb liest `ingest/tv.py` für die Bundesliga zusätzlich [LiveOnSat](https://liveonsat.com) (gespeichert
+als Land `LS`); dessen Nummer gilt für DE und AT, ohne LiveOnSat die österreichische von FotMob
+(`align_sky_numbers`, nur in der Anzeige, die Rohdaten bleiben). Fällt LiveOnSat aus, läuft das Update mit
+FotMob allein weiter. Steht ein Sender noch nicht fest, heißt es „noch
 offen“. FotMob kennt die Kanäle etwa eine Woche im Voraus; bei gespielten Spielen wird die Zeile
 ausgeblendet.
 
@@ -771,7 +778,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `squad_value` | Kaderwerte je Team und Stichtag |
 | `prediction` | Prognosen (`basis` = live oder rueckblick), Tipp, Ausfälle, Begründung als JSON |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
-| `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL → `eu_match`), wie bei FotMob gelistet |
+| `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |
 | `kb_session` | Kickbase-Anmeldung: Token, Ablauf, Ligen, gewählte Liga (nie das Passwort) |
 | `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der Liga |
 | `eu_team`, `eu_team_alias` | Champions League: Vereine aus ganz Europa (Transfermarkt-ID bei Europapokal-Teilnehmern), Namen je Quelle |

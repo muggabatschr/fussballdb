@@ -2,12 +2,17 @@
 
 Quelle ist das TV-Programm von FotMob (je Land eine Seite, die nächsten 7 Tage). Die Spiele werden über
 Anstoßzeit und Teamnamen unseren Spielen zugeordnet. Einträge bleiben nach dem Spiel gespeichert.
+
+Die Nummer des Sky-Bundesliga-Kanals ist bei FotMob für Deutschland oft falsch (Leipzig – Elversberg
+2026/27: DE 2, AT und LiveOnSat 4). Deshalb kommt für die Bundesliga LiveOnSat als zweite Quelle dazu
+(gespeichert als Land "LS"); dessen Kanalnummer gilt in der Anzeige für Deutschland und Österreich.
 """
 
 import difflib
+import html
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -21,6 +26,9 @@ from fussballdb.ingest.upsert import upsert
 URL = "https://www.fotmob.com/de/tv-guide/{country}"
 COUNTRIES = ("de", "at")
 LEAGUES = {54: "BL", 42: "CL"}  # FotMob-Wettbewerb -> unsere Kennung
+LIVEONSAT_URL = "https://liveonsat.com/europe-germany-bundesliga1.php"
+# Kanäle bei LiveOnSat, die für Deutschland und Österreich zählen (die Seite listet Sender aus aller Welt)
+LIVEONSAT_KEEP = re.compile(r"^(Sky Sport Bundesliga|Sky Sport Top Event|DAZN Deutsch|WOW)")
 
 # Kanäle, die nur Zugänge oder Kopien sind (Streaming-Zugänge, UHD, Showcase) und "noch offen"
 SKIP = re.compile(r"^Sky Go$|^Sky Stream$|^Sky X$|Showcase|UHD|zu bestätigen|^TBC", re.I)
@@ -43,6 +51,32 @@ def channels(raw: list[str]) -> list[str]:
     return sorted(out, key=lambda n: n == "WOW")
 
 
+SKY_BL = re.compile(r"^Sky (?:Sport )?Bundesliga (\d+)$")  # Sky Bundesliga 4 (DE), Sky Sport Bundesliga 4 (AT)
+
+
+def _with_numbers(names: list[str], nums: list[str], style: str) -> list[str]:
+    """Nummerierte Sky-Bundesliga-Kanäle durch `nums` ersetzen (style: Name mit {n})."""
+    if not any(SKY_BL.match(n) for n in names):
+        return names
+    return [style.format(n=x) for x in nums] + [n for n in names if not SKY_BL.match(n)]
+
+
+def align_sky_numbers(tv: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Sky Österreich zeigt die Bundesliga auf denselben Sky-Bundesliga-Kanälen wie Sky Deutschland, also gilt
+    für beide Länder dieselbe Kanalnummer: die von LiveOnSat ("LS"), sonst die österreichische von FotMob
+    (stimmte 2026/27 jedes Mal mit LiveOnSat überein, die deutsche nicht). "LS" selbst wird nicht angezeigt."""
+    tv = dict(tv)
+    ls = tv.pop("LS", [])
+    nums = [m.group(1) for n in ls if (m := SKY_BL.match(n))]
+    nums = nums or [m.group(1) for n in tv.get("AT", []) if (m := SKY_BL.match(n))]
+    if not nums:
+        return tv
+    for country, style in (("DE", "Sky Bundesliga {n}"), ("AT", "Sky Sport Bundesliga {n}")):
+        if country in tv:
+            tv[country] = _with_numbers(tv[country], nums, style)
+    return tv
+
+
 def for_matches(competition: str, match_ids: list[int]) -> dict[int, dict[str, list[str]]]:
     """Match-ID -> {"DE": [...], "AT": [...]} mit den Kanälen für die Anzeige (API und Web)."""
     from fussballdb.db.session import engine
@@ -58,7 +92,7 @@ def for_matches(competition: str, match_ids: list[int]) -> dict[int, dict[str, l
         names = channels(raw) or (["noch offen"] if raw else [])  # z. B. "Noch zu bestätigen"
         if names:
             out.setdefault(match_id, {})[country] = names
-    return out
+    return {match_id: tv for match_id, tv in ((m, align_sky_numbers(v)) for m, v in out.items()) if tv}
 
 
 def _listings(country: str) -> list[dict]:
@@ -79,6 +113,26 @@ def _listings(country: str) -> list[dict]:
                             "kickoff": datetime.fromisoformat(match["utcTime"].replace("Z", "+00:00")),
                             "home": match["home"]["name"], "away": match["away"]["name"],
                             "channels": [c["name"] for c in match.get("channels", [])]})
+    return out
+
+
+def _liveonsat() -> list[dict]:
+    """Bundesliga-Spiele mit den Kanälen für Deutschland und Österreich laut LiveOnSat (nächste Spieltage)."""
+    page = get_text(LIVEONSAT_URL, headers=BROWSER_HEADERS)
+    out = []
+    for block in re.split(r"German 1\. Bundesliga - Week \d+", page)[1:]:
+        teams = re.search(r"\n\s*([^<\n]+?) v ([^<\n]+?)\s*\n", re.sub(r"<[^>]+>", "\n", block))
+        captions = re.findall(r"CAPTION, '([^']+?) &nbsp;&ndash;&nbsp;(\d{4}-\d\d-\d\d \d\d:\d\d):\d\d'", block)
+        if not teams or not captions:
+            continue
+        names = []
+        for raw, _ in captions:
+            name = re.sub(r"\s+(HD|UHD|HD max)$", "", html.unescape(raw).strip())
+            if LIVEONSAT_KEEP.match(name) and name not in names:
+                names.append(name)
+        out.append({"competition": "BL", "home": teams.group(1).strip(), "away": teams.group(2).strip(),
+                    "kickoff": datetime.fromisoformat(captions[0][1]).replace(tzinfo=timezone.utc),  # Angaben in UTC
+                    "channels": names})
     return out
 
 
@@ -110,15 +164,25 @@ def ingest(session: Session) -> dict:
     """TV-Sender laden und zuordnen. Liefert Anzahl zugeordneter Einträge und nicht zuordenbare Spiele."""
     candidates = _candidates(session)
     rows, unmatched = [], []
-    for country in COUNTRIES:
-        for item in _listings(country):
+    sources = [(c.upper(), lambda c=c: _listings(c)) for c in COUNTRIES] + [("LS", _liveonsat)]
+    for country, load in sources:
+        try:
+            items = load()
+        except Exception as exc:  # LiveOnSat ist nur Ergänzung: fällt es aus, bleibt FotMob
+            if country != "LS":
+                raise
+            unmatched.append(f"LiveOnSat nicht erreichbar: {exc}")
+            continue
+        for item in items:
             same_time = [c for c in candidates[item["competition"]] if c[1] == item["kickoff"]]
+            if not same_time and country == "LS":
+                continue  # LiveOnSat listet auch Spieltage weiter in der Zukunft
             scored = [(_similarity(item["home"], c[2]) + _similarity(item["away"], c[3]), c) for c in same_time]
             best = max(scored, default=None, key=lambda x: x[0])
             if best is None or best[0] < 1.0:  # beide Namen müssen halbwegs passen
                 unmatched.append(f"{item['competition']} {item['home']} – {item['away']}")
                 continue
-            rows.append({"competition": item["competition"], "match_id": best[1][0], "country": country.upper(),
+            rows.append({"competition": item["competition"], "match_id": best[1][0], "country": country,
                          "channels": json.dumps(item["channels"], ensure_ascii=False), "fetched_at": datetime.now().astimezone()})
     upsert(session, TvListing, rows, ["competition", "match_id", "country"])
     return {"zugeordnet": len(rows), "nicht_zugeordnet": sorted(set(unmatched))}
