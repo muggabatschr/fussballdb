@@ -108,6 +108,8 @@ export type SideAbsences = {
 export type Prediction = {
   heim?: string;
   gast?: string;
+  torschuetzen_heim?: Scorer[];
+  torschuetzen_gast?: Scorer[];
   spiel: { id: number; kickoff: string; matchday: number } | string;
   p_home: number;
   p_draw: number;
@@ -187,7 +189,10 @@ export type MatchdayGame = {
   points: number | null;
   explanation: string[];
   tv?: Partial<Record<"DE" | "AT", string[]>>;
+  torschuetzen?: { home: Scorer[]; away: Scorer[] };
 };
+
+export type Scorer = { name: string; p: number; tore: number };
 
 export type Bilanz = { spiele: number; punkte: number; tendenz: number; exakt: number };
 
@@ -242,9 +247,14 @@ export type ClTableRow = {
   p_playoffs?: number;
   p_aus?: number;
 };
-export type ClTable = { season: number; label: string; rows: ClTableRow[] };
+export type TableZone = { key: string; label: string; von: number; bis: number };
+export type ClTable = { season: number; label: string; rows: ClTableRow[]; zonen?: TableZone[]; wettbewerb?: string };
 export const getClTable = (season: number) => api<ClTable>(`/cl/table/${season}`);
 export const getClRound = (season: number, round: number) => api<ClRound>(`/cl/round/${season}/${round}`);
+export const getCompRounds = (comp: string) => api<ClSeason[]>(`/eu/${comp}/rounds`);
+export const getCompRound = (comp: string, season: number, round: number) =>
+  api<ClRound>(`/eu/${comp}/round/${season}/${round}`);
+export const getCompTable = (comp: string, season: number) => api<ClTable>(`/eu/${comp}/table/${season}`);
 export const getMatchday = (season: number, matchday: number) => api<Matchday>(`/matchday/${season}/${matchday}`);
 
 export type KickbaseRow = {
@@ -279,3 +289,14 @@ export type KickbaseRow = {
 
 export const getKickbaseProjections = (matchdays: number) =>
   api<KickbaseRow[]>(`/kickbase/projections?matchdays=${matchdays}`);
+
+export type LineupPlayer = { name: string; position: "TW" | "ABW" | "MF" | "ST"; team_name: string; kb_punkte: number; einsatz: number; gegner: string[] };
+export type KickbaseLineup = {
+  formation: string | null;
+  punkte: number | null;
+  elf: LineupPlayer[];
+  bank: LineupPlayer[];
+  ausfaelle: { name: string; position: string; grund: string }[];
+  hinweis?: string;
+};
+export const getKickbaseLineup = () => api<KickbaseLineup>("/kickbase/aufstellung");

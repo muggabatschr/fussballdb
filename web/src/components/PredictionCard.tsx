@@ -60,6 +60,17 @@ export function PredictionCard({ home, away, p }: { home: string; away: string; 
           Markt (Ø-Quoten): 1 {pct(marketProbs[0])} · X {pct(marketProbs[1])} · 2 {pct(marketProbs[2])}
         </p>
       )}
+      {Boolean(p.torschuetzen_heim?.length || p.torschuetzen_gast?.length) && (
+        <p className="text-xs text-muted">
+          Wer trifft?{" "}
+          {[p.torschuetzen_heim ?? [], p.torschuetzen_gast ?? []]
+            .flat()
+            .sort((a, b) => b.p - a.p)
+            .slice(0, 4)
+            .map((x) => `${x.name.split(" ").slice(-1)[0]} ${Math.round(x.p * 100)} %`)
+            .join(", ")}
+        </p>
+      )}
       <WhyTip tip={p.tipp} lines={p.begruendung} />
     </Card>
   );

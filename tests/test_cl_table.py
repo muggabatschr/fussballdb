@@ -14,8 +14,8 @@ def test_league_phase_table_with_model_place_and_projection(monkeypatch):
         game("A", "D", ph=0.97, pd_=0.02, pa=0.01),  # offen
         game("B", "C", ph=0.01, pd_=0.02, pa=0.97),  # offen
     ])
-    monkeypatch.setattr(cl_table, "_load", lambda season: df)
-    rows = {r["name"]: r for r in cl_table.table(2026, n=2000)}
+    monkeypatch.setattr(cl_table, "_load", lambda *args: df)
+    rows = {r["name"]: r for r in cl_table.table(2026, "CL", n=2000)}
     assert rows["B"]["platz"] == 1 and rows["A"]["platz"] == 4
     assert rows["B"]["platz_diff"] > 0 and rows["A"]["platz_diff"] < 0  # B steht besser als erwartet, A schlechter
     assert abs(sum(r["p_achtelfinale"] for r in rows.values()) - 400) < 1  # 4 Teams, alle unter den ersten 8

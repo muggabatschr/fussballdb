@@ -202,11 +202,11 @@ def _need_europe() -> str | None:
     if last_league and last_league < datetime.now(timezone.utc) - timedelta(days=4):
         return "Ligaspiele für die Europa-Elo älter als 4 Tage"
     missing = _scalar(
-        """SELECT count(*) FROM eu_match m WHERE m.competition = 'CL' AND NOT m.finished AND m.kickoff > now()
+        """SELECT count(*) FROM eu_match m WHERE m.competition IN ('CL', 'D2', 'DFB') AND NOT m.finished AND m.kickoff > now()
            AND NOT EXISTS (SELECT 1 FROM eu_prediction p WHERE p.match_id = m.id AND p.basis = 'live')"""
     )
     if missing:
-        return f"{missing} offene CL-Spiele ohne Prognose"
+        return f"{missing} offene Spiele (CL, 2. Liga, Pokal) ohne Prognose"
     last_pred = _scalar("SELECT max(as_of) FROM eu_prediction WHERE basis = 'live'")
     if last_pred and last_pred < datetime.now(timezone.utc) - timedelta(hours=24):
         return "CL-Prognosen älter als 24 Stunden"
@@ -324,8 +324,14 @@ def _run_europe() -> str:
         with session_scope() as s:
             n_values, _ = europe.ingest_values(s, start=(last_value or date(europe.FIRST_SEASON, 7, 1)) + timedelta(days=1),
                                                log=lambda m: None)
-    return (f"Europapokal {n_eu}, CL-xG {n_xg}, Ligaspiele {n_league}, Kaderwerte {n_values}, "
-            f"Rückblick {eu_backfill()}, Live {eu_predict()} CL-Prognosen")
+    with session_scope() as s:
+        n_de = europe.ingest_germany(s, [CURRENT_SEASON], log=lambda m: None)
+    from fussballdb.model.europe import PREDICTED_COMPETITIONS
+
+    back = sum(eu_backfill(c) for c in PREDICTED_COMPETITIONS)
+    live = sum(eu_predict(c) for c in PREDICTED_COMPETITIONS)
+    return (f"Europapokal {n_eu}, 2./3. Liga und Pokal {n_de}, xG {n_xg}, Ligaspiele {n_league}, "
+            f"Kaderwerte {n_values}, Prognosen CL/2. Liga/Pokal: Rückblick {back}, Live {live}")
 
 
 def _run_cl_absences() -> str:
@@ -364,7 +370,7 @@ STEPS = [
     Step("rueckblick", "Rückblick-Prognosen", _need_backfill, _run_backfill, timedelta(hours=6)),
     Step("kickbase", "Kickbase-Marktwerte und Liga", _need_kickbase_daily, _run_kickbase_daily, timedelta(hours=6)),
     Step("prognosen", "Live-Prognosen", _need_predictions, _run_predictions, timedelta(hours=1)),
-    Step("europa", "Champions League", _need_europe, _run_europe, timedelta(hours=6)),
+    Step("europa", "CL, 2. Liga, Pokal", _need_europe, _run_europe, timedelta(hours=6)),
     Step("cl_ausfaelle", "CL-Ausfälle", _need_cl_absences, _run_cl_absences, timedelta(hours=6)),
     Step("tv", "TV-Sender (DE, AT)", _need_tv, _run_tv, timedelta(hours=6)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,

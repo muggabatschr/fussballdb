@@ -1,8 +1,10 @@
-import type { Bilanz, Matchday, MatchdayGame, Punkteregel, Season } from "@/lib/api";
+import type { Bilanz, Matchday, MatchdayGame, Punkteregel, Scorer, Season } from "@/lib/api";
 import Image from "next/image";
 import { kickoff, num } from "@/lib/format";
+import { shortName } from "@/lib/teams";
 import { tvLogo } from "@/lib/tv";
 import { Card } from "./Card";
+import { CompetitionTabs } from "./CompetitionTabs";
 import { MatchdayNav } from "./MatchdayNav";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamName } from "./TeamName";
@@ -107,6 +109,7 @@ export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
             )}
           </p>
           {g.tip_home != null && <WhyTip tip={`${g.tip_home}:${g.tip_away}`} lines={g.explanation} />}
+          {!g.finished && <Scorers s={g.torschuetzen} home={g.home} away={g.away} />}
           {!g.finished && <TvLine tv={g.tv} />}
         </>
       ) : (
@@ -141,6 +144,35 @@ function groupChannels(names: string[]): { name: string; suffixes?: string[] }[]
     else out.push({ name, src: l?.src, suffixes: l?.suffix ? [l.suffix] : undefined });
   }
   return out;
+}
+
+const lastName = (n: string) => n.split(" ").slice(-1)[0];
+
+/** Wahrscheinlichste Torschützen je Team (Chance auf mindestens ein Tor), aufklappbar wie die Begründung. */
+function Scorers({ s, home, away }: { s?: MatchdayGame["torschuetzen"]; home: string; away: string }) {
+  if (!s || (!s.home.length && !s.away.length)) return null;
+  const line = (list: Scorer[]) => list.map((x) => `${lastName(x.name)} ${Math.round(x.p * 100)} %`).join(", ");
+  return (
+    <details className="group text-xs">
+      <summary className="flex cursor-pointer list-none items-center gap-1 whitespace-nowrap text-muted hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <span className="inline-block transition-transform group-open:rotate-90">▸</span>
+        Wer trifft?
+      </summary>
+      <ul className="mt-1.5 space-y-1 border-l border-border pl-3 text-muted">
+        {s.home.length > 0 && (
+          <li>
+            <span className="text-foreground/80">{shortName(home)}:</span> {line(s.home)}
+          </li>
+        )}
+        {s.away.length > 0 && (
+          <li>
+            <span className="text-foreground/80">{shortName(away)}:</span> {line(s.away)}
+          </li>
+        )}
+        <li className="text-[11px]">Chance auf mindestens ein Tor, aus xG, Einsatzchance und Torerwartung des Teams.</li>
+      </ul>
+    </details>
+  );
 }
 
 // gleiche Darstellung = gleicher Sender (Sky Bundesliga 1 in DE und Sky Sport Bundesliga 1 in AT)
@@ -200,6 +232,7 @@ export function MatchdayView({ seasons, data }: { seasons: Season[]; data: Match
   const label = seasons.find((s) => s.start_year === data.season)?.label;
   return (
     <div className="space-y-4">
+      <CompetitionTabs active="BL" />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="whitespace-nowrap text-xl font-semibold">
           {data.matchday}. Spieltag <span className="text-muted">{label}</span>

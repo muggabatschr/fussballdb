@@ -10,7 +10,9 @@ Was es alles gibt:
   Sperren, Kaderwerten und Quoten
 - **Prognosemodell** mit Wahrscheinlichkeiten, erwarteten Toren und einem Tipp nach der Punkteregel der
   Kicktipp-Runde, für kommende Spiele und im Rückblick mit dem damaligen Datenstand
-- **Champions League**: Prognosen und Tipps für alle CL-Spiele seit 2024/25 aus einer europaweiten Elo
+- **Champions League, 2. Bundesliga, DFB-Pokal**: Prognosen und Tipps aus einem Modell über alle Ligen
+- **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
+- **Torschützen-Prognose** je Spiel
 - **Web-App** mit Spieltagen, Tabelle, Teamseiten, Champions League, Chat und einem Kickbase-Tab
 - **Chat** mit einem lokalen Sprachmodell (LM Studio, ohne Cloud)
 - **MCP-Server** und Skill `/fussball`, damit Claude direkt auf die Daten zugreift
@@ -123,7 +125,7 @@ scripts/install.sh --launchd
 |---|---|
 | `--schnell` | ohne die langsamen Schritte (Verletzungshistorie, Kickbase-Punkte, Champions League); später mit `scripts/update.sh` bzw. `fussballdb europa` nachholen |
 | `--ohne-web` | ohne `npm install` |
-| `--launchd` | tägliches Update um 9:30 einrichten |
+| `--launchd` | tägliches Update um 9:30 und die Tipp-Erinnerung (alle 30 Min.) einrichten |
 | `--mcp` | MCP-Server in Claude Code eintragen (für alle Projekte) |
 | `--app` | am Ende API und Web-App in Docker starten |
 
@@ -243,7 +245,10 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 | `/chat` | Chat mit dem lokalen Modell |
 | `/cl`, `/cl/<saison>/<runde>` | Champions League: Runde mit Prognosen, Tipps und Bilanz, Saison- und Rundenauswahl |
 | `/cl/tabelle`, `/cl/tabelle/<saison>` | Tabelle der CL-Ligaphase mit Platzdifferenz zum Modell, darunter die geschätzte Abschlusstabelle der Ligaphase |
-| `/kickbase` | Kickbase-Prognose, Kauf- und Verkaufskandidaten |
+| `/tipps`, `/tipps/<saison>/<nr>` | Tipp-Zettel eines Spieltags: als Text kopieren oder als Bild teilen |
+| `/2bl`, `/2bl/<saison>/<runde>`, `/2bl/tabelle` | 2. Bundesliga: Spieltage mit Prognosen, Tabelle mit Aufstiegs- und Abstiegschancen |
+| `/pokal`, `/pokal/<saison>/<runde>` | DFB-Pokal: Runden mit Prognosen |
+| `/kickbase` | Kickbase-Prognose, Aufstellungsvorschlag, Kauf- und Verkaufskandidaten |
 
 **Tabelle:** Neben jedem Platz steht klein, wie viele Plätze ein Team besser (+) oder schlechter (−)
 steht, als es die Prognosen vor den bisherigen Spielen erwarten ließen. Dafür zählen je Spiel die erwarteten
@@ -260,6 +265,27 @@ Live-Prognosen). Die Werte stehen auch im Chat und im MCP-Werkzeug `tabelle`.
 unter der Prognosekarte („Markt (Ø-Quoten)“). Für einen Spieltag, den football-data noch nicht
 eingestellt hat, fehlt die Zeile. Die Quoten fließen nicht in Prognose oder Tipp ein, sie dienen nur dem
 Vergleich.
+
+**Wettbewerbe:** Über den Spieltagen und Runden lässt sich zwischen Bundesliga, 2. Liga, Pokal und CL
+umschalten.
+
+**Tipp-Zettel** (`/tipps`, Link „Tipp-Zettel“ neben der Spieltagsauswahl): alle Tipps eines Spieltags
+untereinander. „Als Text“ kopiert sie zum Einfügen, „Als Bild“ zeichnet ein PNG mit Wappen; auf dem Handy
+öffnet sich das Teilen-Menü (z. B. Messenger), am Rechner wird es heruntergeladen.
+
+**Erinnerung vor dem Tippschluss** (`fussballdb erinnerung`, `reminder.py`): Beginnt der nächste
+Bundesliga-Spieltag in weniger als 3 Stunden, kommt einmal eine Mac-Mitteilung mit allen Tipps. Fehlt ein
+Spieler aus dem eigenen Kickbase-Kader (verletzt laut Kickbase oder Transfermarkt), kommt eine zweite.
+Läuft alle 30 Minuten per launchd (`scripts/de.fussballdb.erinnerung.plist`, eingerichtet mit
+`scripts/install.sh --launchd`); ohne laufende Datenbank passiert nichts. Ausprobieren:
+`uv run fussballdb erinnerung --test`.
+
+**Wer trifft?** (aufklappbar in jeder offenen Bundesliga-Kachel, auch im Chat, `features/scorers.py`): die
+drei wahrscheinlichsten Torschützen je Team mit der Chance auf mindestens ein Tor. Grundlage sind xG pro
+90 Minuten (über 300 Tage, zum Positionsschnitt geglättet), die erwarteten Minuten aus Startelf-Quote,
+voraussichtlicher Aufstellung und Ausfällen sowie die Torerwartung des Teams gegen diesen Gegner;
+P = 1 − e^(−erwartete Tore). Nicht im Rückblick getestet. Bei Topstürmern liegt der Wert eher niedrig, weil
+die Glättung sie zum Positionsschnitt zieht (Kane gegen Freiburg 39 %).
 
 **xG in der Kachel:** Bei gespielten Bundesliga-Spielen steht unter dem Ergebnis das xG und unter jedem Team
 die Differenz Tore minus xG: grün = mehr Tore als die Chancen hergaben (überperformt), orange = weniger
@@ -305,6 +331,10 @@ uv run fussballdb kickbase-login
 ```bash
 uv run fussballdb kickbase      # alle Spieler mit Punkte- und Marktwert-Verlauf (beim ersten Mal ~1 Std.)
 ```
+
+**Aufstellung** (oben im Kickbase-Tab, `features/kickbase_lineup.py`): die Elf mit den meisten erwarteten
+Punkten am nächsten Spieltag aus dem eigenen Kader, über alle Kickbase-Formationen (3-4-3 bis 5-4-1, immer
+ein Torwart). Verletzte oder gesperrte eigene Spieler stehen rot darüber und spielen nicht mit.
 
 **Erwartete Punkte**: Ein lineares Modell je Position (`features/kickbase_points.py`) erklärt echte
 Kickbase-Punkte aus Einsatz, Startelf, Minuten, Toren, Vorlagen, Gegentoren, zu null, Sieg/Remis und
@@ -416,6 +446,25 @@ das OpenLigaDB-Kürzel in `ingest/europe.py` (`EURO_COMPETITIONS`) ergänzt werd
 kleinen Ländern unter `CLUBS` und `OLDB_NAMES`. Der Import bricht bei unbekannten Namen mit einer klaren
 Meldung ab.
 
+## 2. Bundesliga und DFB-Pokal
+
+Beide laufen über dasselbe Modell wie die Champions League (`model/europe.py`): Ligaspiele von OpenLigaDB
+(2. und 3. Liga seit 2022/23, DFB-Pokal seit 2024/25) kommen zu den europäischen Ligen dazu, Kaderwerte von
+Transfermarkt (L2, L3). Frühere Bundesligisten bleiben dasselbe Team über alle Ligen; Amateure im Pokal
+ohne Liga- und Kaderdaten starten deutlich schwächer (Elo 400 unter dem Basiswert, im Dixon-Coles
+Angriff −0,6 / Abwehr +0,6). Für die 2. Liga gibt es kein xG, ihr Dixon-Coles rechnet mit Toren.
+
+Rückblick-Test (`fussballdb cl-xg-test` mit `competition`, eingestellt an 2024/25):
+
+| | Elo | Dixon-Coles allein | xG/Elo 70/30 + Form | übernommen |
+|---|---|---|---|---|
+| 2. Bundesliga (1.296 Spiele) | 0,2234 | 0,2235 | 0,2231 | Elo: im Einstelljahr am besten, Mischungen danach kaum besser (87 %) |
+| DFB-Pokal (158 Spiele) | 0,1708 | **0,1420** | 0,1483 | Dixon-Coles allein: in allen Saisons besser, 99 % der Ziehungen |
+
+Seiten: `/2bl` (Spieltage), `/2bl/tabelle` (Tabelle mit Modell-Platz und Hochrechnung: Aufstieg,
+Relegation, Abstieg), `/pokal` (Runden). MCP: `wettbewerb` (D2, DFB oder CL) und `tabelle_2_liga`.
+Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl-prognosen`.
+
 ## Zugriff aus Claude (MCP)
 
 `fussballdb-mcp` ist ein MCP-Server mit den Werkzeugen `naechste_spiele`, `spieltag`, `prognose`,
@@ -457,6 +506,8 @@ nach einem Neustart von Claude Desktop.
 | `tabelle` | Tabelle mit xG und xPts |
 | `kickbase` | erwartete Kickbase-Punkte, Marktwert, Trend, Punkte pro Million; `auswahl` = alle, markt oder kader |
 | `champions_league` | eine CL-Runde mit Prognosen, Tipps, Elo, Kaderwerten und Bilanz; ohne Angaben die aktuelle, mit `saison` allein die Rundenliste |
+| `wettbewerb` | Runde der 2. Bundesliga (`D2`), des DFB-Pokals (`DFB`) oder der CL mit Prognosen und Tipps |
+| `tabelle_2_liga` | Tabelle der 2. Bundesliga mit Modell-Platz und Hochrechnung (Aufstieg, Relegation, Abstieg) |
 | `cl_tabelle` | Tabelle der CL-Ligaphase mit Modell-Platz und Hochrechnung (Achtelfinale, Play-offs, Aus) |
 | `sql` | freie Abfrage, nur lesend |
 | `datenstand` | wie aktuell die Daten sind, mit Hinweis, wenn eine Quelle noch nichts bereitgestellt hat |
@@ -487,7 +538,8 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb ensure` | Prüfen und nur nötige Schritte ausführen (`--voll`: alle, `--ohne-langsame`: ohne Verletzungshistorie und Kickbase-Punkte) |
 | `fussballdb status` | Anzeigen, was aktuell ist und was fehlt |
 | `fussballdb europa` | Champions League: Europapokal- und Ligaspiele, Kaderwerte aus 30 Ländern, Wappen laden (`--no-werte` ohne Kaderwerte) |
-| `fussballdb cl-prognosen` | CL-Prognosen rechnen: Rückblick für gespielte Runden, live für offene (`--force` rechnet alle neu) |
+| `fussballdb cl-prognosen` | Prognosen für CL, 2. Liga und Pokal: Rückblick für gespielte Runden, live für offene (`--force` rechnet alle neu, `--wettbewerb D2`) |
+| `fussballdb erinnerung` | Mac-Mitteilung mit den Tipps, wenn der Spieltag in < 3 Std. beginnt (`--test` sofort) |
 | `fussballdb cl-test` | CL-Prognose rückwirkend testen (Modell, Varianten, Grundverteilung, Tipp-Punkte) |
 | `fussballdb update` | Alle schnellen Schritte (wie `ensure --voll --ohne-langsame`) |
 | `fussballdb ingest -s 2026` | Einzelne Saison(s) importieren |
@@ -745,6 +797,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     xG-Modell mit Form (70/30 mit der Elo), Ausfälle der CL-Teams als Anzeige.
 21. **Europapokal-Belastung** für die Bundesliga (−10 % Torerwartung nach Europapokalspiel).
 22. **Chat**: Tipp in der Prognosekarte, offizielle Teamnamen für Wappen.
+23. **Tipp-Zettel** (Text und Bild), Erinnerung vor dem Tippschluss, Torschützen-Prognose,
+    Kickbase-Aufstellung, 2. Bundesliga und DFB-Pokal.
 
 Offen:
 

@@ -218,7 +218,7 @@ def backtest(
 def europa(
     werte: Annotated[bool, typer.Option(help="Kaderwerte von Transfermarkt laden (beim ersten Mal ~25 Min.)")] = True,
 ) -> None:
-    """Champions League: Europapokal-Spiele, CL-xG (FotMob), Ligaspiele aus 18 Ländern, Kaderwerte und Wappen laden."""
+    """CL, 2. Liga, Pokal: Europapokal-, Liga- und Pokalspiele, xG (Understat, FotMob), Kaderwerte und Wappen laden."""
     from fussballdb.db.session import session_scope
     from fussballdb.ingest import europe
 
@@ -226,6 +226,9 @@ def europa(
         console.print(f"Europapokal: {europe.ingest_euro(s)} Spiele")
     with session_scope() as s:
         console.print(f"Ligen: {europe.ingest_domestic(s, list(range(europe.FIRST_SEASON, max(DEFAULT_SEASONS) + 1)))} Spiele")
+    with session_scope() as s:
+        n_de = europe.ingest_germany(s, list(range(europe.FIRST_SEASON, max(DEFAULT_SEASONS) + 1)))
+    console.print(f"2. Liga, 3. Liga, DFB-Pokal: {n_de} Spiele")
     if werte:
         with session_scope() as s:
             n, unknown = europe.ingest_values(s, log=console.print)
@@ -265,12 +268,13 @@ def cl_test() -> None:
 @app.command("cl-prognosen")
 def cl_prognosen(
     force: Annotated[bool, typer.Option(help="Rückblick-Prognosen neu berechnen")] = False,
+    wettbewerb: Annotated[str | None, typer.Option(help="CL, D2 (2. Bundesliga) oder DFB (Pokal); Standard: alle")] = None,
 ) -> None:
-    """Champions League: Rückblick-Prognosen für gespielte Runden und Live-Prognosen für offene Spiele."""
-    from fussballdb.model.europe import backfill, predict_upcoming
+    """CL, 2. Bundesliga, DFB-Pokal: Rückblick-Prognosen für gespielte Runden, Live-Prognosen für offene Spiele."""
+    from fussballdb.model.europe import PREDICTED_COMPETITIONS, backfill, predict_upcoming
 
-    console.print(f"Rückblick: {backfill(force=force)} Prognosen")
-    console.print(f"Live: {predict_upcoming()} Prognosen")
+    for comp in [wettbewerb.upper()] if wettbewerb else PREDICTED_COMPETITIONS:
+        console.print(f"{comp}: Rückblick {backfill(comp, force=force)}, Live {predict_upcoming(comp)} Prognosen")
 
 
 @app.command("abschluss-test")
@@ -284,6 +288,18 @@ def abschluss_test(
     res = compare_finishing_combo(progress=progress) if kombi else compare_finishing(progress=progress)
     console.print(res.round(5).to_string(index=False))
     console.print("delta < 0 = besser. Übernommen wird nur, was im Test in mindestens ~90 % der Ziehungen besser ist.")
+
+
+@app.command()
+def erinnerung(
+    stunden: Annotated[float, typer.Option(help="So viele Stunden vor dem ersten Anpfiff erinnern")] = 3.0,
+    test: Annotated[bool, typer.Option(help="Sofort eine Mitteilung schicken (zum Ausprobieren)")] = False,
+) -> None:
+    """Mac-Mitteilung mit den Tipps, wenn der nächste Bundesliga-Spieltag bald beginnt (einmal je Spieltag).
+    Läuft alle 30 Minuten per launchd (scripts/de.fussballdb.erinnerung.plist)."""
+    from fussballdb.reminder import remind
+
+    console.print(remind(hours=stunden, force=test))
 
 
 @app.command("belastung-test")

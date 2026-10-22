@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>de.fussballdb.erinnerung</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PROJEKT__/scripts/erinnerung.sh</string>
+  </array>
+  <!-- Vorlage: scripts/install.sh --launchd setzt Projekt- und Home-Pfad ein. Alle 30 Minuten prüfen, ob der
+       nächste Spieltag in weniger als 3 Stunden beginnt; dann einmal die Tipps als Mac-Mitteilung -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/fussballdb-erinnerung.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/fussballdb-erinnerung.log</string>
+</dict>
+</plist>

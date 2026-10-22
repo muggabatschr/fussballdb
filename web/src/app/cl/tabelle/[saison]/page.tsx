@@ -1,9 +1,9 @@
 import { Suspense } from "react";
-import { ClTablePage } from "../ClTablePage";
+import { CompTablePage } from "@/components/CompPages";
 
 async function Content({ params }: { params: PageProps<"/cl/tabelle/[saison]">["params"] }) {
   const { saison } = await params;
-  return <ClTablePage season={Number(saison)} />;
+  return <CompTablePage comp="CL" season={Number(saison)} />;
 }
 
 export default function Page(props: PageProps<"/cl/tabelle/[saison]">) {

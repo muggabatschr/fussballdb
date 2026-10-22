@@ -1,14 +1,9 @@
 import { Suspense } from "react";
-import { ErrorBox } from "@/components/Card";
-import { ClView } from "@/components/ClView";
-import { getClRound, getClRounds, load } from "@/lib/api";
+import { CompRoundPage } from "@/components/CompPages";
 
 async function Content({ params }: { params: PageProps<"/cl/[saison]/[runde]">["params"] }) {
   const { saison, runde } = await params;
-  const res = await load(() => Promise.all([getClRounds(), getClRound(Number(saison), Number(runde))]));
-  if (!res.ok) return <ErrorBox message={res.error} />;
-  const [seasons, data] = res.data;
-  return <ClView seasons={seasons} data={data} />;
+  return <CompRoundPage comp="CL" season={Number(saison)} round={Number(runde)} />;
 }
 
 export default function Page(props: PageProps<"/cl/[saison]/[runde]">) {

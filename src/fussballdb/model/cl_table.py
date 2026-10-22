@@ -16,6 +16,14 @@ from fussballdb.db.session import engine
 LEAGUE_PHASE_ROUNDS = 8
 N_SIMS = 10_000
 
+# Tabellen je Wettbewerb: berücksichtigte Runden und Zonen (Schlüssel, Beschriftung, Platz von, bis)
+ZONES = {
+    "CL": {"rounds": LEAGUE_PHASE_ROUNDS, "zones": [("p_achtelfinale", "Achtelfinale", 1, 8),
+                                                   ("p_playoffs", "Play-offs", 9, 24), ("p_aus", "Aus", 25, 36)]},
+    "D2": {"rounds": 34, "zones": [("p_aufstieg", "Aufstieg", 1, 2), ("p_relegation_oben", "Relegation", 3, 3),
+                                   ("p_relegation_unten", "Rel. unten", 16, 16), ("p_abstieg", "Abstieg", 17, 18)]},
+}
+
 # Prognose je Spiel wie in der Rundenansicht: Live-Prognose von vor dem Anpfiff, sonst Rückblick
 _PRED = """
     LEFT JOIN LATERAL (
@@ -24,15 +32,15 @@ _PRED = """
     ) p ON true"""
 
 
-def _load(season: int) -> pd.DataFrame:
+def _load(season: int, competition: str = "CL", max_round: int = LEAGUE_PHASE_ROUNDS) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(f"""
             SELECT ht.name AS home, at.name AS away, m.home_goals AS hg, m.away_goals AS ag, m.finished,
                    p.p_home, p.p_draw, p.p_away, p.exp_home_goals AS eh, p.exp_away_goals AS ea
             FROM eu_match m JOIN eu_team ht ON ht.id = m.home_id JOIN eu_team at ON at.id = m.away_id
             {_PRED}
-            WHERE m.competition = 'CL' AND m.season = :y AND m.round_no <= :r"""),
-            conn, params={"y": season, "r": LEAGUE_PHASE_ROUNDS})
+            WHERE m.competition = :c AND m.season = :y AND m.round_no <= :r"""),
+            conn, params={"y": season, "r": max_round, "c": competition})
 
 
 def _rank(points, goal_diff, goals) -> np.ndarray:
@@ -42,9 +50,11 @@ def _rank(points, goal_diff, goals) -> np.ndarray:
     return rank
 
 
-def table(season: int, n: int = N_SIMS, seed: int = 0) -> list[dict]:
-    """Ligaphasen-Tabelle, sortiert nach heutigem Platz. Felder der Hochrechnung nur, solange Spiele offen sind."""
-    df = _load(season)
+def table(season: int, competition: str = "CL", n: int = N_SIMS, seed: int = 0) -> list[dict]:
+    """Tabelle (CL-Ligaphase oder 2. Bundesliga), sortiert nach heutigem Platz. Felder der Hochrechnung nur,
+    solange Spiele offen sind; die Zonen-Chancen stehen in ZONES."""
+    cfg = ZONES[competition]
+    df = _load(season, competition, cfg["rounds"])
     if df.empty:
         return []
     teams = sorted(set(df["home"]) | set(df["away"]))
@@ -110,8 +120,7 @@ def table(season: int, n: int = N_SIMS, seed: int = 0) -> list[dict]:
         proj[np.lexsort((-sim.mean(axis=0), mean_rank))] = np.arange(1, k + 1)
         for row in rows:
             i = idx[row["name"]]
-            row |= {"prognose_platz": int(proj[i]), "erw_punkte": round(float(sim[:, i].mean()), 1),
-                    "p_achtelfinale": round(100 * float((ranks[:, i] <= 8).mean()), 1),
-                    "p_playoffs": round(100 * float(((ranks[:, i] > 8) & (ranks[:, i] <= 24)).mean()), 1),
-                    "p_aus": round(100 * float((ranks[:, i] > 24).mean()), 1)}
+            row |= {"prognose_platz": int(proj[i]), "erw_punkte": round(float(sim[:, i].mean()), 1)}
+            for key, _, lo, hi in cfg["zones"]:
+                row[key] = round(100 * float(((ranks[:, i] >= lo) & (ranks[:, i] <= hi)).mean()), 1)
     return sorted(rows, key=lambda r: r["platz"])

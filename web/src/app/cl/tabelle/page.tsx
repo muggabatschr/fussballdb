@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { ClTablePage } from "./ClTablePage";
+import { CompTablePage } from "@/components/CompPages";
 
 export default function Page() {
   return (
     <Suspense fallback={<p className="text-muted">Lade Tabelle …</p>}>
-      <ClTablePage />
+      <CompTablePage comp="CL" />
     </Suspense>
   );
 }

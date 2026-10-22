@@ -107,6 +107,15 @@ def _player_table(apps: pd.DataFrame) -> pd.DataFrame:
 
 
 def projections(matchdays: int = 1) -> pd.DataFrame:
+    df = match_rows(matchdays)
+    if df.empty:
+        return df
+    return _aggregate(df)
+
+
+def match_rows(matchdays: int = 1) -> pd.DataFrame:
+    """Erwartete Ereignisse je Spieler und Spiel der nächsten `matchdays` Spieltage (vor der Summierung).
+    Grundlage für Kickbase und die Torschützen-Prognose (features/scorers.py)."""
     apps = pd.read_sql(APPS_SQL, engine, params={"days": WINDOW_DAYS})
     apps["kickoff"] = pd.to_datetime(apps["kickoff"], utc=True)
     fixtures = pd.read_sql(FIXTURES_SQL, engine, params={"y": max(DEFAULT_SEASONS)})
@@ -155,6 +164,7 @@ def projections(matchdays: int = 1) -> pd.DataFrame:
                 minutes = p_start * 85 + p_sub * float(p["sub_minutes"])
                 share = minutes / 90
                 rows.append({
+                    "match_id": int(f.match_id),
                     "player_id": int(pid), "name": p["name"], "team_id": int(team), "team_name": team_name,
                     "position": p["position"],
                     "matchday": int(f.matchday), "kickoff": f.kickoff, "gegner": opp, "heim": team == f.home_team_id,
@@ -168,9 +178,11 @@ def projections(matchdays: int = 1) -> pd.DataFrame:
                     "p_win": (p_win or 0) * min(p_start + p_sub, 1.0), "p_draw": (p_draw or 0) * min(p_start + p_sub, 1.0),
                     "conceded_exp": opp_goals * min(share, 1.0), "clean_exp": p_clean * p_start,
                 })
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
+    return pd.DataFrame(rows)
+
+
+def _aggregate(df: pd.DataFrame) -> pd.DataFrame:
+    kb = pd.read_sql(KB_SQL, engine).drop_duplicates("player_id").set_index("player_id")
     df["kb_punkte"] = _expected_kickbase_points(df)
     # über mehrere Spieltage aufsummieren
     agg = df.groupby(["player_id", "name", "team_id", "team_name", "position"], as_index=False).agg(

@@ -129,6 +129,22 @@ def seasons():
     )
 
 
+_SCORER_CACHE: dict = {}
+
+
+def _scorers() -> dict:
+    """Torschützen-Prognose für alle offenen Spiele der Saison, 10 Minuten zwischengespeichert."""
+    import time
+
+    from fussballdb.features.scorers import scorers
+
+    if _SCORER_CACHE.get("t", 0) > time.time() - 600:
+        return _SCORER_CACHE["data"]
+    data = scorers(matchdays=34)
+    _SCORER_CACHE.update(t=time.time(), data=data)
+    return data
+
+
 @app.get("/matchday/{season}/{matchday}")
 def matchday(season: int, matchday: int):
     """Alle Spiele eines Spieltags mit Ergebnis, gespeicherter Prognose, Tipp und Tipp-Punkten
@@ -167,9 +183,14 @@ def matchday(season: int, matchday: int):
         y=season, md=matchday, v=MODEL_VERSION,
     )[0]
     tv = tv_for("BL", [g["id"] for g in games])
+    scorers = _scorers() if any(not g["finished"] for g in games) else {}
+    team_ids = {r["name"]: r["id"] for r in _rows("SELECT id, name FROM team")}
     for g in games:
         g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
         g["tv"] = tv.get(g["id"], {})
+        sc = scorers.get(g["id"], {})
+        if sc:
+            g["torschuetzen"] = {"home": sc.get(team_ids.get(g["home"]), []), "away": sc.get(team_ids.get(g["away"]), [])}
     scored = [g for g in games if g["points"] is not None]
     return {
         "season": season,
@@ -187,16 +208,35 @@ def matchday(season: int, matchday: int):
     }
 
 
+# Wettbewerbe mit eigener Prognose aus dem Europa-Modell (model/europe.py)
+COMPETITIONS = {"CL": "Champions League", "D2": "2. Bundesliga", "DFB": "DFB-Pokal"}
+
+
+def _comp(comp: str) -> str:
+    comp = comp.upper()
+    if comp not in COMPETITIONS:
+        raise ValueError(f"Unbekannter Wettbewerb {comp}. Möglich: {', '.join(COMPETITIONS)}")
+    return comp
+
+
 @app.get("/cl/rounds")
 def cl_rounds():
     """Champions-League-Runden aller Saisons (Spieltage der Ligaphase, Play-offs, K.-o.-Runden) mit der
     aktuellen Runde je Saison (erste mit offenen Spielen)."""
+    return comp_rounds("CL")
+
+
+@app.get("/eu/{comp}/rounds")
+def comp_rounds(comp: str):
+    """Runden aller Saisons eines Wettbewerbs (CL, D2 = 2. Bundesliga, DFB = DFB-Pokal) mit der aktuellen Runde."""
+    comp = _comp(comp)
     rows = _rows(
         """
         SELECT season, round_no, min(round_name) AS round_name, count(*) AS spiele,
                bool_and(finished) AS finished, min(kickoff) AS start
-        FROM eu_match WHERE competition = 'CL' GROUP BY season, round_no ORDER BY season DESC, round_no
-        """
+        FROM eu_match WHERE competition = :c AND season >= 2024
+        GROUP BY season, round_no ORDER BY season DESC, round_no
+        """, c=comp,
     )
     seasons: dict[int, dict] = {}
     for r in rows:
@@ -246,18 +286,36 @@ def _cl_absences(match_ids: list[int]) -> dict[tuple[int, str], str]:
 def cl_table(season: int):
     """Tabelle der CL-Ligaphase mit Modell-Platz (platz_diff > 0 = besser als laut Prognosen erwartet) und,
     solange Spiele offen sind, der Hochrechnung (prognose_platz, erw_punkte, p_achtelfinale, p_playoffs, p_aus)."""
-    from fussballdb.model.cl_table import table
+    return comp_table("CL", season)
 
-    rows = table(season)
+
+@app.get("/eu/{comp}/table/{season}")
+def comp_table(comp: str, season: int):
+    """Tabelle (CL: Ligaphase, D2: 2. Bundesliga) mit Modell-Platz und Hochrechnung samt Zonen-Chancen."""
+    from fussballdb.model.cl_table import ZONES, table
+
+    comp = _comp(comp)
+    if comp not in ZONES:
+        raise ValueError(f"Für {COMPETITIONS[comp]} gibt es keine Tabelle.")
+    rows = table(season, comp)
     if not rows:
-        raise ValueError(f"Keine Ligaphase für die CL-Saison {season}.")
-    return {"season": season, "label": f"{season}/{(season + 1) % 100:02d}", "rows": rows}
+        raise ValueError(f"Keine Tabelle für {COMPETITIONS[comp]} {season}.")
+    zones = [{"key": k, "label": label, "von": a, "bis": b} for k, label, a, b in ZONES[comp]["zones"]]
+    return {"season": season, "label": f"{season}/{(season + 1) % 100:02d}", "rows": rows, "zonen": zones,
+            "wettbewerb": COMPETITIONS[comp]}
 
 
 @app.get("/cl/round/{season}/{round_no}")
 def cl_round(season: int, round_no: int):
-    """Spiele einer CL-Runde mit Prognose, Tipp und Tipp-Punkten. Bei gespielten Spielen zählt die
-    Live-Prognose von vor dem Anpfiff, sonst die Rückblick-Prognose (Stand vor der Runde)."""
+    """Spiele einer CL-Runde mit Prognose, Tipp und Tipp-Punkten."""
+    return comp_round("CL", season, round_no)
+
+
+@app.get("/eu/{comp}/round/{season}/{round_no}")
+def comp_round(comp: str, season: int, round_no: int):
+    """Spiele einer Runde (CL, 2. Bundesliga, DFB-Pokal) mit Prognose, Tipp und Tipp-Punkten. Bei gespielten
+    Spielen zählt die Live-Prognose von vor dem Anpfiff, sonst die Rückblick-Prognose (Stand vor der Runde)."""
+    comp = _comp(comp)
     games = _rows(
         f"""
         SELECT m.id, m.kickoff, m.round_name, m.neutral, ht.name AS home, at.name AS away,
@@ -274,15 +332,15 @@ def cl_round(season: int, round_no: int):
             SELECT * FROM eu_prediction x WHERE x.match_id = m.id
             ORDER BY (x.basis = 'live' AND x.as_of <= m.kickoff) DESC, (x.basis = 'rueckblick') DESC LIMIT 1
         ) p ON true
-        WHERE m.competition = 'CL' AND m.season = :y AND m.round_no = :r
+        WHERE m.competition = :c AND m.season = :y AND m.round_no = :r
         ORDER BY m.kickoff, m.id
         """,
-        y=season, r=round_no,
+        y=season, r=round_no, c=comp,
     )
     if not games:
-        raise ValueError(f"Runde {round_no} der CL-Saison {season} gibt es nicht.")
-    tv = tv_for("CL", [g["id"] for g in games])
-    missing = _cl_absences([g["id"] for g in games if not g["finished"]])
+        raise ValueError(f"Runde {round_no} der Saison {season} gibt es im Wettbewerb {COMPETITIONS[comp]} nicht.")
+    tv = tv_for(comp, [g["id"] for g in games])
+    missing = _cl_absences([g["id"] for g in games if not g["finished"]]) if comp == "CL" else {}
     for g in games:
         g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
         g["tv"] = tv.get(g["id"], {})
@@ -298,9 +356,9 @@ def cl_round(season: int, round_no: int):
             SELECT * FROM eu_prediction x WHERE x.match_id = m.id
             ORDER BY (x.basis = 'live' AND x.as_of <= m.kickoff) DESC, (x.basis = 'rueckblick') DESC LIMIT 1
         ) p ON true
-        WHERE m.competition = 'CL' AND m.season = :y AND m.round_no <= :r
+        WHERE m.competition = :c AND m.season = :y AND m.round_no <= :r
         """,
-        y=season, r=round_no,
+        y=season, r=round_no, c=comp,
     )
     season_scored = [r["points"] for r in season_rows if r["points"] is not None]
 
@@ -310,6 +368,7 @@ def cl_round(season: int, round_no: int):
 
     return {
         "season": season, "round_no": round_no, "round_name": games[0]["round_name"], "games": games,
+        "wettbewerb": COMPETITIONS[comp],
         "summary": summary([g["points"] for g in scored]), "season_summary": summary(season_scored),
         "punkteregel": {"sieg_tendenz": WIN_TENDENCY, "sieg_tordifferenz": WIN_DIFF, "exakt": EXACT,
                         "remis_tendenz": DRAW_TENDENCY},
@@ -323,6 +382,14 @@ def kickbase_projections(matchdays: Annotated[int, Query(ge=1, le=10)] = 1):
 
     df = projections(matchdays)
     return json.loads(df.to_json(orient="records", force_ascii=False)) if not df.empty else []
+
+
+@app.get("/kickbase/aufstellung")
+def kickbase_lineup():
+    """Beste Elf aus dem eigenen Kickbase-Kader für den nächsten Spieltag, dazu Ausfälle im Kader."""
+    from fussballdb.features.kickbase_lineup import lineup
+
+    return json.loads(json.dumps(lineup(), default=str))
 
 
 class SqlQuery(BaseModel):

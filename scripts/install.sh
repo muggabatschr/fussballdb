@@ -6,7 +6,7 @@
 #   scripts/install.sh              alles einrichten (beim ersten Mal 1–2 Std., v. a. Import und Verletzungshistorie)
 #   scripts/install.sh --schnell    ohne die langsamen Schritte (Verletzungshistorie, Kickbase-Punkte, Champions League)
 #   scripts/install.sh --ohne-web   ohne npm install für die Web-App
-#   scripts/install.sh --launchd    zusätzlich das tägliche Update um 9:30 einrichten (macOS)
+#   scripts/install.sh --launchd    zusätzlich das tägliche Update um 9:30 und die Tipp-Erinnerung einrichten (macOS)
 #   scripts/install.sh --mcp        zusätzlich den MCP-Server in Claude Code eintragen
 #   scripts/install.sh --app        am Ende API und Web-App in Docker starten (http://localhost:3010)
 set -euo pipefail
@@ -95,13 +95,15 @@ if [ "$WEB" = 1 ]; then
 fi
 
 if [ "$LAUNCHD" = 1 ]; then
-  schritt "Tägliches Update um 9:30 (launchd)"
-  ZIEL="$HOME/Library/LaunchAgents/de.fussballdb.snapshot.plist"
+  schritt "Tägliches Update um 9:30 und Tipp-Erinnerung (launchd)"
   mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-  sed -e "s#__PROJEKT__#$PROJEKT#g" -e "s#__HOME__#$HOME#g" scripts/de.fussballdb.snapshot.plist > "$ZIEL"
-  launchctl bootout "gui/$(id -u)/de.fussballdb.snapshot" 2>/dev/null || true
-  launchctl bootstrap "gui/$(id -u)" "$ZIEL"
-  echo "eingerichtet, Log: ~/Library/Logs/fussballdb-snapshot.log"
+  for job in snapshot erinnerung; do
+    ZIEL="$HOME/Library/LaunchAgents/de.fussballdb.$job.plist"
+    sed -e "s#__PROJEKT__#$PROJEKT#g" -e "s#__HOME__#$HOME#g" "scripts/de.fussballdb.$job.plist" > "$ZIEL"
+    launchctl bootout "gui/$(id -u)/de.fussballdb.$job" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$ZIEL"
+  done
+  echo "eingerichtet, Logs: ~/Library/Logs/fussballdb-snapshot.log und fussballdb-erinnerung.log"
 fi
 
 if [ "$MCP" = 1 ]; then

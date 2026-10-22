@@ -58,7 +58,8 @@ TOOLS = [
         "description": "Modellprognose (Dixon-Coles auf xG mit Formkomponente + Elo, Kaderwert als Startstärke, "
                        "korrigiert um die aktuelle Verletztenliste) für eine Paarung: "
                        "Wahrscheinlichkeiten Heimsieg/Remis/Auswärtssieg, erwartete Tore, wahrscheinlichste Ergebnisse, "
-                       "Über 2,5 Tore, beide treffen, Ausfälle mit ihrem Einfluss und Marktquoten falls vorhanden.",
+                       "Über 2,5 Tore, beide treffen, Ausfälle mit ihrem Einfluss, Marktquoten falls vorhanden und die "
+                       "wahrscheinlichsten Torschützen je Team (p = Chance auf mindestens ein Tor).",
         "input_schema": {"type": "object", "properties": {"home": {"type": "string"}, "away": {"type": "string"}},
                          "required": ["home", "away"], "additionalProperties": False},
     },
@@ -195,14 +196,24 @@ class Toolbox:
         from fussballdb.model.predict import market_probs
 
         names = {r["id"]: r["name"] for r in _rows("SELECT id, name FROM team WHERE id IN (:h, :a)", h=h, a=a)}
+        scorer_info = {}
+        if match_id is not None:
+            from fussballdb.features.scorers import scorers
+            sc = scorers(matchdays=34).get(match_id, {})
+            scorer_info = {"torschuetzen_heim": sc.get(h, []), "torschuetzen_gast": sc.get(a, [])}
         begruendung = explain(p, names[h], names[a], market_probs().get(match_id) if match_id else None)
         market = _rows(
             "SELECT bookmaker, is_closing, home, draw, away FROM odds WHERE match_id = :m AND bookmaker IN ('Avg', 'B365')",
             m=match_id) if match_id else []
         r = lambda x: round(float(x), 3)
         names = {r["id"]: r["name"] for r in _rows("SELECT id, name FROM team WHERE id IN (:h, :a)", h=h, a=a)}
+        scorer_info = {}
+        if match_id is not None:
+            from fussballdb.features.scorers import scorers
+            sc = scorers(matchdays=34).get(match_id, {})
+            scorer_info = {"torschuetzen_heim": sc.get(h, []), "torschuetzen_gast": sc.get(a, [])}
         return {
-            "heim": names.get(h), "gast": names.get(a),
+            "heim": names.get(h), "gast": names.get(a), **scorer_info,
             "spiel": match[0] if match else "kein angesetztes Spiel gefunden, Prognose als hypothetische Paarung",
             "p_home": r(p["p_home"]), "p_draw": r(p["p_draw"]), "p_away": r(p["p_away"]),
             "exp_goals": [r(p["exp_home_goals"]), r(p["exp_away_goals"])],

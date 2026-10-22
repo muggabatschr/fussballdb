@@ -13,6 +13,7 @@ import csv
 import difflib
 import io
 import re
+import time
 import unicodedata
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -39,7 +40,7 @@ FD_EXTRA = ("AUT", "SWZ", "DNK", "NOR", "SWE", "POL", "ROU")
 TM_LEAGUE = {
     "E0": "GB1", "SP1": "ES1", "I1": "IT1", "D1": "L1", "F1": "FR1", "N1": "NL1", "P1": "PO1",
     "B1": "BE1", "T1": "TR1", "SC0": "SC1", "G1": "GR1", "AUT": "A1", "SWZ": "C1", "DNK": "DK1",
-    "NOR": "NO1", "SWE": "SE1", "POL": "PL1", "ROU": "RO1",
+    "NOR": "NO1", "SWE": "SE1", "POL": "PL1", "ROU": "RO1", "D2": "L2", "D3": "L3",
     "SRB": "SER1", "CZE": "TS1", "CRO": "KR1", "UKR": "UKR1", "SVK": "SLO1", "CYP": "ZYP1",
     "AZE": "AZ1", "KAZ": "KAS1", "BUL": "BU1", "HUN": "UNG1", "ISR": "ISR1", "LAT": "LET1",
 }
@@ -52,6 +53,10 @@ EURO_COMPETITIONS = [
     ("CL", "ucl", 2026),
     ("EL", "uel24", 2024),
 ]
+
+# Deutsche Wettbewerbe von OpenLigaDB (Wettbewerb, Kürzel, erste Saison): 2. und 3. Liga als Ligen für die
+# Elo (3. Liga nur, damit Drittligisten im Pokal eine Stärke haben), DFB-Pokal mit Prognosen
+DE_COMPETITIONS = [("D2", "bl2", FIRST_SEASON), ("D3", "bl3", FIRST_SEASON), ("DFB", "dfb", 2024)]
 
 # Europapokal-Teilnehmer: Transfermarkt-ID -> (Land/Liga, Name bei football-data, Anzeigename)
 CLUBS: dict[int, tuple[str, str | None, str]] = {
@@ -244,6 +249,33 @@ class EuTeams:
                              "unter OLDB_NAMES (und CLUBS) eintragen.")
         return team_id
 
+    def de(self, name: str, comp: str) -> int:
+        """Deutscher Verein von OpenLigaDB (2./3. Liga, Pokal): Europapokal-Teilnehmer über OLDB_NAMES, frühere
+        Bundesligisten über die Bundesliga-Zuordnung (team_mapping) als football-data-Team der D1, sonst ein
+        eigenes Team mit dem OpenLigaDB-Namen (Land = Wettbewerb, bei Amateuren im Pokal DE)."""
+        from fussballdb.ingest.team_mapping import TEAMS
+
+        name = name.strip()
+        if ("oldb", name) in self.by_alias:
+            return self.by_alias[("oldb", name)]
+        fd_name = (TEAMS.get(name) or {}).get("football_data")
+        if not fd_name:  # Schreibweise im Pokal weicht ab ("Werder Bremen" statt "SV Werder Bremen")
+            fd_name = next((v.get("football_data") for k, v in TEAMS.items() if _norm(k) == _norm(name)), None)
+        if fd_name:
+            team_id = self.fd("D1", fd_name)
+            self._alias("oldb-de", name, team_id)
+            team = self.session.get(EuTeam, team_id)
+            if team is not None and team.tm_id is None:
+                team.name = name  # deutscher Name statt football-data ("Hertha BSC" statt "Hertha")
+            return team_id
+        key = ("oldb-de", name)
+        if key not in self.by_alias:
+            team = EuTeam(name=name, country=comp if comp in ("D2", "D3") else "DE")
+            self.session.add(team)
+            self.session.flush()
+            self._alias(*key, team.id)
+        return self.by_alias[key]
+
     def tm(self, country: str, tm_id: int, tm_name: str) -> int | None:
         """Transfermarkt-Verein einem Team zuordnen: Europapokal-Teilnehmer über die ID, sonst über den
         Namen innerhalb der Liga (football-data)."""
@@ -251,7 +283,8 @@ class EuTeams:
             return self.by_tm[tm_id]
         if ("tm", str(tm_id)) in self.by_alias:
             return self.by_alias[("tm", str(tm_id))]
-        candidates = {alias: tid for (src, alias), tid in self.by_alias.items() if src == f"fd:{country}"}
+        sources = {f"fd:{country}"} | ({"oldb-de", "fd:D1"} if country in ("D2", "D3") else set())
+        candidates = {alias: tid for (src, alias), tid in self.by_alias.items() if src in sources}
         if not candidates:
             return None
         if tm_name in TM_TO_FD and TM_TO_FD[tm_name] in candidates:
@@ -440,6 +473,14 @@ SHORT = {
     "Lazio Rom": "Lazio", "SSC Neapel": "Neapel", "Olympiakos Piräus": "Olympiakos",
 }
 EU_TEAM_INFO = "web/src/lib/eu_teams.json"
+
+
+def _short_de(name: str) -> str:
+    """Kurzname deutscher Vereine für die Kacheln: lange Namen auf den Ort ("SG Sonnenhof Großaspach" -> Großaspach)."""
+    if name in SHORT or len(name) <= 14:
+        return SHORT.get(name, name)
+    words = [w for w in name.replace("-", " ").split() if len(w) >= 4 and not w.isdigit()]
+    return words[-1] if words else name
 EU_LOGO_DIR = "web/public/logos/eu"
 
 
@@ -470,7 +511,42 @@ def ingest_logos(session: Session, force: bool = False) -> dict:
             missing.append(team.name)
         info[team.name] = {"logo": f"/logos/eu/{path.name}" if path.exists() else None,
                            "short": SHORT.get(team.name, team.name)}
-    (ROOT / EU_TEAM_INFO).write_text(json.dumps(info, ensure_ascii=False, indent=2) + "\n")
+    # Vereine der 2. Liga und des Pokals ohne Transfermarkt-ID: Wappen von OpenLigaDB
+    from fussballdb.config import DEFAULT_SEASONS
+    from fussballdb.ingest.logos import SIGNATURES
+
+    year = max(DEFAULT_SEASONS)
+    icons = {}
+    for code in ("bl2", "dfb", "bl3"):
+        try:
+            for t in get_json(f"https://api.openligadb.de/getavailableteams/{code}/{year}"):
+                if t.get("teamIconUrl"):
+                    icons[t["teamName"].strip()] = t["teamIconUrl"]
+        except Exception:
+            continue
+    for alias, team_id in session.execute(text("SELECT alias, team_id FROM eu_team_alias WHERE source = 'oldb-de'")).all():
+        team = session.get(EuTeam, team_id)
+        if team is None or team.tm_id is not None or team.name in info or alias not in icons:
+            continue
+        existing = sorted(logo_dir.glob(f"de-{team_id}.*"))
+        if not existing or force:
+            try:
+                # Wikimedia verlangt eine Programmkennung mit Kontaktadresse statt Browser-Kennung
+                resp = _client.get(icons[alias], headers={"User-Agent": "fussballdb/1.0 (https://github.com/muggabatschr/fussballdb)"},
+                                   follow_redirects=True)
+                resp.raise_for_status()
+                time.sleep(1.0)
+                head = resp.content[:200].lstrip()
+                ext = next((e for sig, e in SIGNATURES.items() if head.startswith(sig)), None)
+                if ext:
+                    path = logo_dir / f"de-{team_id}{ext}"
+                    path.write_bytes(resp.content)
+                    existing = [path]
+                    loaded += 1
+            except Exception:
+                pass
+        info[team.name] = {"logo": f"/logos/eu/{existing[0].name}" if existing else None, "short": _short_de(team.name)}
+    (ROOT / EU_TEAM_INFO).write_text(json.dumps(dict(sorted(info.items())), ensure_ascii=False, indent=2) + "\n")
     return {"geladen": loaded, "fehlen": missing}
 
 
@@ -539,3 +615,35 @@ def ingest_league_xg(session: Session, seasons: list[int], log=print) -> dict:
             total += len(updates)
             log(f"  {league} {year}: {len(updates)} von {len(games)} Spielen mit xG")
     return {"mit_xg": total, "nicht_zugeordnet": unmatched}
+
+
+def ingest_germany(session: Session, seasons: list[int], log=print) -> int:
+    """2. Liga, 3. Liga und DFB-Pokal von OpenLigaDB (inkl. Spielplan der laufenden Saison)."""
+    teams = EuTeams(session)
+    rows = []
+    for comp, code, first in DE_COMPETITIONS:
+        for year in seasons:
+            if year < first:
+                continue
+            try:
+                data = get_json(f"https://api.openligadb.de/getmatchdata/{code}/{year}")
+            except Exception as exc:
+                log(f"  {comp} {year}: {exc}")
+                continue
+            for m in data:
+                if not (m.get("team1") or {}).get("teamName") or not (m.get("team2") or {}).get("teamName"):
+                    continue  # Pokalrunde noch nicht ausgelost
+                hg, ag = _result(m)
+                finished = bool(m["matchIsFinished"]) and hg is not None
+                round_name = re.sub(r"(\d)\.(\S)", r"\1. \2", m["group"]["groupName"]).strip()
+                rows.append({
+                    "competition": comp, "season": year, "round_no": m["group"]["groupOrderID"],
+                    "round_name": round_name,
+                    "kickoff": datetime.fromisoformat(m["matchDateTimeUTC"].replace("Z", "+00:00")),
+                    "home_id": teams.de(m["team1"]["teamName"], comp), "away_id": teams.de(m["team2"]["teamName"], comp),
+                    "home_goals": hg if finished else None, "away_goals": ag if finished else None,
+                    "finished": finished, "neutral": round_name.lower().startswith(("finale", "endspiel")),
+                    "source_id": str(m["matchID"]),
+                })
+    upsert(session, EuMatch, rows, ["competition", "source_id"])
+    return len(rows)

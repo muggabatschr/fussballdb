@@ -61,11 +61,16 @@ export function MatchdayNav({ seasons, season, matchday }: { seasons: Season[]; 
         )}
       </div>
 
-      {current && !current.finished && matchday !== current.current_matchday && (
-        <Link href={href(season, current.current_matchday)} className="whitespace-nowrap text-sm text-muted hover:text-foreground">
-          zum aktuellen Spieltag
+      <div className="flex gap-4">
+        <Link href={`/tipps/${season}/${matchday}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
+          Tipp-Zettel
         </Link>
-      )}
+        {current && !current.finished && matchday !== current.current_matchday && (
+          <Link href={href(season, current.current_matchday)} className="whitespace-nowrap text-sm text-muted hover:text-foreground">
+            zum aktuellen Spieltag
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

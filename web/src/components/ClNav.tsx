@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ClSeason } from "@/lib/api";
+import { COMPETITIONS, type CompCode } from "@/lib/competitions";
 
-const href = (season: number, round: number) => `/cl/${season}/${round}`;
-
-/** Saison und Runde der Champions League wählen (Ligaphase, Play-offs, K.-o.-Runden). */
-export function ClNav({ seasons, season, round }: { seasons: ClSeason[]; season: number; round: number }) {
+/** Saison und Runde eines Wettbewerbs wählen (CL: Ligaphase, Play-offs, K.-o.-Runden; 2. Liga; Pokal). */
+export function ClNav({ seasons, season, round, comp = "CL" }: { seasons: ClSeason[]; season: number; round: number; comp?: CompCode }) {
   const router = useRouter();
+  const c = COMPETITIONS[comp];
+  const href = (s: number, r: number) => `${c.base}/${s}/${r}`;
   const current = seasons.find((s) => s.season === season);
   const rounds = current?.rounds ?? [];
   const i = rounds.findIndex((r) => r.round_no === round);
@@ -66,9 +67,11 @@ export function ClNav({ seasons, season, round }: { seasons: ClSeason[]; season:
       </div>
 
       <div className="flex gap-4">
-        <Link href={`/cl/tabelle/${season}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
-          Tabelle Ligaphase
-        </Link>
+        {c.table && (
+          <Link href={`${c.base}/tabelle/${season}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
+            {c.table}
+          </Link>
+        )}
         {current && round !== current.current_round && current.rounds.some((r) => !r.finished) && (
           <Link href={href(season, current.current_round)} className="whitespace-nowrap text-sm text-muted hover:text-foreground">
             zur aktuellen Runde

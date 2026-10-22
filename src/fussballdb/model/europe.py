@@ -40,6 +40,9 @@ MODEL_VERSION = "eu-xg-elo-v1"
 # Startwert und im Saison-Rückzug der Elo), deshalb aus. `fussballdb cl-test` vergleicht beide Varianten.
 USE_VALUE = False
 EURO = ("CL", "EL")
+CUPS = EURO + ("DFB",)  # Pokale: keine Liga für die "unteres Viertel"-Regel
+AMATEUR_ELO = 400  # Elo-Abzug unter dem Basiswert für Pokalteams ohne Liga- und Kaderwert (Amateure)
+AMATEUR_PRIOR = (-0.6, 0.6)  # entsprechend im xG-Modell: Angriff, Abwehr
 MAX_GOALS = 10
 
 
@@ -123,6 +126,8 @@ def run_elo(df: pd.DataFrame, values: dict, config: EloConfig | None = None) -> 
             if team not in st.rating:
                 if v:
                     st.rating[team] = st.value_rating(v)
+                elif comp == "DFB":
+                    st.rating[team] = cfg.base - AMATEUR_ELO  # Amateur im Pokal: weder Liga noch Kaderwert
                 else:
                     # ohne Kaderwert: unteres Viertel der Liga, sonst klar unter dem Durchschnitt
                     peers = [st.rating[t] for t in by_comp.get(comp, ()) if t in st.rating]
@@ -132,7 +137,7 @@ def run_elo(df: pd.DataFrame, values: dict, config: EloConfig | None = None) -> 
                 if v and cfg.season_pull:
                     st.rating[team] += cfg.season_pull * (st.value_rating(v) - st.rating[team])
                 st.season[team] = season
-            if comp not in EURO:
+            if comp not in CUPS:
                 by_comp.setdefault(comp, set()).add(team)
         rh, ra = st.rating[m.home_id], st.rating[m.away_id]
         st.pre[m.id] = (rh, ra)
@@ -318,7 +323,13 @@ class XgModel:
                               "hg": hist["home_goals"], "ag": hist["away_goals"], "hxg": hist["home_xg"],
                               "axg": hist["away_xg"], "finished": True})
         teams = set(df["home_id"]) | set(df["away_id"])
-        dc = DixonColes(xi=cfg.xi, ridge=cfg.ridge, w_xg=cfg.w_xg, priors=_value_priors(values, teams, cutoff, cfg.value_k))
+        priors = _value_priors(values, teams, cutoff, cfg.value_k)
+        # Amateure: nur Pokalspiele, kein Kaderwert -> deutlich schwächer als der europäische Schnitt
+        league = df[~df["competition"].isin(CUPS)]
+        in_league = set(league["home_id"]) | set(league["away_id"])
+        for t in teams - in_league - set(priors):
+            priors[t] = AMATEUR_PRIOR
+        dc = DixonColes(xi=cfg.xi, ridge=cfg.ridge, w_xg=cfg.w_xg, priors=priors)
         dc.fit(train, now=cutoff)
         form = None
         if cfg.form_weight > 0:
@@ -469,6 +480,11 @@ def _row(p: dict, m, basis: str, as_of: pd.Timestamp) -> dict:
 
 
 ACTIVE_XG: XgConfig | None = XgConfig(alpha=0.7, form_weight=0.4)  # None = nur Elo
+# Modell je Wettbewerb nach eigenem Rückblick-Test (Oktober 2026, eingestellt an 2024/25):
+# 2. Liga: Elo im Einstelljahr am besten, Mischungen danach kaum besser (RPS 0,2224 statt 0,2234) -> Elo.
+# DFB-Pokal: Dixon-Coles allein klar besser (0,142 statt 0,171, alle Saisons, 99 % der Ziehungen).
+ACTIVE_BY_COMP: dict[str, XgConfig | None] = {"CL": ACTIVE_XG, "D2": None, "DFB": XgConfig()}
+PREDICTED_COMPETITIONS = tuple(ACTIVE_BY_COMP)
 
 
 def backfill(competition: str = "CL", force: bool = False) -> int:
@@ -486,7 +502,8 @@ def backfill(competition: str = "CL", force: bool = False) -> int:
             ms = ms[~ms["id"].isin(done)]
         if ms.empty:
             continue
-        xm = XgModel.fit(df, values, r.cutoff, ACTIVE_XG) if ACTIVE_XG else None
+        cfg = ACTIVE_BY_COMP.get(competition, ACTIVE_XG)
+        xm = XgModel.fit(df, values, r.cutoff, cfg) if cfg else None
         for p, m in zip(predict_round(feats, st, values, r.cutoff, ms, use_value=USE_VALUE, xg_model=xm),
                         ms.itertuples()):
             rows.append(_row(p, m, "rueckblick", r.cutoff))
@@ -502,7 +519,8 @@ def predict_upcoming(competition: str = "CL") -> int:
     if ms.empty:
         return 0
     feats = all_features(df, st, values)
-    xm = XgModel.fit(df, values, now, ACTIVE_XG) if ACTIVE_XG else None
+    cfg = ACTIVE_BY_COMP.get(competition, ACTIVE_XG)
+    xm = XgModel.fit(df, values, now, cfg) if cfg else None
     rows = [_row(p, m, "live", now)
             for p, m in zip(predict_round(feats, st, values, now, ms, use_value=USE_VALUE, xg_model=xm), ms.itertuples())]
     return _store(rows)
@@ -521,7 +539,7 @@ XG_VARIANTS: dict[str, XgConfig | None] = {
 }
 
 
-def backtest_xg(variants: dict[str, XgConfig | None] | None = None, log=print) -> pd.DataFrame:
+def backtest_xg(variants: dict[str, XgConfig | None] | None = None, log=print, competition: str = "CL") -> pd.DataFrame:
     """Rückblick-Test aller CL-Runden für das Elo-Modell und die xG-Varianten. Je Runde wird jedes
     xG-Modell (Kaderwert-Gewicht, xG/Tore) einmal mit Formkomponente angepasst; die Varianten
     unterscheiden sich danach nur in der Mischung. Liefert je Spiel und Variante RPS, Log-Loss und Punkte."""
@@ -530,8 +548,9 @@ def backtest_xg(variants: dict[str, XgConfig | None] | None = None, log=print) -
     st = run_elo(df, values)
     feats = all_features(df, st, values)
     rows = []
-    for r in rounds(df, "CL").itertuples():
-        ms = df[(df["competition"] == "CL") & (df["season"] == r.season) & (df["round_no"] == r.round_no) & df["finished"]]
+    for r in rounds(df, competition).itertuples():
+        ms = df[(df["competition"] == competition) & (df["season"] == r.season) & (df["round_no"] == r.round_no)
+                & df["finished"]]
         if ms.empty:
             continue
         fitted: dict = {}

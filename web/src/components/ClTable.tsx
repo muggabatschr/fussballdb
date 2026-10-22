@@ -1,13 +1,26 @@
 import Link from "next/link";
-import type { ClTableRow } from "@/lib/api";
+import type { ClTableRow, TableZone } from "@/lib/api";
 import { num } from "@/lib/format";
 import { PlaceDiff } from "./LeagueTable";
 import { TeamName } from "./TeamName";
 
-// Ligaphase: 1–8 direkt ins Achtelfinale, 9–24 Play-offs, 25–36 raus
-const zone = (place: number) => (place <= 8 ? "border-l-home" : place <= 24 ? "border-l-accent/50" : "border-l-transparent");
+const CL_ZONES: TableZone[] = [
+  { key: "p_achtelfinale", label: "AF", von: 1, bis: 8 },
+  { key: "p_playoffs", label: "Play-offs", von: 9, bis: 24 },
+  { key: "p_aus", label: "Aus", von: 25, bis: 36 },
+];
 
-export function ClLeagueTable({ rows }: { rows: ClTableRow[] }) {
+// Randfarbe je Zone: erste Zone grün (Achtelfinale, Aufstieg), Abstieg rot, sonst neutral
+function zoneClass(place: number, zones: TableZone[]): string {
+  const z = zones.find((x) => place >= x.von && place <= x.bis);
+  if (!z) return "border-l-transparent";
+  if (z === zones[0]) return "border-l-home";
+  if (/abstieg/i.test(z.label)) return "border-l-away";
+  if (/aus/i.test(z.label)) return "border-l-transparent";
+  return "border-l-accent/50";
+}
+
+export function ClLeagueTable({ rows, zones = CL_ZONES }: { rows: ClTableRow[]; zones?: TableZone[] }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
       <table className="w-full text-sm tabular [&_td]:whitespace-nowrap">
@@ -26,7 +39,7 @@ export function ClLeagueTable({ rows }: { rows: ClTableRow[] }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.name} className="border-b border-border last:border-b-0">
-              <td className={`border-l-2 px-3 py-2 text-muted ${zone(r.platz)}`}>
+              <td className={`border-l-2 px-3 py-2 text-muted ${zoneClass(r.platz, zones)}`}>
                 <span className="inline-flex items-baseline gap-1">
                   {r.platz}
                   <PlaceDiff r={r} />
@@ -51,8 +64,8 @@ export function ClLeagueTable({ rows }: { rows: ClTableRow[] }) {
 
 const pct = (v?: number) => (v == null ? "–" : v >= 99.95 ? ">99" : v > 0 && v < 0.5 ? "<1" : num(v, 0));
 
-/** Geschätzte Abschlusstabelle der Ligaphase (10.000 Simulationen der offenen Spiele). */
-export function ClProjectionTable({ rows }: { rows: ClTableRow[] }) {
+/** Geschätzte Abschlusstabelle (10.000 Simulationen der offenen Spiele) mit den Zonen-Chancen. */
+export function ClProjectionTable({ rows, zones = CL_ZONES }: { rows: ClTableRow[]; zones?: TableZone[] }) {
   const projected = rows.filter((r) => r.prognose_platz != null).sort((a, b) => a.prognose_platz! - b.prognose_platz!);
   if (!projected.length) return null;
   return (
@@ -64,23 +77,27 @@ export function ClProjectionTable({ rows }: { rows: ClTableRow[] }) {
             <th className="px-3 py-2">Team</th>
             <th className="px-3 py-2 text-right" title="Erwartete Punkte nach dem 8. Spieltag">Pkt</th>
             <th className="px-3 py-2 text-right" title="Platz heute">heute</th>
-            <th className="px-3 py-2 text-right" title="Chance auf Platz 1–8 (direkt ins Achtelfinale)">AF</th>
-            <th className="px-3 py-2 text-right" title="Chance auf Platz 9–24 (Play-offs)">Play-offs</th>
-            <th className="px-3 py-2 text-right" title="Chance auf Platz 25–36 (ausgeschieden)">Aus</th>
+            {zones.map((z) => (
+              <th key={z.key} className="px-3 py-2 text-right" title={`Chance auf Platz ${z.von}${z.bis > z.von ? `–${z.bis}` : ""}`}>
+                {z.label}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {projected.map((r) => (
             <tr key={r.name} className="border-b border-border last:border-b-0">
-              <td className={`border-l-2 px-3 py-2 text-muted ${zone(r.prognose_platz!)}`}>{r.prognose_platz}</td>
+              <td className={`border-l-2 px-3 py-2 text-muted ${zoneClass(r.prognose_platz!, zones)}`}>{r.prognose_platz}</td>
               <td className="px-3 py-2">
                 <TeamName name={r.name} />
               </td>
               <td className="px-3 py-2 text-right font-semibold">{num(r.erw_punkte ?? 0, 0)}</td>
               <td className="px-3 py-2 text-right text-muted">{r.platz}</td>
-              <td className="px-3 py-2 text-right">{pct(r.p_achtelfinale)} %</td>
-              <td className="px-3 py-2 text-right">{pct(r.p_playoffs)} %</td>
-              <td className="px-3 py-2 text-right">{pct(r.p_aus)} %</td>
+              {zones.map((z) => (
+                <td key={z.key} className="px-3 py-2 text-right">
+                  {pct((r as Record<string, unknown>)[z.key] as number | undefined)} %
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -89,14 +106,14 @@ export function ClProjectionTable({ rows }: { rows: ClTableRow[] }) {
   );
 }
 
-/** Saisonwahl für die CL-Tabelle. */
-export function ClTableSeasons({ seasons, current }: { seasons: { season: number; label: string }[]; current: number }) {
+/** Saisonwahl für die Tabelle. */
+export function ClTableSeasons({ seasons, current, base = "/cl" }: { seasons: { season: number; label: string }[]; current: number; base?: string }) {
   return (
     <div className="flex gap-2 text-sm">
       {seasons.map((s) => (
         <Link
           key={s.season}
-          href={`/cl/tabelle/${s.season}`}
+          href={`${base}/tabelle/${s.season}`}
           className={`rounded-lg border px-3 py-1.5 ${s.season === current ? "border-accent" : "border-border bg-surface hover:border-accent"}`}
         >
           {s.label}

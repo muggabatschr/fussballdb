@@ -12,7 +12,7 @@ from mcp.types import ToolAnnotations
 from fussballdb.assistant.tools import SCHEMA_HINT, Toolbox, _json
 
 INSTRUCTIONS = """Daten und Prognosen zur 1. Fußball-Bundesliga seit 2014/15, zur Champions League (ab 2024/25,
-Werkzeug `champions_league`) und zu Kickbase: Ergebnisse, xG, Schüsse,
+Werkzeug `champions_league`), zur 2. Bundesliga und zum DFB-Pokal (Werkzeug `wettbewerb`) und zu Kickbase: Ergebnisse, xG, Schüsse,
 Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistisches Prognosemodell
 (Dixon-Coles auf xG mit Formkomponente + Elo, Kaderwert als Startstärke, Verletzte eingerechnet).
 
@@ -159,6 +159,38 @@ def cl_tabelle(saison: int | None = None) -> str:
         return json.dumps(cl_table(season), default=str, ensure_ascii=False)
     except (ValueError, IndexError) as exc:
         raise ToolError(str(exc) or "Keine Champions-League-Daten.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
+def wettbewerb(wettbewerb: str = "D2", saison: int | None = None, runde: int | None = None) -> str:
+    """Runde der 2. Bundesliga (wettbewerb="D2"), des DFB-Pokals ("DFB") oder der Champions League ("CL") mit
+    Wahrscheinlichkeiten, erwarteten Toren, Tipp und Begründung. Ohne saison/runde die aktuelle Runde; mit saison
+    allein die Rundenliste. Grundlage: Elo und Dixon-Coles über alle Ligen, Kaderwert als Startwert."""
+    from fussballdb.api import comp_round, comp_rounds
+
+    try:
+        seasons = comp_rounds(wettbewerb)
+        if saison is not None and runde is None:
+            s = next((x for x in seasons if x["season"] == saison), None)
+            if s is None:
+                raise ValueError(f"Saison {saison} gibt es nicht. Vorhanden: {[x['season'] for x in seasons]}")
+            return json.dumps(s, default=str, ensure_ascii=False)
+        s = next((x for x in seasons if x["season"] == saison), seasons[0]) if saison else seasons[0]
+        return json.dumps(comp_round(wettbewerb, s["season"], runde or s["current_round"]), default=str, ensure_ascii=False)
+    except (ValueError, IndexError) as exc:
+        raise ToolError(str(exc) or "Keine Daten.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
+def tabelle_2_liga(saison: int | None = None) -> str:
+    """Tabelle der 2. Bundesliga mit Modell-Platz und Hochrechnung (prognose_platz, erw_punkte, p_aufstieg,
+    p_relegation_oben, p_relegation_unten, p_abstieg in %). saison = Startjahr, Standard aktuelle Saison."""
+    from fussballdb.api import comp_rounds, comp_table
+
+    try:
+        return json.dumps(comp_table("D2", saison or comp_rounds("D2")[0]["season"]), default=str, ensure_ascii=False)
+    except (ValueError, IndexError) as exc:
+        raise ToolError(str(exc) or "Keine Daten.") from exc
 
 
 @mcp.tool(annotations=READ_ONLY)
