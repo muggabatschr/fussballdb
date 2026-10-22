@@ -471,16 +471,24 @@ SHORT = {
     "FC Villarreal": "Villarreal", "FC Brügge": "Brügge", "FC Bologna": "Bologna", "FC Girona": "Girona",
     "OSC Lille": "Lille", "Stade Brest": "Brest", "OGC Nizza": "Nizza", "AS Monaco": "Monaco",
     "Lazio Rom": "Lazio", "SSC Neapel": "Neapel", "Olympiakos Piräus": "Olympiakos",
+    # deutsche Vereine, bei denen der Ort allein falsch oder mehrdeutig wäre
+    "TSG 1899 Hoffenheim II": "Hoffenheim II", "VfB Stuttgart II": "Stuttgart II", "TSV 1860 München": "1860 München",
+    "TSV Schott Mainz": "Schott Mainz", "VSG Altglienicke Berlin": "Altglienicke", "Lüneburger SK Hansa": "Lüneburg",
+    "Würzburger Kickers": "Würzburg", "Hamburg Eimsbütteler BC": "Eimsbüttel", "SSV Jeddeloh II": "Jeddeloh II",
+    "Rot-Weiss Essen": "RW Essen", "Hansa Rostock": "Rostock", "Kickers Offenbach": "Offenbach",
 }
 EU_TEAM_INFO = "web/src/lib/eu_teams.json"
 
 
 def _short_de(name: str) -> str:
-    """Kurzname deutscher Vereine für die Kacheln: lange Namen auf den Ort ("SG Sonnenhof Großaspach" -> Großaspach)."""
+    """Kurzname deutscher Vereine für die Kacheln: lange Namen auf den Ort ("SG Sonnenhof Großaspach" -> Großaspach).
+    Reserveteams behalten "II". Doppelte Kurznamen werden in ingest_logos aufgelöst."""
     if name in SHORT or len(name) <= 14:
         return SHORT.get(name, name)
-    words = [w for w in name.replace("-", " ").split() if len(w) >= 4 and not w.isdigit()]
-    return words[-1] if words else name
+    reserve = name.endswith(" II")
+    words = [w for w in name.removesuffix(" II").replace("-", " ").split() if len(w) >= 4 and not w.isdigit()]
+    short = words[-1] if words else name
+    return f"{short} II" if reserve else short
 EU_LOGO_DIR = "web/public/logos/eu"
 
 
@@ -546,6 +554,18 @@ def ingest_logos(session: Session, force: bool = False) -> dict:
             except Exception:
                 pass
         info[team.name] = {"logo": f"/logos/eu/{existing[0].name}" if existing else None, "short": _short_de(team.name)}
+    # Kurznamen eindeutig halten: wäre ein automatischer Kurzname schon an einen anderen Verein vergeben
+    # (auch Bundesliga-Kurznamen aus teams.json), wird der volle Name genommen
+    bl = json.loads((ROOT / "web/src/lib/teams.json").read_text())
+    taken: dict[str, str] = {v["short"]: k for k, v in bl.items()}
+    for name in sorted(info):
+        short = info[name]["short"]
+        if name in bl:
+            continue
+        if short in taken and taken[short] != name and name not in SHORT:
+            info[name]["short"] = name
+        else:
+            taken.setdefault(info[name]["short"], name)
     (ROOT / EU_TEAM_INFO).write_text(json.dumps(dict(sorted(info.items())), ensure_ascii=False, indent=2) + "\n")
     return {"geladen": loaded, "fehlen": missing}
 

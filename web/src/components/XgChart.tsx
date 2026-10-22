@@ -2,10 +2,11 @@
 
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { FormGame } from "@/lib/api";
+import { shortName } from "@/lib/teams";
 
 export function XgChart({ games }: { games: FormGame[] }) {
   const data = [...games].reverse().map((g) => ({
-    name: `${g.ort === "H" ? "" : "@"}${g.gegner.split(" ").slice(-1)[0]}`,
+    name: `${g.ort === "H" ? "" : "@"}${shortName(g.gegner)}`,
     xG: g.xg,
     xGA: g.xga,
   }));

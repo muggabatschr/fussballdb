@@ -271,6 +271,11 @@ Vergleich.
 **Wettbewerbe:** Über den Spieltagen und Runden lässt sich zwischen Bundesliga, 2. Liga, Pokal und CL
 umschalten.
 
+**Legenden:** Unter jeder Tabelle und unter den Kacheln stehen die Abkürzungen in einfachen Worten
+(`components/Legend.tsx`), jeweils mit Richtung, z. B. „xGA … weniger = besser“ oder „PPDA … weniger = mehr
+Pressing“. Kurznamen kommen überall aus `teams.json` bzw. `eu_teams.json` (HSV, Gladbach, Stuttgart II …);
+automatisch gebildete Kurznamen werden auf Eindeutigkeit geprüft, sonst steht der volle Name.
+
 **Tipp-Zettel** (`/tipps`, Link „Tipp-Zettel“ neben der Spieltags- bzw. Rundenauswahl, für Bundesliga,
 2. Liga, CL und Pokal): alle Tipps eines Spieltags oder einer Runde untereinander. „Als Text“ kopiert sie zum Einfügen, „Als Bild“ zeichnet ein PNG mit Wappen; auf dem Handy
 öffnet sich das Teilen-Menü (z. B. Messenger), am Rechner wird es heruntergeladen.
@@ -322,9 +327,12 @@ Eigener Tab „Kickbase“ in der Web-App mit erwarteten Kickbase-Punkten je Spi
 Spieltage, Marktwert, Marktwert-Trend (7 Tage), Punkten pro Million sowie Kaufkandidaten auf dem
 Transfermarkt der eigenen Liga und Verkaufskandidaten im eigenen Kader.
 
-**Zugang** (kostenloses Konto reicht): einmal im Terminal anmelden. E-Mail und Passwort werden nur dort
-abgefragt, gespeichert wird nur das Token in `.cache/kickbase.json` (nicht im Git, Dateirechte 600).
-Das Token läuft nach etwa einer Woche ab, dann den Befehl wiederholen.
+**Zugang** (kostenloses Konto reicht): oben im Kickbase-Tab E-Mail und Passwort eingeben und auf
+„Anmelden“ klicken. Beides geht nur einmal an Kickbase und wird nirgends gespeichert oder protokolliert;
+gespeichert wird nur das zurückgegebene Token, in der Tabelle `kb_session`. So nutzen Web-App (auch in
+Docker) und Terminal dieselbe Anmeldung. Danach lädt die App Kader, Markt und Marktwerte im Hintergrund.
+Ist man in mehreren Ligen, lässt sich die Liga dort wählen; „Abmelden“ löscht das Token. Das Token läuft
+nach etwa einer Woche ab, dann erscheint das Formular wieder. Im Terminal geht es weiterhin mit:
 
 ```bash
 uv run fussballdb kickbase-login
@@ -333,6 +341,8 @@ uv run fussballdb kickbase-login
 ```bash
 uv run fussballdb kickbase      # alle Spieler mit Punkte- und Marktwert-Verlauf (beim ersten Mal ~1 Std.)
 ```
+
+Die Datenbank ist nur vom eigenen Rechner aus erreichbar (`127.0.0.1:5442`), weil sie das Token enthält.
 
 **Aufstellung** (oben im Kickbase-Tab, `features/kickbase_lineup.py`): die Elf mit den meisten erwarteten
 Punkten am nächsten Spieltag aus dem eigenen Kader, über alle Kickbase-Formationen (3-4-3 bis 5-4-1, immer
@@ -349,8 +359,7 @@ reine Punkteschnitt 0,43). Wie gut die Prognose vor dem Spiel ist, lässt sich e
 Spieltagen messen.
 
 **Aktualisierung**: `fussballdb ensure` (täglich per launchd) lädt Marktwerte, Status, Markt und Kader
-täglich (schnell) und nach jedem Spieltag die neuen Punkte. Ohne Token wird Kickbase übersprungen; der
-API-Container hat das Token nicht und überspringt Kickbase immer.
+täglich (schnell) und nach jedem Spieltag die neuen Punkte. Ohne Anmeldung wird Kickbase übersprungen.
 
 ## Champions League
 
@@ -552,7 +561,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb snapshot` | Verletzte und Aufstellungen sichern (täglich per launchd) |
 | `fussballdb verletzungshistorie` | Verletzungshistorie aller Spieler seit 2023/24 laden (~30 Min. beim ersten Mal) |
 | `fussballdb verletzungen-test` | Ausfälle aus der Verletzungshistorie im Rückblick-Test |
-| `fussballdb kickbase-login` | Bei Kickbase anmelden (Passwort nur im Terminal, gespeichert wird das Token) |
+| `fussballdb kickbase-login` | Bei Kickbase anmelden (alternativ im Kickbase-Tab; gespeichert wird nur das Token) |
 | `fussballdb kickbase` | Kickbase-Spieler mit Punkte- und Marktwert-Verlauf, Markt und Kader der Liga laden |
 | `fussballdb kaderwerte` | Kaderwerte von Transfermarkt laden (läuft auch in `update`) |
 | `fussballdb kaderwert-test` | Kaderwert als Startstärke im Rückblick-Test |
@@ -732,6 +741,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `prediction` | Prognosen (`basis` = live oder rueckblick), Tipp, Ausfälle, Begründung als JSON |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
 | `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL → `eu_match`), wie bei FotMob gelistet |
+| `kb_session` | Kickbase-Anmeldung: Token, Ablauf, Ligen, gewählte Liga (nie das Passwort) |
 | `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der Liga |
 | `eu_team`, `eu_team_alias` | Champions League: Vereine aus ganz Europa (Transfermarkt-ID bei Europapokal-Teilnehmern), Namen je Quelle |
 | `eu_match` | Liga- (`competition` = football-data-Kürzel) und Europapokalspiele (`CL`, `EL`) |
@@ -801,6 +811,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
 22. **Chat**: Tipp in der Prognosekarte, offizielle Teamnamen für Wappen.
 23. **Tipp-Zettel** (Text und Bild), Erinnerung vor dem Tippschluss, Torschützen-Prognose,
     Kickbase-Aufstellung, 2. Bundesliga und DFB-Pokal.
+24. **Legenden** unter allen Tabellen, eindeutige Kurznamen, **Kickbase-Anmeldung im Web** (Token in der
+    Datenbank, Datenbank-Port nur lokal).
 
 Offen:
 

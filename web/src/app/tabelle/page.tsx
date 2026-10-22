@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { ErrorBox } from "@/components/Card";
 import { LeagueTable, ProjectionTable } from "@/components/LeagueTable";
 import { getTable, load } from "@/lib/api";
+import { Legend, TERMS } from "@/components/Legend";
 
 async function Table() {
   const res = await load(() => getTable());
@@ -10,6 +11,7 @@ async function Table() {
   return (
     <>
       <LeagueTable rows={res.data} />
+      <Legend items={[TERMS.sp, TERMS.tore, TERMS.pkt, TERMS.xg, TERMS.xga, TERMS.xpts, TERMS.diff, TERMS.platz]} />
       {projected && (
         <section className="mt-8">
           <h2 className="mb-1 text-lg font-semibold">Geschätzte Abschlusstabelle</h2>
@@ -18,6 +20,15 @@ async function Table() {
             jedem Spieltag an, sobald Ergebnisse und xG da sind.
           </p>
           <ProjectionTable rows={res.data} />
+          <Legend
+            items={[
+              TERMS.erwPkt,
+              TERMS.heute,
+              ["Meister", "Chance auf Platz 1 in Prozent"],
+              ["Top 4", "Chance auf Platz 1–4 (Champions League) in Prozent"],
+              ["Abstieg", "Chance auf Platz 17–18 in Prozent (weniger = besser)"],
+            ]}
+          />
         </section>
       )}
     </>

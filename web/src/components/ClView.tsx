@@ -4,6 +4,7 @@ import { Card } from "./Card";
 import { ClNav } from "./ClNav";
 import { CompetitionTabs } from "./CompetitionTabs";
 import { BilanzText, Game } from "./MatchdayView";
+import { Legend, TILE_LEGEND } from "./Legend";
 
 /** Eine Runde (CL, 2. Liga, Pokal): Spiele mit Prognose, Tipp und Punkten wie beim Bundesliga-Spieltag. */
 export function ClView({ seasons, data, comp = "CL" }: { seasons: ClSeason[]; data: ClRound; comp?: CompCode }) {
@@ -35,6 +36,7 @@ export function ClView({ seasons, data, comp = "CL" }: { seasons: ClSeason[]; da
           <Game key={g.id} g={g} regel={data.punkteregel} />
         ))}
       </div>
+      <Legend items={TILE_LEGEND} />
     </div>
   );
 }

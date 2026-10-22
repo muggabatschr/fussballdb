@@ -300,3 +300,12 @@ export type KickbaseLineup = {
   hinweis?: string;
 };
 export const getKickbaseLineup = () => api<KickbaseLineup>("/kickbase/aufstellung");
+
+export type KickbaseStatus = {
+  angemeldet: boolean;
+  abgelaufen?: boolean;
+  gueltig_bis?: string | null;
+  ligen?: { id: string; name: string }[];
+  liga?: string | null;
+};
+export const getKickbaseStatus = () => api<KickbaseStatus>("/kickbase/status");

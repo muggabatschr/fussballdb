@@ -403,6 +403,20 @@ class EuAbsence(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class KbSession(Base):
+    """Kickbase-Anmeldung (nur Token, nie das Passwort). Eine Zeile; in der Datenbank, damit Web-App (Docker)
+    und Terminal dieselbe Anmeldung nutzen."""
+
+    __tablename__ = "kb_session"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(Text)
+    expires: Mapped[str | None] = mapped_column(String(40))
+    leagues: Mapped[str] = mapped_column(Text)  # JSON [{id, name}]
+    league_id: Mapped[str | None] = mapped_column(String(20))  # gewählte Liga, sonst die erste
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 # Spalten, die nach dem ersten Anlegen dazugekommen sind (create_all ergänzt keine Spalten)
 MIGRATIONS = [
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS home_xg double precision",

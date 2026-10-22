@@ -1,22 +1,35 @@
 """Zugriff auf die (inoffizielle) Kickbase-API mit dem eigenen Konto.
 
-Das Passwort wird nie gespeichert: `fussballdb kickbase-login` fragt es im Terminal ab, meldet sich an und
-legt nur das Token in .cache/kickbase.json ab (nicht im Git, Dateirechte 600). Alle Importe lesen damit."""
+Das Passwort wird nie gespeichert: Die Anmeldung (Formular im Kickbase-Tab der Web-App oder
+`fussballdb kickbase-login` im Terminal) schickt E-Mail und Passwort einmal an Kickbase und legt nur das
+zurückgegebene Token in der Tabelle kb_session ab. Alle Importe lesen damit."""
 
 import json
-import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+from sqlalchemy import text
 
 from fussballdb.config import CACHE_DIR
 
 API = "https://api.kickbase.com"
-TOKEN_FILE: Path = CACHE_DIR / "kickbase.json"
+TOKEN_FILE: Path = CACHE_DIR / "kickbase.json"  # frühere Ablage, wird beim ersten Lesen übernommen
 
 
 class KickbaseAuthError(RuntimeError):
     pass
+
+
+def _store(sess: dict) -> None:
+    from fussballdb.db.session import engine
+
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM kb_session"))
+        conn.execute(text("INSERT INTO kb_session (id, token, expires, leagues, league_id, updated_at) "
+                          "VALUES (1, :t, :e, :l, :lid, now())"),
+                     {"t": sess["token"], "e": sess.get("expires"), "l": json.dumps(sess.get("leagues") or []),
+                      "lid": sess.get("league_id")})
 
 
 def login(email: str, password: str) -> dict:
@@ -28,18 +41,73 @@ def login(email: str, password: str) -> dict:
     token = data.get("tkn") or data.get("token")
     if not token:
         raise KickbaseAuthError("Anmeldung ohne Token beantwortet, die API hat sich vermutlich geändert.")
-    leagues = [{"id": l.get("id"), "name": l.get("n") or l.get("name")} for l in data.get("srvl", []) or []]
-    session = {"token": token, "expires": data.get("tknex"), "leagues": leagues}
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_FILE.write_text(json.dumps(session, ensure_ascii=False, indent=2))
-    os.chmod(TOKEN_FILE, 0o600)
-    return {"expires": session["expires"], "leagues": leagues, "keys": sorted(data.keys())}
+    leagues = [{"id": str(l.get("id")), "name": l.get("n") or l.get("name")} for l in data.get("srvl", []) or []]
+    _store({"token": token, "expires": data.get("tknex"), "leagues": leagues,
+            "league_id": leagues[0]["id"] if leagues else None})
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()  # alte Datei mit Token nicht liegen lassen
+    return {"expires": data.get("tknex"), "leagues": leagues}
 
 
 def session() -> dict:
-    if not TOKEN_FILE.exists():
-        raise KickbaseAuthError("Kein Kickbase-Zugang hinterlegt. Einmal `uv run fussballdb kickbase-login` ausführen.")
-    return json.loads(TOKEN_FILE.read_text())
+    """Gespeicherte Anmeldung: {token, expires, leagues, league_id}."""
+    from fussballdb.db.session import engine
+
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT token, expires, leagues, league_id FROM kb_session WHERE id = 1")).first()
+    if row is None and TOKEN_FILE.exists():  # frühere Ablage übernehmen
+        old = json.loads(TOKEN_FILE.read_text())
+        leagues = [{"id": str(l["id"]), "name": l.get("name")} for l in old.get("leagues") or []]
+        _store({**old, "leagues": leagues, "league_id": leagues[0]["id"] if leagues else None})
+        TOKEN_FILE.unlink()
+        return session()
+    if row is None:
+        raise KickbaseAuthError("Kein Kickbase-Zugang hinterlegt. Im Kickbase-Tab anmelden "
+                                "oder `uv run fussballdb kickbase-login` ausführen.")
+    return {"token": row[0], "expires": row[1], "leagues": json.loads(row[2] or "[]"), "league_id": row[3]}
+
+
+def has_session() -> bool:
+    try:
+        session()
+        return True
+    except Exception:
+        return False
+
+
+def status() -> dict:
+    """Für die Web-App: angemeldet?, gültig bis, Ligen, gewählte Liga. Nie das Token."""
+    try:
+        s = session()
+    except Exception:
+        return {"angemeldet": False}
+    expired = False
+    if s.get("expires"):
+        try:
+            expired = datetime.fromisoformat(s["expires"].replace("Z", "+00:00")) < datetime.now(timezone.utc)
+        except ValueError:
+            pass
+    return {"angemeldet": not expired, "abgelaufen": expired, "gueltig_bis": s.get("expires"),
+            "ligen": s.get("leagues") or [], "liga": s.get("league_id")}
+
+
+def choose_league(league_id: str) -> None:
+    from fussballdb.db.session import engine
+
+    s = session()
+    if league_id not in {l["id"] for l in s.get("leagues") or []}:
+        raise KickbaseAuthError("Diese Liga gibt es in deinem Konto nicht.")
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE kb_session SET league_id = :l WHERE id = 1"), {"l": league_id})
+
+
+def logout() -> None:
+    from fussballdb.db.session import engine
+
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM kb_session"))
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()
 
 
 RETRY_WAIT = (3, 10, 30, 60)  # Sekunden; Kickbase trennt bei Last gelegentlich die Verbindung
@@ -59,7 +127,8 @@ def get(path: str, **params):
             time.sleep(RETRY_WAIT[attempt])
             continue
         if resp.status_code in (401, 403):
-            raise KickbaseAuthError("Kickbase-Token abgelaufen oder ungültig. `uv run fussballdb kickbase-login` erneut ausführen.")
+            raise KickbaseAuthError("Kickbase-Anmeldung abgelaufen oder ungültig. Im Kickbase-Tab neu anmelden "
+                                    "oder `uv run fussballdb kickbase-login` ausführen.")
         if (resp.status_code == 429 or resp.status_code >= 500) and attempt < len(RETRY_WAIT):
             time.sleep(RETRY_WAIT[attempt])
             continue
@@ -190,10 +259,11 @@ def ingest_league(session: Session) -> dict:
 
 
 def session_info_league() -> str:
-    leagues = session().get("leagues") or []
+    s = session()
+    leagues = s.get("leagues") or []
     if not leagues:
         raise KickbaseAuthError("Keine Kickbase-Liga gefunden.")
-    return leagues[0]["id"]
+    return s.get("league_id") or leagues[0]["id"]
 
 
 def ingest_daily(session: Session) -> dict:

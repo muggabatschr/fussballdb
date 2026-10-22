@@ -7,6 +7,7 @@ import { TeamLogo } from "@/components/TeamLogo";
 import { TeamName } from "@/components/TeamName";
 import type { KickbaseRow } from "@/lib/api";
 import { num } from "@/lib/format";
+import { Legend } from "@/components/Legend";
 
 const POSITIONS = ["alle", "TW", "ABW", "MF", "ST"] as const;
 const SCOPES = { alle: "alle Spieler", markt: "nur Transfermarkt", kader: "nur mein Kader" } as const;
@@ -204,6 +205,18 @@ export function KickbaseTable({ rows, matchdays }: { rows: KickbaseRow[]; matchd
           </tbody>
         </table>
       </div>
+      <Legend
+        items={[
+          ["Pos.", "Position: TW Torwart, ABW Abwehr, MF Mittelfeld, ST Sturm"],
+          ["Erw. Pkt", "erwartete Kickbase-Punkte über die gewählten Spieltage (mehr = besser)"],
+          ["Pkt/Mio", "erwartete Punkte je Million Marktwert, also Preis-Leistung (mehr = besser)"],
+          ["Marktwert", "aktueller Kickbase-Marktwert"],
+          ["Trend 7T", "Marktwert-Änderung der letzten 7 Tage (Plus = steigt)"],
+          ["Einsatz", "Chance auf die Startelf (mehr = besser)"],
+          ["Tore, Vorl.", "erwartete Tore bzw. Vorlagen (mehr = besser)"],
+          ["Zu null", "erwartete Spiele ohne Gegentor, zählt für Torwart und Abwehr (mehr = besser)"],
+        ]}
+      />
       <p className="text-xs text-muted">
         Erwartete Kickbase-Punkte für {horizon}: Modell aus echten Kickbase-Punkten (Einsatz, Tore, Vorlagen, Gegentore,
         zu null, Sieg/Remis, Karten je Position plus Spielerwert), mit den erwarteten Ereignissen jedes Spiels.

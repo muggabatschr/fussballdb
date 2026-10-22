@@ -3,6 +3,7 @@ import { kickoff, num, pct } from "@/lib/format";
 import { Card } from "./Card";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamName } from "./TeamName";
+import { lastName } from "./MatchdayView";
 import { WhyTip } from "./WhyTip";
 
 export function PredictionCard({ home, away, p }: { home: string; away: string; p: Prediction }) {
@@ -67,7 +68,7 @@ export function PredictionCard({ home, away, p }: { home: string; away: string; 
             .flat()
             .sort((a, b) => b.p - a.p)
             .slice(0, 4)
-            .map((x) => `${x.name.split(" ").slice(-1)[0]} ${Math.round(x.p * 100)} %`)
+            .map((x) => `${lastName(x.name)} ${Math.round(x.p * 100)} %`)
             .join(", ")}
         </p>
       )}

@@ -1,18 +1,20 @@
 import { Suspense } from "react";
 import { ErrorBox } from "@/components/Card";
-import { getKickbaseLineup, getKickbaseProjections, load } from "@/lib/api";
+import { getKickbaseLineup, getKickbaseProjections, getKickbaseStatus, load } from "@/lib/api";
+import { KickbaseLogin } from "./KickbaseLogin";
 import { KickbaseLineup } from "./KickbaseLineup";
 import { KickbaseTable } from "./KickbaseTable";
 
 async function Content({ searchParams }: { searchParams: PageProps<"/kickbase">["searchParams"] }) {
   const sp = await searchParams;
   const matchdays = Math.min(Math.max(Number(sp.spieltage) || 1, 1), 5);
-  const res = await load(() => Promise.all([getKickbaseProjections(matchdays), getKickbaseLineup()]));
+  const res = await load(() => Promise.all([getKickbaseProjections(matchdays), getKickbaseLineup(), getKickbaseStatus()]));
   if (!res.ok) return <ErrorBox message={res.error} />;
-  const [rows, lineup] = res.data;
+  const [rows, lineup, status] = res.data;
   return (
     <div className="space-y-4">
-      <KickbaseLineup l={lineup} />
+      <KickbaseLogin initial={status} />
+      {status.angemeldet && <KickbaseLineup l={lineup} />}
       <KickbaseTable rows={rows} matchdays={matchdays} />
     </div>
   );

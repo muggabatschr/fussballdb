@@ -108,7 +108,7 @@ def kickbase_login() -> None:
     except kickbase.KickbaseAuthError as exc:
         console.print(f"[red]{exc}[/]")
         raise typer.Exit(1)
-    console.print(f"[green]Angemeldet.[/] Token gültig bis {info['expires'] or 'unbekannt'}, gespeichert in {kickbase.TOKEN_FILE}")
+    console.print(f"[green]Angemeldet.[/] Token gültig bis {info['expires'] or 'unbekannt'} (gespeichert in der Datenbank)")
     for league in info["leagues"]:
         console.print(f"  Liga: {league['name']} (id {league['id']})")
 

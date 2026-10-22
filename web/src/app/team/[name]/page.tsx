@@ -6,6 +6,7 @@ import { TeamName } from "@/components/TeamName";
 import { XgChart } from "@/components/XgChart";
 import { getAbsences, getForm, load } from "@/lib/api";
 import { num } from "@/lib/format";
+import { Legend, TERMS } from "@/components/Legend";
 
 const stats: [string, string, number][] = [
   ["avg_xg", "xG pro Spiel", 2],
@@ -46,6 +47,15 @@ async function Team({ params }: { params: PageProps<"/team/[name]">["params"] })
       <section>
         <h2 className="mb-2 text-sm font-medium">Spiele</h2>
         <FormTable games={form.spiele} />
+        <Legend
+          items={[
+            TERMS.erg,
+            ["xG", "eigene : gegnerische Expected Goals, also wie viele Tore die Torchancen beider Teams im Schnitt wert waren (links mehr = besser, rechts weniger = besser)"],
+            ["Schüsse", "eigene : gegnerische Torschüsse"],
+            ["Großchancen", "eigene : gegnerische Schüsse mit mindestens 30 % Torwahrscheinlichkeit (xG ≥ 0,3)"],
+            TERMS.ppda,
+          ]}
+        />
       </section>
       <section>
         <h2 className="mb-2 text-sm font-medium">Ausfälle</h2>

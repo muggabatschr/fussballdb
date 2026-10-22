@@ -6,6 +6,7 @@ import { ClLeagueTable, ClProjectionTable, ClTableSeasons } from "./ClTable";
 import { ClView } from "./ClView";
 import { CompetitionTabs } from "./CompetitionTabs";
 import { TipSheet } from "./TipSheet";
+import { Legend, TERMS } from "./Legend";
 
 /** Runde eines Wettbewerbs; ohne Angaben die aktuelle Runde der neuesten Saison. */
 export async function CompRoundPage({ comp, season, round }: { comp: CompCode; season?: number; round?: number }) {
@@ -52,6 +53,7 @@ export async function CompTablePage({ comp, season }: { comp: CompCode; season?:
         )}
       </p>
       <ClLeagueTable rows={data.rows} zones={data.zonen} />
+      <Legend items={[TERMS.sp, TERMS.tore, TERMS.pkt, TERMS.modell, TERMS.platz]} />
       {projected && (
         <section className="pt-4">
           <h2 className="mb-1 text-lg font-semibold">Geschätzte Abschlusstabelle</h2>
@@ -60,6 +62,15 @@ export async function CompTablePage({ comp, season }: { comp: CompCode; season?:
             Spieltag an.
           </p>
           <ClProjectionTable rows={data.rows} zones={data.zonen} />
+          <Legend
+            items={[
+              TERMS.erwPkt,
+              TERMS.heute,
+              ...(data.zonen ?? []).map(
+                (z): [string, string] => [z.label, `Chance auf Platz ${z.von}${z.bis > z.von ? `–${z.bis}` : ""} in Prozent`],
+              ),
+            ]}
+          />
         </section>
       )}
     </div>

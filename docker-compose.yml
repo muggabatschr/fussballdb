@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: fussball
       POSTGRES_DB: fussballdb
     ports:
-      - "5442:5432"
+      - "127.0.0.1:5442:5432"  # nur lokal erreichbar (Datenbank enthält auch das Kickbase-Token)
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

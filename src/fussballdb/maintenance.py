@@ -112,9 +112,9 @@ def _need_injury_history() -> str | None:
 
 
 def _need_kickbase_daily() -> str | None:
-    from fussballdb.ingest.kickbase import TOKEN_FILE
+    from fussballdb.ingest.kickbase import has_session
 
-    if not TOKEN_FILE.exists():
+    if not has_session():
         return None  # kein Kickbase-Zugang hinterlegt
     last = _scalar("SELECT max(fetched_at) FROM kb_league_entry")
     if last is None or last < datetime.now(timezone.utc) - timedelta(hours=20):
@@ -123,9 +123,9 @@ def _need_kickbase_daily() -> str | None:
 
 
 def _need_kickbase_points() -> str | None:
-    from fussballdb.ingest.kickbase import TOKEN_FILE
+    from fussballdb.ingest.kickbase import has_session
 
-    if not TOKEN_FILE.exists():
+    if not has_session():
         return None
     last_match = _scalar("SELECT max(kickoff) FROM match WHERE finished")
     last_points = _scalar("SELECT max(kickoff) FROM kb_points")

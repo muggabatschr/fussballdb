@@ -9,6 +9,7 @@ import { MatchdayNav } from "./MatchdayNav";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamName } from "./TeamName";
 import { WhyTip } from "./WhyTip";
+import { Legend, TILE_LEGEND } from "./Legend";
 
 function pointsLabel(g: MatchdayGame, r: Punkteregel): string {
   if (g.points === r.exakt) return "exakt";
@@ -146,7 +147,8 @@ function groupChannels(names: string[]): { name: string; suffixes?: string[] }[]
   return out;
 }
 
-const lastName = (n: string) => n.split(" ").slice(-1)[0];
+// Nachname ohne Vorname: "Kevin De Bruyne" -> "De Bruyne", "Rodrygo" bleibt
+export const lastName = (n: string) => n.split(" ").slice(1).join(" ") || n;
 
 /** Wahrscheinlichste Torschützen je Team (Chance auf mindestens ein Tor), aufklappbar wie die Begründung. */
 function Scorers({ s, home, away }: { s?: MatchdayGame["torschuetzen"]; home: string; away: string }) {
@@ -257,6 +259,7 @@ export function MatchdayView({ seasons, data }: { seasons: Season[]; data: Match
           <Game key={g.id} g={g} regel={data.punkteregel} />
         ))}
       </div>
+      <Legend items={TILE_LEGEND} />
     </div>
   );
 }

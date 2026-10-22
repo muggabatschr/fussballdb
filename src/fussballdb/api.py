@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import FastAPI, Query
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -32,6 +33,13 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="fussballdb", description="Bundesliga-Daten, xG und Prognosen", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+def invalid_request(_, exc: RequestValidationError):
+    # ohne die Eingaben zurückzuschicken (beim Kickbase-Login stünde dort das Passwort)
+    fields = sorted({".".join(str(x) for x in e.get("loc", [])[1:]) for e in exc.errors()})
+    return JSONResponse(status_code=422, content={"detail": f"Ungültige Anfrage: {', '.join(fields) or 'Eingabe'}"})
 
 
 @app.exception_handler(ValueError)
@@ -390,6 +398,61 @@ def kickbase_lineup():
     from fussballdb.features.kickbase_lineup import lineup
 
     return json.loads(json.dumps(lineup(), default=str))
+
+
+class KickbaseLogin(BaseModel):
+    email: str
+    password: str
+
+
+class KickbaseLeague(BaseModel):
+    league_id: str
+
+
+@app.get("/kickbase/status")
+def kickbase_status():
+    """Ist ein Kickbase-Zugang hinterlegt? Gültig bis, Ligen, gewählte Liga (nie das Token)."""
+    from fussballdb.ingest import kickbase
+
+    return kickbase.status()
+
+
+@app.post("/kickbase/login")
+def kickbase_login(body: KickbaseLogin):
+    """Bei Kickbase anmelden. E-Mail und Passwort gehen nur an Kickbase; gespeichert wird nur das Token.
+    Danach werden Markt, Kader und Marktwerte im Hintergrund geladen."""
+    from fussballdb.ingest import kickbase
+
+    try:
+        kickbase.login(body.email.strip(), body.password)
+    except kickbase.KickbaseAuthError as exc:
+        raise ValueError(str(exc)) from None
+    except Exception:
+        raise ValueError("Kickbase ist gerade nicht erreichbar. Bitte später noch einmal versuchen.") from None
+    ensure_in_background(on_done=_reload_model, only={"kickbase"}, force=True)
+    return kickbase.status()
+
+
+@app.post("/kickbase/liga")
+def kickbase_league(body: KickbaseLeague):
+    """Liga wählen, falls das Konto in mehreren Kickbase-Ligen ist; lädt Markt und Kader neu."""
+    from fussballdb.ingest import kickbase
+
+    try:
+        kickbase.choose_league(body.league_id)
+    except kickbase.KickbaseAuthError as exc:
+        raise ValueError(str(exc)) from None
+    ensure_in_background(on_done=_reload_model, only={"kickbase"}, force=True)
+    return kickbase.status()
+
+
+@app.post("/kickbase/logout")
+def kickbase_logout():
+    """Kickbase-Zugang löschen (Token entfernen)."""
+    from fussballdb.ingest import kickbase
+
+    kickbase.logout()
+    return kickbase.status()
 
 
 class SqlQuery(BaseModel):
