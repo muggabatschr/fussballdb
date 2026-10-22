@@ -33,7 +33,7 @@ export function ClView({ seasons, data, comp = "CL" }: { seasons: ClSeason[]; da
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         {data.games.map((g) => (
-          <Game key={g.id} g={g} regel={data.punkteregel} />
+          <Game key={g.id} g={g} regel={data.punkteregel} href={`${c.base}/spiel/${g.id}`} />
         ))}
       </div>
       <Legend items={TILE_LEGEND} />

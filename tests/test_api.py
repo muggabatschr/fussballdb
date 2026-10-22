@@ -41,3 +41,33 @@ def test_status():
     st = client.get("/status").json()
     assert "running" in st["update"]
     assert {c["step"] for c in st["checks"]} >= {"ergebnisse", "prognosen", "ausfaelle"}
+
+
+def test_match_detail():
+    md = client.get("/matchday/2025/10").json()
+    g = md["games"][0]
+    d = client.get(f"/match/{g['id']}").json()
+    assert d["game"]["id"] == g["id"] and d["game"]["tip_home"] == g["tip_home"]
+    # Form nur aus Spielen vor diesem Spiel, das jüngste zuerst
+    for side in ("home", "away"):
+        kickoffs = [f["kickoff"] for f in d["form"][side]]
+        assert 0 < len(kickoffs) <= 6 and all(k < d["game"]["kickoff"] for k in kickoffs)
+        assert kickoffs == sorted(kickoffs, reverse=True)
+    s = d["h2h_summary"]
+    assert s["spiele"] == len(d["h2h"]) == s["siege_heim"] + s["remis"] + s["siege_gast"]
+    assert g["id"] not in {x["id"] for x in d["h2h"]}
+    assert d["statistik"]["home"]["goals"] == g["home_goals"]
+    assert d["ausfaelle"] is None  # gespielt: keine aktuellen Ausfälle
+    assert client.get("/match/0").status_code == 400
+
+
+def test_comp_match_detail():
+    for comp in ("CL", "D2", "DFB"):
+        rnd = client.get(f"/eu/{comp}/round/2025/1").json()
+        g = rnd["games"][0]
+        d = client.get(f"/eu/{comp}/match/{g['id']}").json()
+        assert d["game"]["id"] == g["id"] and d["wettbewerb"] == rnd["wettbewerb"]
+        assert all(f["kickoff"] < d["game"]["kickoff"] and f["wettbewerb"] for f in d["form"]["home"])
+        assert (d["tabelle"] is None) == (comp == "DFB")
+    # falscher Wettbewerb zum Spiel
+    assert client.get(f"/eu/D2/match/{g['id']}").status_code == 400

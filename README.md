@@ -14,6 +14,7 @@ Was es alles gibt:
 - **Champions League, 2. Bundesliga, DFB-Pokal**: Prognosen und Tipps aus einem Modell über alle Ligen
 - **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
 - **Torschützen-Prognose** je Spiel
+- **Spiel-Detailseite** mit Form, Direktvergleich, Tabelle, Ausfällen, Aufstellung und Quoten
 - **Web-App** mit Spieltagen, Tabelle, Teamseiten, Champions League, Chat und einem Kickbase-Tab
 - **Chat** mit einem lokalen Sprachmodell (LM Studio, ohne Cloud)
 - **MCP-Server** und Skill `/fussball`, damit Claude direkt auf die Daten zugreift
@@ -243,6 +244,7 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 | `/spieltag/<saison>/<nr>` | beliebiger Spieltag, Saison-Dropdown und Blättern, Bilanz der Tipps |
 | `/tabelle` | Tabelle mit xG, xGA und xPts, Platzdifferenz zum Modell, darunter die geschätzte Abschlusstabelle |
 | `/team/<name>` | Form, xG-Verlauf, aktuelle Ausfälle |
+| `/spiel/<id>`, `/cl/spiel/<id>`, `/2bl/spiel/<id>`, `/pokal/spiel/<id>` | Detailseite eines Spiels, per Klick auf die Kachel |
 | `/chat` | Chat mit dem lokalen Modell |
 | `/cl`, `/cl/<saison>/<runde>` | Champions League: Runde mit Prognosen, Tipps und Bilanz, Saison- und Rundenauswahl |
 | `/cl/tabelle`, `/cl/tabelle/<saison>` | Tabelle der CL-Ligaphase mit Platzdifferenz zum Modell, darunter die geschätzte Abschlusstabelle der Ligaphase |
@@ -275,6 +277,17 @@ umschalten.
 (`components/Legend.tsx`), jeweils mit Richtung, z. B. „xGA … weniger = besser“ oder „PPDA … weniger = mehr
 Pressing“. Kurznamen kommen überall aus `teams.json` bzw. `eu_teams.json` (HSV, Gladbach, Stuttgart II …);
 automatisch gebildete Kurznamen werden auf Eindeutigkeit geprüft, sonst steht der volle Name.
+
+**Spiel-Detailseite** (Klick auf eine Spielkachel, in allen vier Wettbewerben; `components/MatchDetail.tsx`,
+API `/match/<id>` und `/eu/<comp>/match/<id>`): oben Prognose, Tipp und TV wie in der Kachel, darunter
+die Begründung aufgeklappt, die letzten 6 Spiele beider Teams vor dem Spiel (bei CL, 2. Liga und Pokal über
+alle Wettbewerbe), der Direktvergleich mit Bilanz und den letzten 10 Duellen, beide Teams in der Tabelle
+(CL und 2. Liga mit Zonen-Chancen) und Kaderwert und Elo. Für offene Bundesliga-Spiele kommen die
+wahrscheinlichen Torschützen, die voraussichtliche Aufstellung laut Ligainsider und die Ausfälle dazu, für
+gespielte die Spielstatistik (Schüsse, Großchancen, Ecken, PPDA, Karten …) und der Vergleich Modell gegen
+Quoten. Ausfälle bei CL, 2. Liga und Pokal kommen aus der Transfermarkt-Liste der CL-Teams, sonst aus der
+Bundesliga-Liste, wenn ein Bundesligist spielt. Teamnamen, „Warum?“ und „Wer trifft?“ in der Kachel bleiben
+einzeln klickbar.
 
 **Tipp-Zettel** (`/tipps`, Link „Tipp-Zettel“ neben der Spieltags- bzw. Rundenauswahl, für Bundesliga,
 2. Liga, CL und Pokal): alle Tipps eines Spieltags oder einer Runde untereinander. „Als Text“ kopiert sie zum Einfügen, „Als Bild“ zeichnet ein PNG mit Wappen; auf dem Handy
@@ -813,6 +826,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     Kickbase-Aufstellung, 2. Bundesliga und DFB-Pokal.
 24. **Legenden** unter allen Tabellen, eindeutige Kurznamen, **Kickbase-Anmeldung im Web** (Token in der
     Datenbank, Datenbank-Port nur lokal).
+25. **Spiel-Detailseite** für Bundesliga, 2. Liga, Pokal und CL: Form, Direktvergleich, Tabelle, Ausfälle,
+    Aufstellung, Spielstatistik und Quoten.
 
 Offen:
 

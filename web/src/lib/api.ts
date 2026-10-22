@@ -309,3 +309,74 @@ export type KickbaseStatus = {
   liga?: string | null;
 };
 export const getKickbaseStatus = () => api<KickbaseStatus>("/kickbase/status");
+
+export type DetailFormGame = {
+  id: number;
+  kickoff: string;
+  ort: "H" | "A";
+  gegner: string;
+  tore: number;
+  gegentore: number;
+  xg: number | null;
+  xga: number | null;
+  wettbewerb?: string; // nur Europa-Modell: Liga oder Pokal des Spiels
+  round_name?: string | null;
+};
+
+export type DetailH2H = {
+  id: number;
+  kickoff: string;
+  saison?: string;
+  wettbewerb?: string;
+  home: string;
+  away: string;
+  home_goals: number;
+  away_goals: number;
+  home_xg: number | null;
+  away_xg: number | null;
+};
+
+export type H2HSummary = { spiele: number; siege_heim: number; remis: number; siege_gast: number; tore_heim: number; tore_gast: number };
+
+export type MatchStats = {
+  goals: number;
+  xg: number | null;
+  shots: number | null;
+  shots_on_target: number | null;
+  big_chances: number | null;
+  corners: number | null;
+  fouls: number | null;
+  yellow_cards: number | null;
+  red_cards: number | null;
+  ppda: number | null;
+  xpts: number | null;
+};
+
+export type DetailAbsence = Absence & { value_share?: number | null };
+
+type Sides<T> = { home: T; away: T };
+
+/** Spieldetail (Bundesliga: /match/{id}, sonst /eu/{comp}/match/{id}). Felder, die es nur in einem der beiden
+ * Modelle gibt, sind optional. */
+export type MatchDetail = {
+  wettbewerb: string;
+  game: ClGame & { season: number; season_label?: string; matchday?: number; round_no?: number };
+  punkteregel: Punkteregel;
+  form: Sides<DetailFormGame[]>;
+  h2h: DetailH2H[];
+  h2h_summary: H2HSummary;
+  tabelle:
+    | (Sides<(Partial<TableRow> & Partial<ClTableRow> & { name: string; platz: number }) | null> & {
+        stand: string;
+        zonen?: TableZone[];
+      })
+    | null;
+  ausfaelle: Sides<DetailAbsence[]> | null;
+  aufstellung?: Sides<{ reihe: number | null; name: string }[]> | null;
+  statistik?: Sides<MatchStats> | null;
+  quoten?: { bookmaker: string; is_closing: boolean; p_home: number; p_draw: number; p_away: number }[];
+  kaderwert?: Sides<number | null>;
+};
+
+export const getMatchDetail = (id: number) => api<MatchDetail>(`/match/${id}`);
+export const getCompMatchDetail = (comp: string, id: number) => api<MatchDetail>(`/eu/${comp}/match/${id}`);

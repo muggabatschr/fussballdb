@@ -1,5 +1,6 @@
 import type { Bilanz, Matchday, MatchdayGame, Punkteregel, Scorer, Season } from "@/lib/api";
 import Image from "next/image";
+import Link from "next/link";
 import { kickoff, num } from "@/lib/format";
 import { shortName } from "@/lib/teams";
 import { tvLogo } from "@/lib/tv";
@@ -52,10 +53,15 @@ function XgDelta({ goals, xg, className = "" }: { goals: number; xg: number; cla
   );
 }
 
-export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
+/** Kachel eines Spiels. Mit `href` ist die ganze Kachel ein Link zur Detailseite; Teamnamen, „Warum?“ und
+ * „Wer trifft?“ liegen darüber und bleiben einzeln klickbar. */
+export function Game({ g, regel, href }: { g: MatchdayGame; regel: Punkteregel; href?: string }) {
   const hasPrediction = g.p_home != null && g.p_draw != null && g.p_away != null;
   return (
-    <Card className="space-y-3">
+    <Card className={`relative space-y-3 ${href ? "transition-colors hover:border-foreground/30" : ""}`}>
+      {href && (
+        <Link href={href} className="absolute inset-0 rounded-lg" aria-label={`Details zu ${g.home} gegen ${g.away}`} />
+      )}
       <div className="flex items-center justify-between gap-2 whitespace-nowrap text-xs text-muted">
         <span className="truncate">{kickoff(g.kickoff)}</span>
         <span className="flex shrink-0 items-center gap-2 tabular">
@@ -76,7 +82,7 @@ export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 font-medium">
-        <TeamName name={g.home} short />
+        <TeamName name={g.home} short className="relative" />
         <div className="flex flex-col items-center whitespace-nowrap tabular">
           <span className={g.finished ? "text-lg font-semibold" : "text-muted"}>
             {g.finished ? `${g.home_goals}:${g.away_goals}` : "–:–"}
@@ -87,7 +93,7 @@ export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
             </span>
           )}
         </div>
-        <TeamName name={g.away} short align="end" className="justify-self-end" />
+        <TeamName name={g.away} short align="end" className="relative justify-self-end" />
         {g.finished && g.home_xg != null && g.away_xg != null && (
           <>
             <XgDelta goals={g.home_goals!} xg={g.home_xg} />
@@ -109,13 +115,16 @@ export function Game({ g, regel }: { g: MatchdayGame; regel: Punkteregel }) {
               </span>
             )}
           </p>
-          {g.tip_home != null && <WhyTip tip={`${g.tip_home}:${g.tip_away}`} lines={g.explanation} />}
-          {!g.finished && <Scorers s={g.torschuetzen} home={g.home} away={g.away} />}
+          <div className="relative space-y-3 empty:hidden">
+            {g.tip_home != null && <WhyTip tip={`${g.tip_home}:${g.tip_away}`} lines={g.explanation} />}
+            {!g.finished && <Scorers s={g.torschuetzen} home={g.home} away={g.away} />}
+          </div>
           {!g.finished && <TvLine tv={g.tv} />}
         </>
       ) : (
         <p className="text-xs text-muted">Keine Prognose (vor diesem Spieltag gab es noch keine Daten).</p>
       )}
+      {href && <p className="text-right text-xs text-muted">Form, Direktvergleich, Ausfälle ›</p>}
     </Card>
   );
 }
@@ -185,7 +194,7 @@ const channelKey = (name: string) => {
 
 /** TV-Kanäle in Deutschland und Österreich (FotMob-TV-Programm, etwa eine Woche vor dem Spiel bekannt).
  * Laufen in beiden Ländern dieselben Sender, steht nur eine Zeile "DE/AT" da. */
-function TvLine({ tv }: { tv?: MatchdayGame["tv"] }) {
+export function TvLine({ tv }: { tv?: MatchdayGame["tv"] }) {
   const de = tv?.DE ?? [];
   const at = tv?.AT ?? [];
   const same = de.length > 0 && de.map(channelKey).join("|") === at.map(channelKey).join("|");
@@ -256,7 +265,7 @@ export function MatchdayView({ seasons, data }: { seasons: Season[]; data: Match
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         {data.games.map((g) => (
-          <Game key={g.id} g={g} regel={data.punkteregel} />
+          <Game key={g.id} g={g} regel={data.punkteregel} href={`/spiel/${g.id}`} />
         ))}
       </div>
       <Legend items={TILE_LEGEND} />

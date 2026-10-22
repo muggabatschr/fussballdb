@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCompRound, getCompRounds, getCompTable, load } from "@/lib/api";
+import { getCompMatchDetail, getCompRound, getCompRounds, getCompTable, load } from "@/lib/api";
 import { COMPETITIONS, type CompCode } from "@/lib/competitions";
 import { ErrorBox } from "./Card";
 import { ClLeagueTable, ClProjectionTable, ClTableSeasons } from "./ClTable";
@@ -7,6 +7,7 @@ import { ClView } from "./ClView";
 import { CompetitionTabs } from "./CompetitionTabs";
 import { TipSheet } from "./TipSheet";
 import { Legend, TERMS } from "./Legend";
+import { MatchDetailView } from "./MatchDetail";
 
 /** Runde eines Wettbewerbs; ohne Angaben die aktuelle Runde der neuesten Saison. */
 export async function CompRoundPage({ comp, season, round }: { comp: CompCode; season?: number; round?: number }) {
@@ -95,6 +96,24 @@ export async function CompTipsPage({ comp, season, round }: { comp: CompCode; se
       backHref={`${c.base}/${data.season}/${data.round_no}`}
       backLabel="zur Runde"
       fileName={`tipps-${c.base.slice(1)}-${data.season}-${data.round_no}.png`}
+    />
+  );
+}
+
+/** Detailseite eines Spiels (2. Liga, CL, Pokal). */
+export async function CompMatchPage({ comp, id }: { comp: CompCode; id: number }) {
+  const c = COMPETITIONS[comp];
+  const res = await load(() => getCompMatchDetail(comp, id));
+  if (!res.ok) return <ErrorBox message={res.error} />;
+  const d = res.data;
+  const g = d.game;
+  const label = `${g.season}/${String((g.season + 1) % 100).padStart(2, "0")}`;
+  return (
+    <MatchDetailView
+      d={d}
+      meta={`${c.name} · ${g.round_name} · ${label}`}
+      backHref={`${c.base}/${g.season}/${g.round_no}`}
+      backLabel={`zur Runde (${g.round_name})`}
     />
   );
 }
