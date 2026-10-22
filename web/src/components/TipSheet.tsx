@@ -99,7 +99,8 @@ export function TipSheet({ data, label }: { data: Matchday; label: string }) {
     try {
       // Handy: Teilen-Menü (Messenger, Fotos …); sonst herunterladen
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: `Tipps ${data.matchday}. Spieltag` });
+        // nur die Datei teilen: mit Titel oder Text legt WhatsApp das Bild doppelt an
+        await navigator.share({ files: [file] });
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
