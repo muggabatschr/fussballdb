@@ -15,7 +15,7 @@ Was es alles gibt:
 - **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
 - **Torschützen-Prognose** je Spiel
 - **Spiel-Detailseite** mit Form, Direktvergleich, Tabelle, Ausfällen, Aufstellung und Quoten
-- **Stadion, Kapazität und Wetter** je Spiel, so wie am Spieltag
+- **Stadion, Kapazität und Wetter** je Spiel, so wie am Spieltag, vor dem Spiel mit Kleidungsempfehlung
 - **Web-App** mit Spieltagen, Tabelle, Teamseiten, Champions League, Chat und einem Kickbase-Tab
 - **Chat** mit einem lokalen Sprachmodell (LM Studio, ohne Cloud)
 - **MCP-Server** und Skill `/fussball`, damit Claude direkt auf die Daten zugreift
@@ -338,7 +338,12 @@ der nächsten 14 Tage bekommen ihren Spielort täglich neu, gespielte einmal dan
 So bleiben Name und Kapazität, wie sie am Spieltag waren, auch wenn das Stadion später umbenannt oder
 umgebaut wird. FotMob kennt auch Ausweichstadien (Schachtar 2024/25 in Gelsenkirchen). Das Wetter ist vor
 dem Spiel die Vorhersage von Open-Meteo (alle 6 Std. neu), drei Stunden nach dem Anpfiff der gemessene Wert
-(eingefroren). Ab 2026/27; ältere Spiele haben keinen Spielort, weil frei verfügbare Daten die
+(eingefroren). Vor dem Spiel steht darunter eine **Kleidungsempfehlung** für Zuschauer
+(`clothingAdvice` in `web/src/lib/weather.ts`): Schichten nach gefühlter Temperatur (Windchill unter 10 °C,
+2 °C Abzug für 90 Minuten im Stadion; unter 0 °C dicke Winterjacke mit Mütze, Schal, Handschuhen, bis 5 °C
+Winterjacke, bis 10 °C warme Jacke, bis 15 °C Übergangsjacke, bis 20 °C Pullover), ab 40 %
+Regenwahrscheinlichkeit Regenjacke oder Poncho (Schirme sind in den meisten Stadien verboten), bei Wind ab
+30 km/h etwas Winddichtes, ab 25 °C und Sonne Kappe und Sonnencreme. Ab 2026/27; ältere Spiele haben keinen Spielort, weil frei verfügbare Daten die
 Sponsorennamen der Stadien nicht mit Zeitraum führen (Wikidata kennt z. B. nur „Signal Iduna Park“).
 
 **TV-Sender in der Kachel:** Bei offenen Spielen steht unten je eine Zeile für Deutschland und Österreich
@@ -873,7 +878,7 @@ Was in welcher Reihenfolge entstanden ist und warum.
 26. **Ältere Saisons 1993/94 bis 2013/14** zum Nachschlagen (6.426 Spiele, 14 weitere Vereine), Modell
     bleibt bei den Daten ab 2014/15; Direktvergleich auf der Detailseite nur vor dem Spiel und aufklappbar.
 27. **Stadion, Kapazität und Wetter** je Spiel (FotMob, Open-Meteo), eingefroren nach dem Spiel, damit Namen
-    und Kapazität dem Spieltag entsprechen.
+    und Kapazität dem Spieltag entsprechen. Vor dem Spiel eine Kleidungsempfehlung aus der Vorhersage.
 
 Offen:
 

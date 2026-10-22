@@ -1,8 +1,9 @@
 import type { Venue } from "@/lib/api";
 import { num } from "@/lib/format";
-import { weatherText } from "@/lib/weather";
+import { clothingAdvice, weatherText } from "@/lib/weather";
 
-/** Stadion mit Kapazität und darunter das Wetter zur Spielzeit (Vorhersage oder gemessen). */
+/** Stadion mit Kapazität, darunter das Wetter zur Spielzeit (Vorhersage oder gemessen) und vor dem Spiel eine
+ * Kleidungsempfehlung für Zuschauer. */
 export function VenueLine({ ort, className = "" }: { ort?: Venue | null; className?: string }) {
   if (!ort) return null;
   const w = ort.wetter;
@@ -15,6 +16,7 @@ export function VenueLine({ ort, className = "" }: { ort?: Venue | null; classNa
         w.wind_kmh != null ? `Wind ${Math.round(w.wind_kmh)} km/h` : null,
       ].filter(Boolean)
     : [];
+  const clothing = w?.art === "vorhersage" ? clothingAdvice(w) : null;
   return (
     <div className={`space-y-0.5 text-xs text-muted ${className}`}>
       <p className="truncate" title={[ort.stadion, ort.stadt].filter(Boolean).join(", ")}>
@@ -25,6 +27,11 @@ export function VenueLine({ ort, className = "" }: { ort?: Venue | null; classNa
         <p className="truncate tabular" title={w?.art === "vorhersage" ? "Vorhersage zur Spielzeit (Open-Meteo)" : "Wetter zur Spielzeit (Open-Meteo)"}>
           {parts.join(" · ")}
           {w?.art === "vorhersage" && <span className="opacity-70"> (Vorhersage)</span>}
+        </p>
+      )}
+      {clothing && (
+        <p className="truncate" title="Empfehlung für Zuschauer nach gefühlter Temperatur (Wind, 90 Minuten im Stadion), Regen und Sonne">
+          <span className="text-foreground/80">Anziehen:</span> {clothing}
         </p>
       )}
     </div>
