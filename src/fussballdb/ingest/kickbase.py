@@ -243,11 +243,13 @@ def ingest_players(session: Session, history: bool = True, mv_days: int = 365, p
 
 
 def ingest_league(session: Session) -> dict:
-    """Transfermarkt und eigener Kader in der (ersten) eigenen Liga."""
+    """Transfermarkt und eigener Kader in der aktiven Liga (gewählt, sonst die erste). Einträge anderer Ligen
+    werden entfernt: Auswertung, Aufstellung und Erinnerung sollen nur die aktive Liga sehen, sonst würden
+    sich nach einem Ligawechsel Markt und Kader beider Ligen vermischen."""
     from fussballdb.db.models import KbLeagueEntry
 
     league_id = int(session_info_league())
-    session.execute(delete(KbLeagueEntry).where(KbLeagueEntry.league_id == league_id))
+    session.execute(delete(KbLeagueEntry))
     market = get(f"/v4/leagues/{league_id}/market").get("it", [])
     squad = get(f"/v4/leagues/{league_id}/squad").get("it", [])
     for p in market:

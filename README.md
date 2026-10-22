@@ -399,7 +399,8 @@ Transfermarkt der eigenen Liga und Verkaufskandidaten im eigenen Kader.
 „Anmelden“ klicken. Beides geht nur einmal an Kickbase und wird nirgends gespeichert oder protokolliert;
 gespeichert wird nur das zurückgegebene Token, in der Tabelle `kb_session`. So nutzen Web-App (auch in
 Docker) und Terminal dieselbe Anmeldung. Danach lädt die App Kader, Markt und Marktwerte im Hintergrund.
-Ist man in mehreren Ligen, lässt sich die Liga dort wählen; „Abmelden“ löscht das Token. Das Token läuft
+Ist man in mehreren Ligen, lässt sich die Liga dort wählen; gespeichert werden dann nur Markt und Kader der
+gewählten Liga, die der vorherigen werden beim Wechsel entfernt. „Abmelden“ löscht das Token. Das Token läuft
 nach etwa einer Woche ab, dann erscheint das Formular wieder. Im Terminal geht es weiterhin mit:
 
 ```bash
@@ -819,7 +820,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `match_weather` | Wetter je Spiel zur Spielzeit (`kind` vorhersage oder gemessen) |
 | `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |
 | `kb_session` | Kickbase-Anmeldung: Token, Ablauf, Ligen, gewählte Liga (nie das Passwort) |
-| `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der Liga |
+| `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der aktiven Liga |
 | `eu_team`, `eu_team_alias` | Champions League: Vereine aus ganz Europa (Transfermarkt-ID bei Europapokal-Teilnehmern), Namen je Quelle |
 | `eu_match` | Liga- (`competition` = football-data-Kürzel) und Europapokalspiele (`CL`, `EL`) |
 | `eu_squad_value` | Kaderwerte je Verein und Stichtag (quartalsweise) |
