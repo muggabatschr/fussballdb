@@ -11,6 +11,7 @@ export type TipSheetProps = {
   backHref: string;
   backLabel: string;
   fileName: string;
+  compact?: boolean; // im Chat: kleinere Überschrift statt Seitentitel
 };
 import { resolveTeam, shortName } from "@/lib/teams";
 import { TeamName } from "./TeamName";
@@ -98,7 +99,8 @@ async function renderImage({ title, subtitle, games }: TipSheetProps): Promise<B
 
 /** Alle Tipps eines Spieltags kompakt, zum Abschreiben, Kopieren oder als Bild (z. B. für Kicktipp). */
 export function TipSheet(props: TipSheetProps) {
-  const { title, subtitle, games, backHref, backLabel, fileName } = props;
+  const { title, subtitle, games, backHref, backLabel, fileName, compact = false } = props;
+  const Heading = compact ? "h2" : "h1";
   const [copied, setCopied] = useState(false);
   const text = [
     `${title} · ${subtitle}`,
@@ -141,9 +143,9 @@ export function TipSheet(props: TipSheetProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="min-w-0 truncate whitespace-nowrap text-xl font-semibold">
+        <Heading className={`min-w-0 truncate whitespace-nowrap font-semibold ${compact ? "text-base" : "text-xl"}`}>
           Tipp-Zettel <span className="text-muted">{title} · {subtitle}</span>
-        </h1>
+        </Heading>
         <div className="flex items-center gap-3 text-sm">
           <button
             type="button"

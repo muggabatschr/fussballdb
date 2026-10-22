@@ -1,7 +1,50 @@
 // Dünne Hüllen um die Python-API. Die Logik (Daten, Prognosemodell) liegt komplett in Python.
 import { type InferUITools, type ToolSet, type UIDataTypes, type UIMessage, tool } from "ai";
 import { z } from "zod";
-import { getAbsences, getForm, getH2H, getPrediction, getTable, getUpcoming, runSql } from "@/lib/api";
+import {
+  getAbsences,
+  getCompRound,
+  getCompRounds,
+  getForm,
+  getH2H,
+  getMatchday,
+  getPrediction,
+  getSeasons,
+  getTable,
+  getUpcoming,
+  runSql,
+} from "@/lib/api";
+import { COMPETITIONS } from "@/lib/competitions";
+import type { TipSheetProps } from "@/components/TipSheet";
+
+/** Tipp-Zettel wie auf /tipps: Bundesliga-Spieltag oder Runde von 2. Liga, CL, Pokal; ohne Angabe die aktuelle. */
+async function tipSheet(comp: "BL" | "D2" | "CL" | "DFB", season?: number, round?: number): Promise<TipSheetProps> {
+  if (comp === "BL") {
+    const seasons = await getSeasons();
+    const s = seasons.find((x) => x.start_year === season) ?? seasons[0];
+    const d = await getMatchday(s.start_year, round ?? s.current_matchday);
+    return {
+      title: `${d.matchday}. Spieltag`,
+      subtitle: `Bundesliga ${s.label}`,
+      games: d.games,
+      backHref: `/tipps/${d.season}/${d.matchday}`,
+      backLabel: "öffnen",
+      fileName: `tipps-bundesliga-${d.season}-${d.matchday}.png`,
+    };
+  }
+  const c = COMPETITIONS[comp];
+  const seasons = await getCompRounds(comp);
+  const s = seasons.find((x) => x.season === season) ?? seasons[0];
+  const d = await getCompRound(comp, s.season, round ?? s.current_round);
+  return {
+    title: d.round_name,
+    subtitle: `${c.name} ${s.label}`,
+    games: d.games,
+    backHref: `${c.base}/tipps/${d.season}/${d.round_no}`,
+    backLabel: "öffnen",
+    fileName: `tipps-${c.base.slice(1)}-${d.season}-${d.round_no}.png`,
+  };
+}
 
 const team = z.string().describe("Teamname, auch umgangssprachlich (z. B. BVB, Gladbach, Bayern)");
 
@@ -46,6 +89,28 @@ export const tools = {
       "erwartet), dazu die Hochrechnung zum Saisonende (prognose_platz, erw_punkte, p_meister, p_top4, p_abstieg in %).",
     inputSchema: z.object({ season: z.number().int().optional().describe("Startjahr, z. B. 2026; Standard aktuelle Saison") }),
     execute: ({ season }) => getTable(season),
+  }),
+  get_tip_sheet: tool({
+    description:
+      "Tipp-Zettel: alle Tipps eines Spieltags bzw. einer Runde (Ergebnis mit den meisten erwarteten Tipp-Punkten). " +
+      "Nutzen bei Fragen nach Tipp-Zettel, Tippzettel oder allen Tipps eines Spieltags. Der Nutzer sieht den Zettel " +
+      "als Box mit Wappen und kann ihn als Bild oder Text teilen.",
+    inputSchema: z.object({
+      wettbewerb: z
+        .enum(["BL", "D2", "CL", "DFB"])
+        .optional()
+        .describe("BL = Bundesliga (Standard), D2 = 2. Bundesliga, CL = Champions League, DFB = DFB-Pokal"),
+      saison: z.number().int().optional().describe("Startjahr, z. B. 2026; Standard aktuelle Saison"),
+      spieltag: z.number().int().optional().describe("Spieltag bzw. Runde; Standard der nächste offene"),
+    }),
+    execute: async ({ wettbewerb, saison, spieltag }) => {
+      const sheet = await tipSheet(wettbewerb ?? "BL", saison, spieltag);
+      // nur was Box und Modell brauchen
+      return {
+        ...sheet,
+        games: sheet.games.map(({ id, kickoff, home, away, tip_home, tip_away }) => ({ id, kickoff, home, away, tip_home, tip_away })),
+      };
+    },
   }),
   run_sql: tool({
     description:

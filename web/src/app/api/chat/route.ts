@@ -14,6 +14,8 @@ Regeln:
   an xG+xA). Rechne sie nicht ein zweites Mal ein.
 - Die Ergebnisse der Werkzeuge sieht der Nutzer bereits als Karte oder Tabelle. Wiederhole sie nicht
   vollständig, sondern ordne sie in wenigen Sätzen ein.
+- Fragt der Nutzer nach dem Tipp-Zettel oder allen Tipps eines Spieltags, rufe get_tip_sheet auf. Der Zettel
+  erscheint als Box; zähle die Tipps danach nicht noch einmal als Text auf, ein kurzer Satz reicht.
 - Uhrzeiten aus den Werkzeugen sind bereits deutsche Ortszeit.
 - Prognosen sind Wahrscheinlichkeiten, keine Tipps oder Wettempfehlungen. Ballbesitz liegt nicht vor.`;
 

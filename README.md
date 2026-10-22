@@ -291,7 +291,9 @@ einzeln klickbar.
 
 **Tipp-Zettel** (`/tipps`, Link „Tipp-Zettel“ neben der Spieltags- bzw. Rundenauswahl, für Bundesliga,
 2. Liga, CL und Pokal): alle Tipps eines Spieltags oder einer Runde untereinander. „Als Text“ kopiert sie zum Einfügen, „Als Bild“ zeichnet ein PNG mit Wappen; auf dem Handy
-öffnet sich das Teilen-Menü (z. B. Messenger), am Rechner wird es heruntergeladen.
+öffnet sich das Teilen-Menü (z. B. Messenger), am Rechner wird es heruntergeladen. Fragt man im Chat nach dem
+Tipp-Zettel, erscheint dieselbe Box mit „Als Bild“ und „Als Text“ (Werkzeug `get_tip_sheet`, für alle vier
+Wettbewerbe).
 
 **Erinnerung vor dem Tippschluss** (`fussballdb erinnerung`, `reminder.py`): Beginnt der nächste
 Bundesliga-Spieltag in weniger als 3 Stunden, kommt einmal eine Mac-Mitteilung mit allen Tipps. Fehlt ein
@@ -827,7 +829,7 @@ Was in welcher Reihenfolge entstanden ist und warum.
 24. **Legenden** unter allen Tabellen, eindeutige Kurznamen, **Kickbase-Anmeldung im Web** (Token in der
     Datenbank, Datenbank-Port nur lokal).
 25. **Spiel-Detailseite** für Bundesliga, 2. Liga, Pokal und CL: Form, Direktvergleich, Tabelle, Ausfälle,
-    Aufstellung, Spielstatistik und Quoten.
+    Aufstellung, Spielstatistik und Quoten. Tipp-Zettel auch im Chat als Box.
 
 Offen:
 
