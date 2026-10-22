@@ -1,8 +1,9 @@
-# fussballdb
+# fussballdb – Fußball-Prognosen
 
 Datenbank für die 1. Bundesliga mit Ergebnissen, xG, Schüssen, Großchancen, Kadern, Ausfällen und
-Wettquoten seit 2014/15 (ab dann gibt es xG bei Understat). Dazu ein Prognosemodell für die nächsten Spiele und ein Chat, in dem ein Sprachmodell
-die Daten abfragt und erklärt.
+Wettquoten seit 2014/15 (ab dann gibt es xG bei Understat), dazu 2. Bundesliga, DFB-Pokal und Champions
+League. Mit Prognosemodell für die nächsten Spiele, Web-App „Fußball-Prognosen“ und einem Chat, in dem ein
+Sprachmodell die Daten abfragt und erklärt.
 
 Was es alles gibt:
 

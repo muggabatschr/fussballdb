@@ -8,8 +8,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Bundesliga-Prognosen",
-  description: "xG, Form, Ausfälle und Prognosen für die 1. Bundesliga",
+  title: "Fußball-Prognosen",
+  description: "Prognosen und Tipps für Bundesliga, 2. Bundesliga, DFB-Pokal und Champions League",
 };
 
 const nav = [
@@ -27,8 +27,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <header className="border-b border-border bg-surface">
           <div className="mx-auto flex max-w-5xl items-center gap-4 whitespace-nowrap px-4 py-3 sm:gap-6">
             <Link href="/" className="truncate font-semibold tracking-tight">
-              <span className="sm:hidden">BL-Prognosen</span>
-              <span className="hidden sm:inline">Bundesliga-Prognosen</span>
+              <span className="sm:hidden">Prognosen</span>
+              <span className="hidden sm:inline">Fußball-Prognosen</span>
             </Link>
             <nav className="flex shrink-0 gap-4 text-sm text-muted">
               {nav.map((n) => (

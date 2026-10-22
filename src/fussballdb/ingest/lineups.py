@@ -33,14 +33,21 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name).strip("-")
 
 
-def team_pages() -> list[tuple[str, str]]:
-    """(slug, URL) aller aktuellen Bundesliga-Teams laut Ligainsider."""
-    soup = BeautifulSoup(get_text(f"{BASE}/bundesliga/tabelle/", headers=BROWSER_HEADERS), "html.parser")
-    pages = {}
-    for a in soup.select("a[href]"):
-        m = TEAM_HREF.match(a["href"])
-        if m:
-            pages[m.group(1)] = f"{BASE}/{m.group(1)}/{m.group(2)}/"
+def team_pages(attempts: int = 3) -> list[tuple[str, str]]:
+    """(slug, URL) aller aktuellen Bundesliga-Teams laut Ligainsider. Die Seite kommt gelegentlich ohne
+    Vereinslinks (andere Variante beim Laden); dann nach kurzer Pause erneut abrufen."""
+    import time
+
+    pages: dict[str, str] = {}
+    for attempt in range(attempts):
+        soup = BeautifulSoup(get_text(f"{BASE}/bundesliga/tabelle/", headers=BROWSER_HEADERS), "html.parser")
+        for a in soup.select("a[href]"):
+            m = TEAM_HREF.match(a["href"])
+            if m:
+                pages[m.group(1)] = f"{BASE}/{m.group(1)}/{m.group(2)}/"
+        if pages:
+            break
+        time.sleep(5 * (attempt + 1))
     return sorted(pages.items())
 
 

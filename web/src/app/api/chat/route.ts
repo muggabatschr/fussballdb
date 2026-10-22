@@ -3,7 +3,7 @@ import { describeError, localModel } from "@/lib/llm";
 import { type ChatMessage, tools } from "./tools";
 
 const instructions = `Du bist ein Analyst für die 1. Fußball-Bundesliga und antwortest auf Deutsch.
-Du hast Werkzeuge für eine Datenbank mit allen Spielen seit 2024/25 (Ergebnisse, xG, Schüsse, Großchancen,
+Du hast Werkzeuge für eine Datenbank mit allen Bundesliga-Spielen seit 2014/15 (Ergebnisse, xG, Schüsse, Großchancen,
 PPDA, Kader, Ausfälle, Wettquoten) und für ein statistisches Prognosemodell.
 
 Regeln:
