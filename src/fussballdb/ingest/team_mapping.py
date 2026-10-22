@@ -39,6 +39,29 @@ TEAMS: dict[str, dict[str, str]] = {
     "Fortuna Düsseldorf": {"football_data": "Fortuna Dusseldorf", "understat": "Fortuna Duesseldorf"},
     "DSC Arminia Bielefeld": {"football_data": "Bielefeld", "understat": "Arminia Bielefeld"},
     "SpVgg Greuther Fürth": {"football_data": "Greuther Furth", "understat": "Greuther Fuerth"},
+    # nur in den Saisons vor 2014/15 (config.HISTORY_SEASONS, ohne Understat)
+    "Alemannia Aachen": {"football_data": "Aachen"},
+    "Eintracht Braunschweig": {"football_data": "Braunschweig"},
+    "Energie Cottbus": {"football_data": "Cottbus"},
+    "Dynamo Dresden": {"football_data": "Dresden"},
+    "MSV Duisburg": {"football_data": "Duisburg"},
+    "Hansa Rostock": {"football_data": "Hansa Rostock"},
+    "1. FC Kaiserslautern": {"football_data": "Kaiserslautern"},
+    "Karlsruher SC": {"football_data": "Karlsruhe"},
+    "VfB Leipzig": {"football_data": "Leipzig"},
+    "TSV 1860 München": {"football_data": "Munich 1860"},
+    "KFC Uerdingen 05": {"football_data": "Uerdingen"},
+    "SSV Ulm 1846": {"football_data": "Ulm"},
+    "SpVgg Unterhaching": {"football_data": "Unterhaching"},
+    "SG Wattenscheid 09": {"football_data": "Wattenscheid"},
+}
+
+# Weitere Schreibweisen bekannter Teams in älteren Saisons: (quelle, alias) -> kanonischer Name
+EXTRA_ALIASES: dict[tuple[str, str], str] = {
+    ("football_data", "Dusseldorf"): "Fortuna Düsseldorf",
+    ("football_data", "M'Gladbach"): "Borussia Mönchengladbach",
+    ("openligadb", "TSG 1899 Hoffenheim"): "TSG Hoffenheim",
+    ("openligadb", "Werder Bremen"): "SV Werder Bremen",
 }
 
 # Transfermarkt schreibt einige Vereine anders (ohne Eintrag: wie OpenLigaDB)
@@ -105,6 +128,11 @@ def seed_teams(session: Session) -> None:
             if (source, alias) not in known_aliases:
                 session.add(TeamAlias(team_id=team.id, source=source, alias=alias))
                 known_aliases.add((source, alias))
+    session.flush()
+    ids = {t.name: t.id for t in session.scalars(select(Team))}
+    for (source, alias), name in EXTRA_ALIASES.items():
+        if (source, alias) not in known_aliases:
+            session.add(TeamAlias(team_id=ids[name], source=source, alias=alias))
 
 
 class TeamResolver:
@@ -114,9 +142,9 @@ class TeamResolver:
         self._by_source: dict[tuple[str, str], int] = {
             (a.source, a.alias): a.team_id for a in session.scalars(select(TeamAlias))
         }
-        self._any: dict[str, int] = {
-            alias.casefold(): team_id for (_, alias), team_id in self._by_source.items()
-        }
+        # umgangssprachliche Namen zuletzt, damit sie gewinnen ("Leipzig" = RB Leipzig, nicht der VfB von 1993)
+        ordered = sorted(self._by_source.items(), key=lambda kv: kv[0][0] == "colloquial")
+        self._any: dict[str, int] = {alias.casefold(): team_id for (_, alias), team_id in ordered}
 
     def resolve(self, source: str, name: str) -> int:
         team_id = self._by_source.get((source, name))

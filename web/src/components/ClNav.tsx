@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CurrentLink } from "./CurrentLink";
 import { useRouter } from "next/navigation";
 import type { ClSeason } from "@/lib/api";
 import { COMPETITIONS, type CompCode } from "@/lib/competitions";
@@ -16,10 +17,13 @@ export function ClNav({ seasons, season, round, comp = "CL" }: { seasons: ClSeas
   const prev = i > 0 ? rounds[i - 1] : null;
   const next = i >= 0 && i < rounds.length - 1 ? rounds[i + 1] : null;
   const arrow = "rounded-lg border border-border bg-surface px-3 py-1.5 text-sm";
+  const currentHref = href(season, current?.current_round ?? round);
+  const toCurrent = Boolean(current && round !== current.current_round && current.rounds.some((r) => !r.finished));
 
   return (
     <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 sm:w-auto">
       <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+        <CurrentLink href={currentHref} show={toCurrent} title="zur aktuellen Runde" className="max-sm:hidden" />
         <select
           aria-label="Saison"
           value={season}
@@ -67,17 +71,13 @@ export function ClNav({ seasons, season, round, comp = "CL" }: { seasons: ClSeas
       </div>
 
       <div className="flex gap-4">
+        <CurrentLink href={currentHref} show={toCurrent} title="zur aktuellen Runde" className="sm:hidden" />
         <Link href={`${c.base}/tipps/${season}/${round}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
           Tipp-Zettel
         </Link>
         {c.table && (
           <Link href={`${c.base}/tabelle/${season}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
             {c.table}
-          </Link>
-        )}
-        {current && round !== current.current_round && current.rounds.some((r) => !r.finished) && (
-          <Link href={href(season, current.current_round)} className="whitespace-nowrap text-sm text-muted hover:text-foreground">
-            zur aktuellen Runde
           </Link>
         )}
       </div>

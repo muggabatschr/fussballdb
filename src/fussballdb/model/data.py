@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
+from fussballdb.config import MODEL_FIRST_SEASON
 from fussballdb.db.session import engine
 
 MATCHES_SQL = text(
@@ -17,6 +18,7 @@ MATCHES_SQL = text(
     JOIN team at ON at.id = m.away_team_id
     LEFT JOIN match_team_stats hs ON hs.match_id = m.id AND hs.team_id = m.home_team_id
     LEFT JOIN match_team_stats as_ ON as_.match_id = m.id AND as_.team_id = m.away_team_id
+    WHERE s.start_year >= :first
     ORDER BY m.kickoff, m.id
     """
 )
@@ -29,8 +31,10 @@ MARKET_SQL = text(
 )
 
 
-def load_matches() -> pd.DataFrame:
-    df = pd.read_sql(MATCHES_SQL, engine)
+def load_matches(first_season: int = MODEL_FIRST_SEASON) -> pd.DataFrame:
+    """Spiele für das Modell, nur ab MODEL_FIRST_SEASON (ältere Saisons sind nur zur Anzeige da;
+    first_season kleiner nur für Tests wie compare_elo_history)."""
+    df = pd.read_sql(MATCHES_SQL, engine, params={"first": first_season})
     df["kickoff"] = pd.to_datetime(df["kickoff"], utc=True)
     return df
 

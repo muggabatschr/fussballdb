@@ -72,6 +72,13 @@ else
   uv run fussballdb ingest
 fi
 
+schritt "Ältere Saisons 1993/94 bis 2013/14 (nur zum Nachschlagen, ~1 Min.)"
+if [ "$(docker compose exec -T db psql -U fussball -d fussballdb -Atc 'SELECT count(*) FROM season WHERE start_year < 2014' 2>/dev/null || echo 0)" -gt 0 ]; then
+  echo "Schon vorhanden."
+else
+  uv run fussballdb historie
+fi
+
 schritt "Kaderwerte, Ausfälle, Quoten, Prognosen"
 if [ "$SCHNELL" = 1 ]; then
   uv run fussballdb ensure --ohne-langsame

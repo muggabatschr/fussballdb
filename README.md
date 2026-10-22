@@ -1,14 +1,14 @@
 # fussballdb – Fußball-Prognosen
 
-Datenbank für die 1. Bundesliga mit Ergebnissen, xG, Schüssen, Großchancen, Kadern, Ausfällen und
-Wettquoten seit 2014/15 (ab dann gibt es xG bei Understat), dazu 2. Bundesliga, DFB-Pokal und Champions
+Datenbank für die 1. Bundesliga mit Ergebnissen und Wettquoten seit 1993/94 und xG, Schüssen, Großchancen,
+Kadern und Ausfällen seit 2014/15 (ab dann gibt es xG bei Understat), dazu 2. Bundesliga, DFB-Pokal und Champions
 League. Mit Prognosemodell für die nächsten Spiele, Web-App „Fußball-Prognosen“ und einem Chat, in dem ein
 Sprachmodell die Daten abfragt und erklärt.
 
 Was es alles gibt:
 
-- **Datenbank** (PostgreSQL in Docker) mit allen Spielen seit 2014/15, Spielerdaten, Verletzungen,
-  Sperren, Kaderwerten und Quoten
+- **Datenbank** (PostgreSQL in Docker) mit allen Bundesliga-Spielen seit 1993/94, ab 2014/15 mit xG,
+  Spielerdaten, Verletzungen, Sperren und Kaderwerten
 - **Prognosemodell** mit Wahrscheinlichkeiten, erwarteten Toren und einem Tipp nach der Punkteregel der
   Kicktipp-Runde, für kommende Spiele und im Rückblick mit dem damaligen Datenstand
 - **Champions League, 2. Bundesliga, DFB-Pokal**: Prognosen und Tipps aus einem Modell über alle Ligen
@@ -63,7 +63,7 @@ lassen sich im Backtest prüfen.
 | Quelle | Daten |
 |---|---|
 | [OpenLigaDB](https://www.openligadb.de) | Spielplan, Ergebnisse, Halbzeit, Spieltage |
-| [football-data.co.uk](https://www.football-data.co.uk) | Schüsse, aufs Tor, Ecken, Fouls, Karten, Quoten (B365, Pinnacle, Betfair, Ø, Max; Eröffnung und Schluss), Vorab-Quoten |
+| [football-data.co.uk](https://www.football-data.co.uk) | Schüsse, aufs Tor, Ecken, Fouls, Karten, Quoten (B365, Pinnacle, Betfair, Ø, Max; Eröffnung und Schluss), Vorab-Quoten; für 1993/94 bis 2013/14 auch die Ergebnisse (Schüsse ab 2000/01) |
 | [OpenLigaDB](https://www.openligadb.de) (`ucl`, `uel`) | Champions League ab 2024/25 und Europa League 2024/25: Spielplan und Ergebnisse |
 | Understat, fünf große Ligen | xG der Ligaspiele aus England, Spanien, Italien, Deutschland, Frankreich ab 2022/23 (für das CL-Modell) |
 | football-data.co.uk, 18 Ligen | Ligaergebnisse aus England, Spanien, Italien, Deutschland, Frankreich, Niederlande, Portugal, Belgien, Türkei, Schottland, Griechenland, Österreich, Schweiz, Dänemark, Norwegen, Schweden, Polen, Rumänien (für die Europa-Elo) |
@@ -81,6 +81,15 @@ Abgeleitet:
 
 Nicht verfügbar: **Ballbesitz**. FBref, Sofascore und FotMob blocken automatisierte Abrufe, die Spalte
 `possession` bleibt leer.
+
+**Ältere Saisons 1993/94 bis 2013/14** (`fussballdb historie`, `ingest/history.py`) sind nur zum
+Nachschlagen da: Ergebnisse, Halbzeitstand, Statistik und Quoten von football-data, Anstoßzeit und Spieltag
+von OpenLigaDB, wo vorhanden (ab 2003/04; davor 15:30 Uhr und Spieltag aus der Spielreihenfolge). Kein xG,
+keine Schüsse mit Position, keine Kader. Sie erscheinen im Direktvergleich, in den Spieltagen und Tabellen
+früherer Saisons (bis 1994/95 mit zwei Punkten je Sieg), im Chat und über SQL. Das Prognosemodell nutzt
+weiter nur Spiele ab 2014/15 (`config.MODEL_FIRST_SEASON`, gefiltert in `model/data.py`); geprüft:
+Backtest 2025/26 und alle Modellwerte danach unverändert. Eine Elo mit Vorgeschichte ab 1993 sagt nicht
+besser vorher (siehe „Was getestet und verworfen wurde“).
 
 Hinweise zu den Daten:
 - Union – Bochum (14.12.2024) steht in `match` mit dem Sportgerichtsurteil 0:2, in den Statistiken mit dem gespielten 1:1.
@@ -114,7 +123,8 @@ scripts/install.sh --launchd
 3. startet die Datenbank (`docker compose up -d --wait db`, Port 5442)
 4. installiert die Python-Abhängigkeiten (`uv sync`)
 5. legt die Tabellen an (`fussballdb init-db`)
-6. importiert alle Saisons seit 2014/15 (`fussballdb ingest`, ~30 Min.), nur wenn die Datenbank leer ist
+6. importiert alle Saisons seit 2014/15 (`fussballdb ingest`, ~30 Min.), nur wenn die Datenbank leer ist,
+   und die älteren Saisons ab 1993/94 zum Nachschlagen (`fussballdb historie`, ~1 Min.)
 7. lädt Kaderwerte, Ausfälle, Quoten, Verletzungshistorie und rechnet alle Prognosen
    (`fussballdb ensure`, beim ersten Mal ~40 Min. für die Verletzungshistorie)
 8. lädt die Daten für die Champions League und rechnet ihre Prognosen (`fussballdb europa`,
@@ -150,6 +160,7 @@ docker compose up -d --wait db
 uv sync
 uv run fussballdb init-db
 uv run fussballdb ingest      # alle Saisons seit 2014/15, beim ersten Mal ~30 Min. (wird gecacht)
+uv run fussballdb historie    # 1993/94 bis 2013/14, nur zum Nachschlagen (~1 Min.)
 uv run fussballdb ensure      # alles Weitere: Kaderwerte, Ausfälle, Quoten, Prognosen, Verletzungshistorie
 uv run fussballdb logos
 cd web && cp .env.example .env.local && npm install
@@ -271,7 +282,9 @@ eingestellt hat, fehlt die Zeile. Die Quoten fließen nicht in Prognose oder Tip
 Vergleich.
 
 **Wettbewerbe:** Über den Spieltagen und Runden lässt sich zwischen Bundesliga, 2. Liga, Pokal und CL
-umschalten.
+umschalten. „Aktuell“ steht links vor der Saisonauswahl (auf dem Handy vor „Tipp-Zettel“) und
+bleibt auf dem aktuellen Spieltag unsichtbar an seinem Platz, damit Auswahl und Pfeile beim Blättern nicht
+verrutschen.
 
 **Legenden:** Unter jeder Tabelle und unter den Kacheln stehen die Abkürzungen in einfachen Worten
 (`components/Legend.tsx`), jeweils mit Richtung, z. B. „xGA … weniger = besser“ oder „PPDA … weniger = mehr
@@ -561,6 +574,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | Befehl | Wirkung |
 |---|---|
 | `fussballdb init-db` | Tabellen anlegen und Spalten nachziehen (Migrationen) |
+| `fussballdb historie` | Ältere Saisons 1993/94 bis 2013/14 nur zum Nachschlagen laden (Ergebnisse, Statistik, Quoten) |
 | `fussballdb ensure` | Prüfen und nur nötige Schritte ausführen (`--voll`: alle, `--ohne-langsame`: ohne Verletzungshistorie und Kickbase-Punkte) |
 | `fussballdb status` | Anzeigen, was aktuell ist und was fehlt |
 | `fussballdb europa` | Champions League: Europapokal- und Ligaspiele, Kaderwerte aus 30 Ländern, Wappen laden (`--no-werte` ohne Kaderwerte) |
@@ -584,6 +598,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb tipp-test` | Tipp-Regeln im Rückblick vergleichen |
 | `fussballdb belastung-test` | Europapokal-Belastung im Rückblick-Test (`--tage`) |
 | `fussballdb cl-xg-test` | CL: europaweites xG-Modell gegen die Elo im Rückblick-Test |
+| `fussballdb elo-historie-test` | Elo mit Vorgeschichte ab 1993/94 gegen Elo ab 2014/15 (verworfen) |
 | `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test (`--kombi`: zusammen mit den verworfenen Erweiterungen) |
 | `fussballdb kombi-test` | alle Erweiterungen zusammen, jeweils eine weggelassen |
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
@@ -739,6 +754,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Europapokal-Belastung mit 3 statt 4 Tagen | −0,0019 | schwächer (62 Spiele, 81 %); 4 Tage erfassen auch Dienstag → Samstag |
 | Spielerwert über On/Off (xG für/gegen mit und ohne Spieler auf dem Platz) statt xG+xA | 2023–26: +0,0010 | verworfen; zu verrauscht, weil Stammspieler selten fehlen (`features/onoff.py`) |
 | Echte Aufstellung (Obergrenze, Wissen aus der Zukunft) | −0,0006 | nur zur Einordnung: Ausfälle sind kaum noch ein Hebel |
+| Elo mit Vorgeschichte ab 1993/94 statt ab 2014/15 (nur die Elo, `fussballdb elo-historie-test`) | Einstellen 2015–19: −0,0003, Test 2020–26: +0,0005 | verworfen; im Test in keiner der 7 Saisons besser, 9 % der Ziehungen. Die alten Ergebnisse bleiben reine Anzeige |
 
 ## Datenbank
 
@@ -778,7 +794,7 @@ Wappen erscheint.
 ## Tests
 
 ```bash
-uv run pytest                          # Modell, API (braucht laufende DB), lokaler Chat (17 Tests)
+uv run pytest                          # Modell, API (braucht laufende DB), lokaler Chat
 cd web && npx tsc --noEmit && npm run lint
 ```
 
@@ -830,6 +846,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     Datenbank, Datenbank-Port nur lokal).
 25. **Spiel-Detailseite** für Bundesliga, 2. Liga, Pokal und CL: Form, Direktvergleich, Tabelle, Ausfälle,
     Aufstellung, Spielstatistik und Quoten. Tipp-Zettel auch im Chat als Box.
+26. **Ältere Saisons 1993/94 bis 2013/14** zum Nachschlagen (6.426 Spiele, 14 weitere Vereine), Modell
+    bleibt bei den Daten ab 2014/15; Direktvergleich auf der Detailseite nur vor dem Spiel und aufklappbar.
 
 Offen:
 

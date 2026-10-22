@@ -122,7 +122,11 @@ export function Game({ g, regel, href }: { g: MatchdayGame; regel: Punkteregel; 
           {!g.finished && <TvLine tv={g.tv} />}
         </>
       ) : (
-        <p className="text-xs text-muted">Keine Prognose (vor diesem Spieltag gab es noch keine Daten).</p>
+        <p className="text-xs text-muted">
+          {(g.season ?? 2014) < 2014
+            ? "Prognosen gibt es ab 2014/15, ältere Saisons sind nur zum Nachschlagen da."
+            : "Keine Prognose (vor diesem Spieltag gab es noch keine Daten)."}
+        </p>
       )}
       {href && <p className="text-right text-xs text-muted">Form, Direktvergleich, Ausfälle ›</p>}
     </Card>

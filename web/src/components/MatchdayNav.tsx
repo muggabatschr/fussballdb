@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CurrentLink } from "./CurrentLink";
 import { useRouter } from "next/navigation";
 import type { Season } from "@/lib/api";
 
@@ -11,10 +12,13 @@ export function MatchdayNav({ seasons, season, matchday }: { seasons: Season[]; 
   const current = seasons.find((s) => s.start_year === season);
   const max = current?.matchdays ?? 34;
   const arrow = "rounded-lg border border-border bg-surface px-3 py-1.5 text-sm";
+  const currentHref = href(season, current?.current_matchday ?? matchday);
+  const toCurrent = Boolean(current && !current.finished && matchday !== current.current_matchday);
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <div className="flex shrink-0 items-center gap-2">
+        <CurrentLink href={currentHref} show={toCurrent} title="zum aktuellen Spieltag" className="max-sm:hidden" />
         <select
           aria-label="Saison"
           value={season}
@@ -62,14 +66,10 @@ export function MatchdayNav({ seasons, season, matchday }: { seasons: Season[]; 
       </div>
 
       <div className="flex gap-4">
+        <CurrentLink href={currentHref} show={toCurrent} title="zum aktuellen Spieltag" className="sm:hidden" />
         <Link href={`/tipps/${season}/${matchday}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
           Tipp-Zettel
         </Link>
-        {current && !current.finished && matchday !== current.current_matchday && (
-          <Link href={href(season, current.current_matchday)} className="whitespace-nowrap text-sm text-muted hover:text-foreground">
-            zum aktuellen Spieltag
-          </Link>
-        )}
       </div>
     </div>
   );

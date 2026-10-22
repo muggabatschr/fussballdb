@@ -62,7 +62,7 @@ export const tools = {
     execute: async ({ team, last_n }) => ({ team, ...(await getForm(team, last_n ?? 8)) }),
   }),
   get_head_to_head: tool({
-    description: "Direkte Duelle zweier Teams in der Datenbank mit Ergebnis und xG.",
+    description: "Direkte Bundesliga-Duelle zweier Teams seit 1993/94 mit Ergebnis, xG ab 2014/15.",
     inputSchema: z.object({ team_a: team, team_b: team }),
     execute: ({ team_a, team_b }) => getH2H(team_a, team_b),
   }),
@@ -87,7 +87,9 @@ export const tools = {
     description:
       "Tabelle einer Saison mit Punkten, Toren, xG, xGA, xPts und Modell-Platz (platz_diff > 0 = steht besser als " +
       "erwartet), dazu die Hochrechnung zum Saisonende (prognose_platz, erw_punkte, p_meister, p_top4, p_abstieg in %).",
-    inputSchema: z.object({ season: z.number().int().optional().describe("Startjahr, z. B. 2026; Standard aktuelle Saison") }),
+    inputSchema: z.object({
+      season: z.number().int().optional().describe("Startjahr ab 1993 (vor 2014 ohne xG), z. B. 2026; Standard aktuelle Saison"),
+    }),
     execute: ({ season }) => getTable(season),
   }),
   get_tip_sheet: tool({

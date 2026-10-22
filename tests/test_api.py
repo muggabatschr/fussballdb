@@ -71,3 +71,17 @@ def test_comp_match_detail():
         assert (d["tabelle"] is None) == (comp == "DFB")
     # falscher Wettbewerb zum Spiel
     assert client.get(f"/eu/D2/match/{g['id']}").status_code == 400
+
+
+def test_history_seasons():
+    """Ältere Saisons sind abrufbar, das Modell sieht sie nicht."""
+    from fussballdb.model.data import load_matches
+
+    md = client.get("/matchday/1993/1").json()
+    assert len(md["games"]) == 9 and all(g["p_home"] is None for g in md["games"])
+    # 1993/94: zwei Punkte je Sieg, Meister Bayern mit 44 Punkten
+    assert client.get("/table", params={"season": 1993}).json()[0] == {
+        **client.get("/table", params={"season": 1993}).json()[0], "name": "FC Bayern München", "pkt": 44}
+    assert load_matches()["season"].min() == 2014
+    d = client.get(f"/match/{md['games'][0]['id']}").json()
+    assert d["h2h"] == [] and d["form"]["home"] == []  # davor gibt es nichts

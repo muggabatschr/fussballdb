@@ -13,7 +13,7 @@ from fussballdb.model.ensemble import MODEL_VERSION
 
 SCHEMA_HINT = """
 Tabellen (PostgreSQL):
-- season(id, start_year, label)
+- season(id, start_year, label)       -- ab 1993; vor 2014 nur Ergebnisse, Statistik (Schüsse ab 2000), Quoten
 - team(id, name)                      -- kanonischer Name laut OpenLigaDB
 - team_alias(team_id, source, alias)
 - match(id, season_id, matchday, kickoff, home_team_id, away_team_id, home_goals, away_goals,
@@ -49,7 +49,7 @@ TOOLS = [
     },
     {
         "name": "get_head_to_head",
-        "description": "Direkte Duelle zweier Teams in der Datenbank mit Ergebnis und xG.",
+        "description": "Direkte Bundesliga-Duelle zweier Teams seit 1993/94 mit Ergebnis, xG ab 2014/15.",
         "input_schema": {"type": "object", "properties": {"team_a": {"type": "string"}, "team_b": {"type": "string"}},
                          "required": ["team_a", "team_b"], "additionalProperties": False},
     },
@@ -285,7 +285,9 @@ class Toolbox:
         return _rows(
             """
             SELECT t.name, count(*) AS sp,
-                   sum(CASE WHEN own.goals > o.goals THEN 3 WHEN own.goals = o.goals THEN 1 ELSE 0 END) AS pkt,
+                   -- bis 1994/95 gab es zwei Punkte für einen Sieg
+                   sum(CASE WHEN own.goals > o.goals THEN CASE WHEN s.start_year < 1995 THEN 2 ELSE 3 END
+                            WHEN own.goals = o.goals THEN 1 ELSE 0 END) AS pkt,
                    sum(own.goals) AS tore, sum(o.goals) AS gegentore,
                    round(sum(own.xg)::numeric, 1) AS xg, round(sum(o.xg)::numeric, 1) AS xga,
                    round(sum(own.xpts)::numeric, 1) AS xpts

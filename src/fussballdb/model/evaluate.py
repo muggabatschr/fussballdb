@@ -580,3 +580,45 @@ def compare_euro_load(seasons=(2024, 2025, 2026), days: int = 4, seed: int = 0, 
                      "besser_pct": 100 * (d[boot].mean(1) < 0).mean() if name != "basis" else np.nan,
                      "saisons_besser": f"{sum(d[loaded & (season_of == s)].mean() < 0 for s in seasons)}/{len(seasons)}"})
     return pd.DataFrame(rows)
+
+
+def compare_elo_history(first_long: int = 1993, tune=tuple(range(2015, 2020)), test=tuple(range(2020, 2027)),
+                        seed: int = 0) -> pd.DataFrame:
+    """Elo mit Vorgeschichte ab `first_long` (ältere Saisons nur mit Toren) gegen die Elo ab 2014/15.
+
+    Beide Varianten bewerten dieselben Spiele ab 2015/16; das Ergebnis-Logit wird je Saison auf denselben
+    Spielen davor (ab 2014/15) angepasst, der Unterschied liegt also nur in den Elo-Werten. Spalten wie bei
+    compare_extras: RPS, Differenz (negativ = Vorgeschichte besser) und Anteil der Bootstrap-Ziehungen im
+    Testzeitraum, in denen die Vorgeschichte besser ist."""
+    from fussballdb.config import MODEL_FIRST_SEASON
+    from fussballdb.model.elo import Elo, EloOutcomeModel
+
+    short, long_ = load_matches(), load_matches(first_long)
+    tables = {name: Elo().run(df).set_index("match_id") for name, df in (("ab 2014/15", short), (f"ab {first_long}", long_))}
+    played = short[short["finished"]].set_index("match_id")
+    outcome_all = pd.Series(np.where(played["hg"] > played["ag"], 2, np.where(played["hg"] == played["ag"], 1, 0)),
+                            index=played.index)
+    probs: dict[str, list[np.ndarray]] = {name: [] for name in tables}
+    meta, outcomes = [], []
+    for season in tune + test:
+        train = played[(played["season"] >= MODEL_FIRST_SEASON) & (played["season"] < season)].index
+        target = played[played["season"] == season].index
+        for name, tab in tables.items():
+            model = EloOutcomeModel().fit(tab.loc[train, "elo_home"], tab.loc[train, "elo_away"], outcome_all[train])
+            p = model.predict(tab.loc[target, "elo_home"], tab.loc[target, "elo_away"])  # Auswärts, Remis, Heim
+            probs[name].append(p[:, ::-1])  # Heim, Remis, Auswärts
+        meta += [season] * len(target)
+        outcomes.append(2 - outcome_all[target].to_numpy())  # 0 = Heimsieg wie in scores()
+    outcome = np.concatenate(outcomes)
+    season_arr = np.array(meta)
+    p_short, p_long = (np.vstack(probs[n]) for n in tables)
+    r_short, r_long = rps_per_match(p_short, outcome), rps_per_match(p_long, outcome)
+    d = r_long - r_short
+    is_tune = np.isin(season_arr, tune)
+    test_idx = np.flatnonzero(~is_tune)
+    boot = np.random.default_rng(seed).choice(test_idx, (2000, len(test_idx)))
+    rows = [{"variante": name, "rps_einstellen": r[is_tune].mean(), "rps_test": r[~is_tune].mean()}
+            for name, r in zip(tables, (r_short, r_long))]
+    rows[1] |= {"delta_test": d[~is_tune].mean(), "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean(),
+                "saisons_besser": int(sum(d[season_arr == s].mean() < 0 for s in test)), "saisons": len(test)}
+    return pd.DataFrame(rows)

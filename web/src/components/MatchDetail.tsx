@@ -111,30 +111,44 @@ function H2HBlock({ d }: { d: MatchDetail }) {
           {s.spiele} Spiele, Tore {s.tore_heim}:{s.tore_gast} aus Sicht von {shortName(home)}
         </p>
       </div>
-      <ul className="divide-y divide-border text-sm">
-        {d.h2h.slice(0, 10).map((g: DetailH2H) => (
-          <li key={g.id} className="grid grid-cols-[4rem_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 py-1.5 tabular">
-            <span className="flex flex-col text-xs text-muted">
-              {date(g.kickoff)}
-              <span className="truncate text-[11px]">{g.wettbewerb ?? g.saison}</span>
-            </span>
-            <TeamName name={g.home} short link={false} logoSize={16} className="justify-self-end" align="end" />
-            <span className="flex flex-col items-center">
-              <span className="font-semibold">
-                {g.home_goals}:{g.away_goals}
-              </span>
-              {g.home_xg != null && g.away_xg != null && (
-                <span className="text-[11px] text-muted">
-                  xG {num(g.home_xg, 1)}:{num(g.away_xg, 1)}
-                </span>
-              )}
-            </span>
-            <TeamName name={g.away} short link={false} logoSize={16} />
-          </li>
-        ))}
-      </ul>
-      {d.h2h.length > 10 && <p className="text-xs text-muted">Die letzten 10 von {d.h2h.length} Duellen.</p>}
+      <H2HList games={d.h2h.slice(0, 10)} />
+      {d.h2h.length > 10 && (
+        <details className="group text-xs">
+          <summary className="flex cursor-pointer list-none items-center gap-1 text-muted hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <span className="inline-block transition-transform group-open:rotate-90">▸</span>
+            Alle {d.h2h.length} Duelle zeigen
+          </summary>
+          <H2HList games={d.h2h.slice(10)} />
+        </details>
+      )}
     </Card>
+  );
+}
+
+function H2HList({ games }: { games: DetailH2H[] }) {
+  return (
+    <ul className="divide-y divide-border text-sm">
+      {games.map((g) => (
+        <li key={g.id} className="grid grid-cols-[4rem_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 py-1.5 tabular">
+          <span className="flex flex-col text-xs text-muted">
+            {date(g.kickoff)}
+            <span className="truncate text-[11px]">{g.wettbewerb ?? g.saison}</span>
+          </span>
+          <TeamName name={g.home} short link={false} logoSize={16} className="justify-self-end" align="end" />
+          <span className="flex flex-col items-center">
+            <span className="font-semibold">
+              {g.home_goals}:{g.away_goals}
+            </span>
+            {g.home_xg != null && g.away_xg != null && (
+              <span className="text-[11px] text-muted">
+                xG {num(g.home_xg, 1)}:{num(g.away_xg, 1)}
+              </span>
+            )}
+          </span>
+          <TeamName name={g.away} short link={false} logoSize={16} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -281,30 +295,35 @@ const STAT_ROWS: [keyof MatchStats, string, number, boolean][] = [
 ];
 
 function StatsBlock({ s }: { s: { home: MatchStats; away: MatchStats } }) {
+  // vor 2000/01 gibt es nur Tore, ohne xG keine PPDA: nur Zeilen mit Werten, sonst gar nichts
+  const rows = STAT_ROWS.filter(([k]) => s.home[k] != null && s.away[k] != null);
+  if (!rows.length) return null;
   return (
-    <Card>
-      <ul className="space-y-2 text-sm tabular">
-        {STAT_ROWS.filter(([k]) => s.home[k] != null && s.away[k] != null).map(([k, label, digits, lessIsBetter]) => {
-          const h = Number(s.home[k]);
-          const a = Number(s.away[k]);
-          const total = h + a || 1;
-          const better = h === a ? null : (h > a) !== lessIsBetter ? "home" : "away";
-          return (
-            <li key={k}>
-              <div className="flex justify-between text-xs">
-                <span className={better === "home" ? "font-semibold" : "text-muted"}>{num(h, digits)}</span>
-                <span className="text-muted">{label}</span>
-                <span className={better === "away" ? "font-semibold" : "text-muted"}>{num(a, digits)}</span>
-              </div>
-              <div className="mt-0.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full">
-                <div className="bg-home" style={{ width: `${(100 * h) / total}%` }} />
-                <div className="bg-away" style={{ width: `${(100 * a) / total}%` }} />
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </Card>
+    <Section title="Spielstatistik">
+      <Card>
+        <ul className="space-y-2 text-sm tabular">
+          {rows.map(([k, label, digits, lessIsBetter]) => {
+            const h = Number(s.home[k]);
+            const a = Number(s.away[k]);
+            const total = h + a || 1;
+            const better = h === a ? null : (h > a) !== lessIsBetter ? "home" : "away";
+            return (
+              <li key={k}>
+                <div className="flex justify-between text-xs">
+                  <span className={better === "home" ? "font-semibold" : "text-muted"}>{num(h, digits)}</span>
+                  <span className="text-muted">{label}</span>
+                  <span className={better === "away" ? "font-semibold" : "text-muted"}>{num(a, digits)}</span>
+                </div>
+                <div className="mt-0.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full">
+                  <div className="bg-home" style={{ width: `${(100 * h) / total}%` }} />
+                  <div className="bg-away" style={{ width: `${(100 * a) / total}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
+    </Section>
   );
 }
 
@@ -411,7 +430,9 @@ function Header({ d, meta }: { d: MatchDetail; meta: string }) {
           )}
         </div>
       ) : (
-        <p className="text-xs text-muted">Keine Prognose für dieses Spiel.</p>
+        <p className="text-xs text-muted">
+          {g.season < 2014 ? "Prognosen gibt es ab 2014/15, ältere Saisons sind nur zum Nachschlagen da." : "Keine Prognose für dieses Spiel."}
+        </p>
       )}
       {!g.finished && <TvLine tv={g.tv} />}
     </Card>
@@ -445,7 +466,7 @@ export function MatchDetailView({ d, meta, backHref, backLabel }: { d: MatchDeta
         <Sides home={g.home} away={g.away} data={d.form} render={(games) => <FormList games={games} />} />
       </Section>
 
-      <Section title="Direktvergleich">
+      <Section title="Direktvergleich vor dem Spiel">
         <H2HBlock d={d} />
       </Section>
 
@@ -475,11 +496,7 @@ export function MatchDetailView({ d, meta, backHref, backLabel }: { d: MatchDeta
         </Section>
       )}
 
-      {d.statistik && (
-        <Section title="Spielstatistik">
-          <StatsBlock s={d.statistik} />
-        </Section>
-      )}
+      {d.statistik && <StatsBlock s={d.statistik} />}
 
       {d.quoten && d.quoten.length > 0 && (
         <Section title="Modell und Wettmarkt">

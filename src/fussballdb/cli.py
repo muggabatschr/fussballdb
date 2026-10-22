@@ -59,6 +59,25 @@ def ingest(
 
 
 @app.command()
+def historie(seasons: SeasonsOpt = None) -> None:
+    """Ältere Bundesliga-Saisons 1993/94 bis 2013/14 nur für die Anzeige laden (Ergebnisse, Statistik, Quoten)."""
+    from fussballdb.config import HISTORY_SEASONS
+    from fussballdb.db.session import session_scope
+    from fussballdb.ingest import history
+    from fussballdb.ingest.team_mapping import seed_teams
+
+    with session_scope() as s:
+        seed_teams(s)
+    for year in seasons or HISTORY_SEASONS:
+        with session_scope() as s:
+            n, n_stats, missing = history.ingest_season(s, year)
+        console.print(f"{year}/{(year + 1) % 100:02d}: {n} Spiele, {n_stats} mit Statistik und Quoten")
+        for m in missing:
+            console.print(f"  [yellow]nicht zugeordnet:[/] {m}")
+    console.print("Das Prognosemodell nutzt diese Saisons nicht (config.MODEL_FIRST_SEASON).")
+
+
+@app.command()
 def snapshot() -> None:
     """Täglicher Schnappschuss: Verletzte/Sperren und Aufstellungen (voraussichtlich bzw. gespielt)."""
     from fussballdb.db.session import session_scope
@@ -309,6 +328,15 @@ def belastung_test(tage: Annotated[int, typer.Option(help="Europapokalspiel höc
 
     console.print(compare_euro_load(days=tage).round(5).to_string(index=False))
     console.print("delta < 0 = besser. besser_pct: Bootstrap über die Spiele mit Belastung.")
+
+
+@app.command("elo-historie-test")
+def elo_historie_test() -> None:
+    """Prüfen, ob die Elo mit den Saisons ab 1993/94 als Vorgeschichte besser vorhersagt (Einstellen 2015–2019, Test 2020–2026)."""
+    from fussballdb.model.evaluate import compare_elo_history
+
+    console.print(compare_elo_history().round(4).to_string(index=False))
+    console.print("RPS kleiner = besser. Übernehmen nur, wenn die Vorgeschichte im Test in rund 90 % der Ziehungen besser ist.")
 
 
 @app.command("cl-xg-test")

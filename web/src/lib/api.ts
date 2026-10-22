@@ -166,6 +166,7 @@ export type Season = { start_year: number; label: string; matchdays: number; cur
 
 export type MatchdayGame = {
   id: number;
+  season?: number; // Startjahr (Bundesliga-Spieltag und Europa-Modell)
   kickoff: string;
   wochentag: string;
   home: string;

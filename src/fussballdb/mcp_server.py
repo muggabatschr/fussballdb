@@ -11,7 +11,8 @@ from mcp.types import ToolAnnotations
 
 from fussballdb.assistant.tools import SCHEMA_HINT, Toolbox, _json
 
-INSTRUCTIONS = """Daten und Prognosen zur 1. Fußball-Bundesliga seit 2014/15, zur Champions League (ab 2024/25,
+INSTRUCTIONS = """Daten und Prognosen zur 1. Fußball-Bundesliga (Ergebnisse seit 1993/94, xG, Prognosen und
+Spielerdaten seit 2014/15), zur Champions League (ab 2024/25,
 Werkzeug `champions_league`), zur 2. Bundesliga und zum DFB-Pokal (Werkzeug `wettbewerb`) und zu Kickbase: Ergebnisse, xG, Schüsse,
 Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistisches Prognosemodell
 (Dixon-Coles auf xG mit Formkomponente + Elo, Kaderwert als Startstärke, Verletzte eingerechnet).
@@ -21,7 +22,9 @@ Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistis
 - Verletzte sind in den Wahrscheinlichkeiten bereits eingerechnet.
 - Der Tipp ist das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde.
 - Prognosen sind Wahrscheinlichkeiten, keine Wettempfehlung. Ballbesitz liegt nicht vor.
-- Teamnamen dürfen umgangssprachlich sein (BVB, Gladbach, Bayern)."""
+- Teamnamen dürfen umgangssprachlich sein (BVB, Gladbach, Bayern).
+- Vor 2014/15 gibt es nur Ergebnisse, Statistik (Schüsse ab 2000/01, Karten, Ecken) und Quoten, kein xG und
+  keine Prognosen. 1993/94 und 1994/95 gab es zwei Punkte für einen Sieg (die Tabelle rechnet das so)."""
 
 mcp = MCPServer(name="fussballdb", title="Bundesliga-Prognosen", instructions=INSTRUCTIONS)
 _toolbox: Toolbox | None = None
@@ -52,7 +55,8 @@ def naechste_spiele(anzahl: int = 9) -> str:
 @mcp.tool(annotations=READ_ONLY)
 def spieltag(saison: int, spieltag: int) -> str:
     """Alle Spiele eines Spieltags mit Ergebnis, xG, Prognose, Tipp des Modells und Tipp-Punkten sowie
-    der Bilanz des Spieltags und der Saison. saison = Startjahr (2025 für 2025/26), ab 2014."""
+    der Bilanz des Spieltags und der Saison. saison = Startjahr (2025 für 2025/26), ab 1993; Prognosen und xG
+    erst ab 2014."""
     from fussballdb.api import matchday
 
     return _json(matchday(saison, spieltag))
@@ -74,7 +78,7 @@ def team_form(team: str, letzte_spiele: int = 8) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def direkte_duelle(team_a: str, team_b: str) -> str:
-    """Alle Duelle zweier Teams seit 2014/15 mit Ergebnis und xG."""
+    """Alle Bundesliga-Duelle zweier Teams seit 1993/94 mit Ergebnis, xG ab 2014/15."""
     return _call("get_head_to_head", {"team_a": team_a, "team_b": team_b})
 
 
@@ -88,7 +92,8 @@ def ausfaelle(team: str) -> str:
 def tabelle(saison: int | None = None) -> str:
     """Tabelle einer Saison mit Punkten, Toren, xG, xGA, xPts und Modell-Platz (platz_diff > 0 = steht besser
     als die Prognosen erwarten ließen), dazu die Hochrechnung zum Saisonende (prognose_platz, erw_punkte,
-    p_meister, p_top4, p_abstieg in %). saison = Startjahr, Standard aktuelle Saison."""
+    p_meister, p_top4, p_abstieg in %). saison = Startjahr ab 1993 (vor 2014 ohne xG und Modell), Standard
+    aktuelle Saison."""
     return _call("get_table", {"season": saison})
 
 

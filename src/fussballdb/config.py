@@ -21,6 +21,11 @@ CACHE_DIR = ROOT / ".cache"
 # Startjahre der Saisons, die standardmäßig importiert werden (2024 = Saison 2024/25).
 # Ab 2014/15, weil Understat (xG, Schüsse, Kader) erst dann beginnt.
 DEFAULT_SEASONS = list(range(2014, 2027))
+# Das Prognosemodell (Training, Elo, Rückblick, Backtests) nutzt nur Spiele ab dieser Saison.
+MODEL_FIRST_SEASON = 2014
+# Ältere Saisons nur für die Anzeige (Direktvergleich, Teamhistorie, SQL): Ergebnisse von football-data.co.uk
+# ab 1993/94, Schüsse, Karten und Quoten ab 2000/01, Spieltage von OpenLigaDB ab 2002/03. Kein xG.
+HISTORY_SEASONS = list(range(1993, 2014))
 
 # Punkteregel des Tippspiels: Sieg Tendenz, Sieg Tordifferenz, exaktes Ergebnis, Remis Tendenz.
 # Standard = Regel der Tipprunde p-koetzle-tippspiel (Kicktipp "2 - 4 Punkte"): ein richtiges Remis

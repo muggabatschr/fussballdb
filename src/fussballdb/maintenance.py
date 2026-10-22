@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import text
 
-from fussballdb.config import DEFAULT_SEASONS
+from fussballdb.config import DEFAULT_SEASONS, MODEL_FIRST_SEASON
 from fussballdb.db.session import engine, session_scope
 
 LOCK_ID = 4242_2026
@@ -157,10 +157,13 @@ def _run_kickbase_points() -> str:
 def _need_backfill() -> str | None:
     n = _scalar(
         """
-        SELECT count(*) FROM match m
-        WHERE m.finished AND m.kickoff > (SELECT min(kickoff) FROM match) + interval '10 days'
+        SELECT count(*) FROM match m JOIN season s ON s.id = m.season_id
+        WHERE m.finished AND s.start_year >= :first
+          AND m.kickoff > (SELECT min(x.kickoff) FROM match x JOIN season xs ON xs.id = x.season_id
+                           WHERE xs.start_year >= :first) + interval '10 days'
           AND NOT EXISTS (SELECT 1 FROM prediction p WHERE p.match_id = m.id)
-        """
+        """,
+        first=MODEL_FIRST_SEASON,
     )
     return f"{n} gespielte Spiele ohne Prognose" if n else None
 

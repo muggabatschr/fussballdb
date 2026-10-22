@@ -26,7 +26,8 @@ STATS_SQL = text(
     SELECT x.match_id, x.team_id, x.xg, x.npxg,
            coalesce((SELECT sum(pm.red_cards) FROM player_match pm
                      WHERE pm.match_id = x.match_id AND pm.team_id = x.team_id), 0) AS reds
-    FROM match_team_stats x JOIN match m ON m.id = x.match_id WHERE m.finished
+    FROM match_team_stats x JOIN match m ON m.id = x.match_id JOIN season s ON s.id = m.season_id
+    WHERE m.finished AND s.start_year >= 2014  -- ältere Saisons haben kein xG (config.MODEL_FIRST_SEASON)
     """
 )
 PRIOR_MINUTES = 30.0  # Glättung: so viele Minuten "durchschnittlicher" Spielstand werden dazugerechnet

@@ -472,7 +472,7 @@ def _implied(odds: list[dict]) -> list[dict]:
 @app.get("/match/{match_id}")
 def match_detail(match_id: int):
     """Ein Bundesliga-Spiel im Detail: Prognose wie auf der Spieltag-Kachel, dazu Form beider Teams vor dem Spiel,
-    direkte Duelle, Tabelle, Ausfälle, voraussichtliche Aufstellung, Marktquoten und (gespielt) die Spielstatistik."""
+    direkte Duelle vor dem Spiel, Tabelle, Ausfälle, voraussichtliche Aufstellung, Marktquoten und (gespielt) die Spielstatistik."""
     games = _bl_games("m.id = :id", id=match_id)
     if not games:
         raise ValueError(f"Spiel {match_id} gibt es nicht.")
@@ -487,10 +487,10 @@ def match_detail(match_id: int):
         JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
         LEFT JOIN match_team_stats hs ON hs.match_id = m.id AND hs.team_id = m.home_team_id
         LEFT JOIN match_team_stats as_ ON as_.match_id = m.id AND as_.team_id = m.away_team_id
-        WHERE m.finished AND m.id <> :id
+        WHERE m.finished AND m.kickoff < :k
           AND ((m.home_team_id = :h AND m.away_team_id = :a) OR (m.home_team_id = :a AND m.away_team_id = :h))
         ORDER BY m.kickoff DESC
-        """, id=match_id, h=h, a=a)
+        """, k=g["kickoff"], h=h, a=a)
     table = {r["name"]: {**r, "platz": i} for i, r in enumerate(toolbox._table_rows(g["season"]), 1)}
     stats = _rows(
         """
@@ -567,10 +567,10 @@ def comp_match_detail(comp: str, match_id: int):
         SELECT m.id, m.kickoff, m.competition, m.round_name, ht.name AS home, at.name AS away,
                m.home_goals, m.away_goals, m.home_xg, m.away_xg
         FROM eu_match m JOIN eu_team ht ON ht.id = m.home_id JOIN eu_team at ON at.id = m.away_id
-        WHERE m.finished AND m.id <> :id
+        WHERE m.finished AND m.kickoff < :k
           AND ((m.home_id = :h AND m.away_id = :a) OR (m.home_id = :a AND m.away_id = :h))
         ORDER BY m.kickoff DESC
-        """, id=match_id, h=h, a=a)
+        """, k=g["kickoff"], h=h, a=a)
     for r in h2h:
         r["wettbewerb"] = COMP_NAMES.get(r["competition"], r["competition"])
     tabelle = None
