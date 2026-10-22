@@ -1,9 +1,8 @@
 import { Suspense } from "react";
 import { AbsenceList } from "@/components/AbsenceList";
 import { Card, ErrorBox } from "@/components/Card";
-import { FormTable } from "@/components/FormTable";
 import { TeamName } from "@/components/TeamName";
-import { XgChart } from "@/components/XgChart";
+import { TeamGames } from "@/components/TeamGames";
 import { getAbsences, getForm, load } from "@/lib/api";
 import { num } from "@/lib/format";
 import { Legend, TERMS } from "@/components/Legend";
@@ -40,13 +39,7 @@ async function Team({ params }: { params: PageProps<"/team/[name]">["params"] })
           </Card>
         ))}
       </div>
-      <Card>
-        <h2 className="mb-2 text-sm font-medium">xG und xGA je Spiel</h2>
-        <XgChart games={form.spiele} />
-      </Card>
-      <section>
-        <h2 className="mb-2 text-sm font-medium">Spiele</h2>
-        <FormTable games={form.spiele} />
+      <TeamGames games={form.spiele}>
         <Legend
           items={[
             TERMS.erg,
@@ -56,7 +49,7 @@ async function Team({ params }: { params: PageProps<"/team/[name]">["params"] })
             TERMS.ppda,
           ]}
         />
-      </section>
+      </TeamGames>
       <section>
         <h2 className="mb-2 text-sm font-medium">Ausfälle</h2>
         <AbsenceList rows={absences} />

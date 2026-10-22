@@ -5,7 +5,17 @@ import { TeamName } from "./TeamName";
 const result = (g: FormGame) => (g.tore > g.gegentore ? "S" : g.tore === g.gegentore ? "U" : "N");
 const resultClass = { S: "bg-home text-white", U: "bg-draw text-white", N: "bg-away text-white" };
 
-export function FormTable({ games }: { games: FormGame[] }) {
+/** Letzte Spiele eines Teams. Mit `active`/`onActive` wird die Zeile unter der Maus gemeldet und die aktive
+ * Zeile hervorgehoben (zusammen mit dem xG-Diagramm, siehe TeamGames). */
+export function FormTable({
+  games,
+  active = null,
+  onActive,
+}: {
+  games: FormGame[];
+  active?: number | null;
+  onActive?: (index: number | null) => void;
+}) {
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
       <table className="w-full text-sm tabular [&_td]:whitespace-nowrap">
@@ -21,10 +31,15 @@ export function FormTable({ games }: { games: FormGame[] }) {
           </tr>
         </thead>
         <tbody>
-          {games.map((g) => {
+          {games.map((g, i) => {
             const r = result(g);
             return (
-              <tr key={`${g.datum}-${g.gegner}`} className="border-b border-border last:border-0">
+              <tr
+                key={`${g.datum}-${g.gegner}`}
+                className={`border-b border-border transition-colors last:border-0 ${active === i ? "bg-accent/20" : ""}`}
+                onMouseEnter={onActive && (() => onActive(i))}
+                onMouseLeave={onActive && (() => onActive(null))}
+              >
                 <td className="px-3 py-2 text-muted">{new Date(g.datum).toLocaleDateString("de-DE")}</td>
                 <td className="px-3 py-2">
                   <span className="inline-flex items-center gap-1.5">

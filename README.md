@@ -255,7 +255,7 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 | `/` | aktueller Spieltag |
 | `/spieltag/<saison>/<nr>` | beliebiger Spieltag, Saison-Dropdown und Blättern, Bilanz der Tipps |
 | `/tabelle` | Tabelle mit xG, xGA und xPts, Platzdifferenz zum Modell, darunter die geschätzte Abschlusstabelle |
-| `/team/<name>` | Form, xG-Verlauf, aktuelle Ausfälle |
+| `/team/<name>` | Form, xG-Verlauf, aktuelle Ausfälle; Diagramm und Spieletabelle heben beim Überfahren dasselbe Spiel hervor |
 | `/spiel/<id>`, `/cl/spiel/<id>`, `/2bl/spiel/<id>`, `/pokal/spiel/<id>` | Detailseite eines Spiels, per Klick auf die Kachel |
 | `/chat` | Chat mit dem lokalen Modell |
 | `/cl`, `/cl/<saison>/<runde>` | Champions League: Runde mit Prognosen, Tipps und Bilanz, Saison- und Rundenauswahl |
