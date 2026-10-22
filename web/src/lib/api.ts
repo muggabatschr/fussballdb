@@ -191,6 +191,23 @@ export type MatchdayGame = {
   explanation: string[];
   tv?: Partial<Record<"DE" | "AT", string[]>>;
   torschuetzen?: { home: Scorer[]; away: Scorer[] };
+  ort?: Venue | null;
+};
+
+/** Spielort laut FotMob (Name und Kapazität wie am Spieltag) mit Wetter von Open-Meteo zur Spielzeit. */
+export type Venue = {
+  stadion: string;
+  stadt: string | null;
+  land: string | null;
+  kapazitaet: number | null;
+  wetter: {
+    art: "vorhersage" | "gemessen";
+    temp_c: number | null;
+    regen_mm: number | null;
+    regen_pct: number | null;
+    wind_kmh: number | null;
+    code: number | null;
+  } | null;
 };
 
 export type Scorer = { name: string; p: number; tore: number };

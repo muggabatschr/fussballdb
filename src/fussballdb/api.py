@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from fussballdb.assistant.tools import Toolbox, _rows
 from fussballdb.config import TIPP_PUNKTE
 from fussballdb.ingest.tv import for_matches as tv_for
+from fussballdb.ingest.venues import for_matches as venues_for
 from fussballdb.maintenance import STATUS, check, ensure_in_background
 from fussballdb.model.ensemble import MODEL_VERSION
 
@@ -181,10 +182,12 @@ def _bl_games(where: str, **params) -> list[dict]:
 def _decorate_bl(games: list[dict]) -> None:
     """Begründung als Liste, TV-Sender und (bei offenen Spielen) wahrscheinliche Torschützen ergänzen."""
     tv = tv_for("BL", [g["id"] for g in games])
+    places = venues_for("BL", [g["id"] for g in games])
     scorers = _scorers() if any(not g["finished"] for g in games) else {}
     for g in games:
         g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
         g["tv"] = tv.get(g["id"], {})
+        g["ort"] = places.get(g["id"])
         sc = scorers.get(g["id"], {})
         if sc:
             g["torschuetzen"] = {"home": sc.get(g["home_team_id"], []), "away": sc.get(g["away_team_id"], [])}
@@ -360,10 +363,12 @@ def _eu_games(where: str, **params) -> list[dict]:
 def _decorate_eu(comp: str, games: list[dict]) -> None:
     """Begründung als Liste, TV-Sender und (CL, offene Spiele) die aktuellen Ausfälle als Begründungszeile."""
     tv = tv_for(comp, [g["id"] for g in games])
+    places = venues_for(comp, [g["id"] for g in games])
     missing = _cl_absences([g["id"] for g in games if not g["finished"]]) if comp == "CL" else {}
     for g in games:
         g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
         g["tv"] = tv.get(g["id"], {})
+        g["ort"] = places.get(g["id"])
         for team in (g["home"], g["away"]):
             if (g["id"], team) in missing:
                 g["explanation"].append(missing[(g["id"], team)])

@@ -9,6 +9,7 @@ import { CompetitionTabs } from "./CompetitionTabs";
 import { MatchdayNav } from "./MatchdayNav";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamName } from "./TeamName";
+import { VenueLine } from "./VenueLine";
 import { WhyTip } from "./WhyTip";
 import { Legend, TILE_LEGEND } from "./Legend";
 
@@ -119,6 +120,7 @@ export function Game({ g, regel, href }: { g: MatchdayGame; regel: Punkteregel; 
             {g.tip_home != null && <WhyTip tip={`${g.tip_home}:${g.tip_away}`} lines={g.explanation} />}
             {!g.finished && <Scorers s={g.torschuetzen} home={g.home} away={g.away} />}
           </div>
+          <VenueLine ort={g.ort} />
           {!g.finished && <TvLine tv={g.tv} />}
         </>
       ) : (

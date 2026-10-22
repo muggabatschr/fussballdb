@@ -56,7 +56,8 @@ def naechste_spiele(anzahl: int = 9) -> str:
 def spieltag(saison: int, spieltag: int) -> str:
     """Alle Spiele eines Spieltags mit Ergebnis, xG, Prognose, Tipp des Modells und Tipp-Punkten sowie
     der Bilanz des Spieltags und der Saison. saison = Startjahr (2025 für 2025/26), ab 1993; Prognosen und xG
-    erst ab 2014."""
+    erst ab 2014. Ab 2026 je Spiel `ort`: Stadion und Kapazität wie am Spieltag, Wetter zur Spielzeit
+    (art vorhersage oder gemessen, temp_c, regen_mm, regen_pct, wind_kmh, code = WMO-Wettercode)."""
     from fussballdb.api import matchday
 
     return _json(matchday(saison, spieltag))
@@ -170,7 +171,8 @@ def cl_tabelle(saison: int | None = None) -> str:
 def wettbewerb(wettbewerb: str = "D2", saison: int | None = None, runde: int | None = None) -> str:
     """Runde der 2. Bundesliga (wettbewerb="D2"), des DFB-Pokals ("DFB") oder der Champions League ("CL") mit
     Wahrscheinlichkeiten, erwarteten Toren, Tipp und Begründung. Ohne saison/runde die aktuelle Runde; mit saison
-    allein die Rundenliste. Grundlage: Elo und Dixon-Coles über alle Ligen, Kaderwert als Startwert."""
+    allein die Rundenliste. Grundlage: Elo und Dixon-Coles über alle Ligen, Kaderwert als Startwert. Ab 2026
+    je Spiel `ort` mit Stadion, Kapazität und Wetter wie bei `spieltag`."""
     from fussballdb.api import comp_round, comp_rounds
 
     try:

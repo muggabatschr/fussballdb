@@ -7,6 +7,7 @@ import { Legend, TERMS } from "./Legend";
 import { lastName, TvLine } from "./MatchdayView";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamName } from "./TeamName";
+import { VenueLine } from "./VenueLine";
 
 const result = (own: number, opp: number) => (own > opp ? "S" : own === opp ? "U" : "N");
 const resultClass = { S: "bg-home text-white dark:text-black", U: "bg-draw text-white", N: "bg-away text-white dark:text-black" };
@@ -434,6 +435,7 @@ function Header({ d, meta }: { d: MatchDetail; meta: string }) {
           {g.season < 2014 ? "Prognosen gibt es ab 2014/15, ältere Saisons sind nur zum Nachschlagen da." : "Keine Prognose für dieses Spiel."}
         </p>
       )}
+      <VenueLine ort={g.ort} className="text-sm" />
       {!g.finished && <TvLine tv={g.tv} />}
     </Card>
   );

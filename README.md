@@ -15,6 +15,7 @@ Was es alles gibt:
 - **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
 - **Torschützen-Prognose** je Spiel
 - **Spiel-Detailseite** mit Form, Direktvergleich, Tabelle, Ausfällen, Aufstellung und Quoten
+- **Stadion, Kapazität und Wetter** je Spiel, so wie am Spieltag
 - **Web-App** mit Spieltagen, Tabelle, Teamseiten, Champions League, Chat und einem Kickbase-Tab
 - **Chat** mit einem lokalen Sprachmodell (LM Studio, ohne Cloud)
 - **MCP-Server** und Skill `/fussball`, damit Claude direkt auf die Daten zugreift
@@ -71,6 +72,8 @@ lassen sich im Backtest prüfen.
 | [Transfermarkt](https://www.transfermarkt.de) | aktuelle Verletzte und Kranke, Verletzungshistorie je Spieler, Kaderwerte zum 1. jedes Monats |
 | [FotMob](https://www.fotmob.com/de/tv-guide/de) | TV-Sender je Bundesliga- und CL-Spiel in Deutschland und Österreich (nächste 7 Tage), xG der Champions-League-Spiele |
 | [LiveOnSat](https://liveonsat.com) | Sky-Bundesliga-Kanalnummer je Bundesliga-Spiel (zweite Quelle zu FotMob, gilt für DE und AT) |
+| FotMob, Spielseiten | Spielort je Spiel (Stadion, Stadt, Kapazität, Koordinaten) für Bundesliga, 2. Liga, Pokal und CL ab 2026/27 |
+| [Open-Meteo](https://open-meteo.com) | Wetter am Stadion zur Spielzeit: Vorhersage bis 16 Tage vorher, danach gemessen (Archiv ERA5) |
 | [Ligainsider](https://www.ligainsider.de) | voraussichtliche Aufstellungen vor dem Spiel, tatsächliche danach |
 | [Kickbase](https://www.kickbase.com) (inoffizielle API, eigenes Konto) | Punkte, Marktwerte, Status, Markt und Kader der eigenen Liga |
 
@@ -327,6 +330,16 @@ die Glättung sie zum Positionsschnitt zieht (Kane gegen Freiburg 39 %).
 die Differenz Tore minus xG: grün = mehr Tore als die Chancen hergaben (überperformt), orange = weniger
 (unterperformt), grau = weniger als ein halbes Tor Abweichung. Das gilt auch für die Champions League;
 deren xG kommen von FotMob (`ingest/cl_xg.py`, seit 2024/25, nach jedem Spieltag nachgeladen).
+
+**Stadion und Wetter** (Kachel und Detailseite, `ingest/venues.py`, `ingest/weather.py`,
+`components/VenueLine.tsx`): Stadion mit Kapazität laut FotMob-Spielseite, darunter das Wetter in der Stunde
+nach dem Anpfiff (Temperatur, Wetterlage, Regenwahrscheinlichkeit bzw. gemessener Regen, Wind). Offene Spiele
+der nächsten 14 Tage bekommen ihren Spielort täglich neu, gespielte einmal danach; dann wird er eingefroren.
+So bleiben Name und Kapazität, wie sie am Spieltag waren, auch wenn das Stadion später umbenannt oder
+umgebaut wird. FotMob kennt auch Ausweichstadien (Schachtar 2024/25 in Gelsenkirchen). Das Wetter ist vor
+dem Spiel die Vorhersage von Open-Meteo (alle 6 Std. neu), drei Stunden nach dem Anpfiff der gemessene Wert
+(eingefroren). Ab 2026/27; ältere Spiele haben keinen Spielort, weil frei verfügbare Daten die
+Sponsorennamen der Stadien nicht mit Zeitraum führen (Wikidata kennt z. B. nur „Signal Iduna Park“).
 
 **TV-Sender in der Kachel:** Bei offenen Spielen steht unten je eine Zeile für Deutschland und Österreich
 mit den Logos der genauen Kanäle, z. B. Sky Sport Bundesliga 5 und WOW, in der CL DAZN oder Prime Video
@@ -639,6 +652,8 @@ Geprüft werden:
 | Live-Prognosen | offene Spiele ohne Prognose, neue Daten oder älter als 24 Std. | 1 Std. |
 | CL-Ausfälle | CL-Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
 | TV-Sender (DE, AT) | Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
+| Spielorte (Stadion, Kapazität) | gespielte Spiele der Saison ohne eingefrorenen Ort oder offene der nächsten 14 Tage älter als 20 Std. | 6 Std. |
+| Wetter zur Spielzeit | Vorhersage älter als 6 Std. oder Spiel vorbei und noch nicht gemessen | 3 Std. |
 | Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |
 | Verletzungshistorie (langsam) | noch nie vollständig geladen | 7 Tage |
 | Kickbase-Punkte (langsam) | neuer Spieltag ohne Punkte oder Spieler älter als 8 Tage | 12 Std. |
@@ -778,6 +793,8 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `squad_value` | Kaderwerte je Team und Stichtag |
 | `prediction` | Prognosen (`basis` = live oder rueckblick), Tipp, Ausfälle, Begründung als JSON |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
+| `match_venue` | Spielort je Spiel (`competition` BL → `match`, sonst `eu_match`), nach dem Spiel eingefroren (`frozen`) |
+| `match_weather` | Wetter je Spiel zur Spielzeit (`kind` vorhersage oder gemessen) |
 | `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |
 | `kb_session` | Kickbase-Anmeldung: Token, Ablauf, Ligen, gewählte Liga (nie das Passwort) |
 | `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der Liga |
@@ -855,6 +872,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     Aufstellung, Spielstatistik und Quoten. Tipp-Zettel auch im Chat als Box.
 26. **Ältere Saisons 1993/94 bis 2013/14** zum Nachschlagen (6.426 Spiele, 14 weitere Vereine), Modell
     bleibt bei den Daten ab 2014/15; Direktvergleich auf der Detailseite nur vor dem Spiel und aufklappbar.
+27. **Stadion, Kapazität und Wetter** je Spiel (FotMob, Open-Meteo), eingefroren nach dem Spiel, damit Namen
+    und Kapazität dem Spieltag entsprechen.
 
 Offen:
 

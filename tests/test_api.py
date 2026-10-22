@@ -85,3 +85,14 @@ def test_history_seasons():
     assert load_matches()["season"].min() == 2014
     d = client.get(f"/match/{md['games'][0]['id']}").json()
     assert d["h2h"] == [] and d["form"]["home"] == []  # davor gibt es nichts
+
+
+def test_venue_and_weather():
+    """Spielort und Wetter je Spiel (laufende Saison); gespielte Spiele mit gemessenem Wetter."""
+    seasons = client.get("/seasons").json()
+    current = max(s["start_year"] for s in seasons)
+    games = client.get(f"/matchday/{current}/1").json()["games"]
+    ort = games[0]["ort"]
+    assert ort["stadion"] and ort["kapazitaet"] > 1000
+    assert ort["wetter"]["art"] == "gemessen" and ort["wetter"]["temp_c"] is not None
+    assert client.get("/matchday/2020/1").json()["games"][0]["ort"] is None  # ältere Saisons ohne Spielort

@@ -240,6 +240,37 @@ def _need_tv() -> str | None:
     return None
 
 
+def _need_venues() -> str | None:
+    """Spielorte: gespielte Spiele der Saison einmal nach dem Spiel (dann eingefroren), offene der nächsten
+    14 Tage täglich neu (Ausweichstadion, Kapazität)."""
+    missing = _scalar("""
+        WITH games AS (
+            SELECT 'BL' AS c, m.id, m.kickoff, m.finished FROM match m JOIN season s ON s.id = m.season_id
+            WHERE s.start_year = :y
+            UNION ALL
+            SELECT competition, id, kickoff, finished FROM eu_match WHERE season = :y AND competition IN ('CL', 'D2', 'DFB'))
+        SELECT count(*) FROM games g
+        WHERE (g.finished OR g.kickoff < now() + interval '14 days')
+          AND NOT EXISTS (SELECT 1 FROM match_venue v WHERE v.competition = g.c AND v.match_id = g.id
+                          AND (v.frozen OR (NOT g.finished AND v.fetched_at > now() - interval '20 hours')))""",
+        y=CURRENT_SEASON)
+    return f"{missing} Spiele ohne aktuellen Spielort" if missing else None
+
+
+def _need_weather() -> str | None:
+    """Wetter: Vorhersage alle 6 Stunden für Spiele der nächsten 16 Tage, gemessen nach dem Spiel."""
+    n = _scalar("""
+        SELECT count(*) FROM match_venue v
+        LEFT JOIN match m ON v.competition = 'BL' AND m.id = v.match_id
+        LEFT JOIN eu_match e ON v.competition <> 'BL' AND e.id = v.match_id
+        LEFT JOIN match_weather w ON w.competition = v.competition AND w.match_id = v.match_id
+        WHERE v.lat IS NOT NULL AND coalesce(m.kickoff, e.kickoff) <= now() + interval '16 days'
+          AND (w.id IS NULL
+               OR (w.kind = 'vorhersage' AND (w.fetched_at < now() - interval '6 hours'
+                                               OR coalesce(m.kickoff, e.kickoff) < now() - interval '3 hours')))""")
+    return f"{n} Spiele ohne aktuelles Wetter" if n else None
+
+
 # --- Ausführung -------------------------------------------------------------------------------------
 
 def _run_results() -> str:
@@ -354,6 +385,23 @@ def _run_tv() -> str:
         f", nicht zugeordnet: {', '.join(res['nicht_zugeordnet'][:5])}" if res["nicht_zugeordnet"] else "")
 
 
+def _run_venues() -> str:
+    from fussballdb.ingest import venues
+
+    with session_scope() as s:
+        res = venues.ingest(s, log=lambda m: None)
+    return f"Spielorte für {res['spielorte']} Spiele" + (
+        f", nicht zugeordnet: {', '.join(res['nicht_zugeordnet'][:5])}" if res["nicht_zugeordnet"] else "")
+
+
+def _run_weather() -> str:
+    from fussballdb.ingest import weather
+
+    with session_scope() as s:
+        res = weather.ingest(s, log=lambda m: None)
+    return f"Wetter für {res['spiele']} Spiele"
+
+
 @dataclass
 class Step:
     name: str
@@ -376,6 +424,8 @@ STEPS = [
     Step("europa", "CL, 2. Liga, Pokal", _need_europe, _run_europe, timedelta(hours=6)),
     Step("cl_ausfaelle", "CL-Ausfälle", _need_cl_absences, _run_cl_absences, timedelta(hours=6)),
     Step("tv", "TV-Sender (DE, AT)", _need_tv, _run_tv, timedelta(hours=6)),
+    Step("stadien", "Spielorte (Stadion, Kapazität)", _need_venues, _run_venues, timedelta(hours=6)),
+    Step("wetter", "Wetter zur Spielzeit", _need_weather, _run_weather, timedelta(hours=3)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,
          timedelta(days=7), slow=True),
     Step("kickbase_punkte", "Kickbase-Punkte und neue Spieler", _need_kickbase_points, _run_kickbase_points,

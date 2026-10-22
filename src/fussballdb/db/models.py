@@ -479,3 +479,44 @@ class PlayerAbsence(Base):
     source: Mapped[str] = mapped_column(String(20))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     active: Mapped[bool] = mapped_column(default=True, index=True)
+
+
+class MatchVenue(Base):
+    """Spielort je Spiel laut FotMob-Spielseite (competition BL → match, sonst eu_match). Solange das Spiel offen
+    ist, wird er bei jedem Update neu geladen; danach bleibt er eingefroren (frozen), damit Name und Kapazität
+    so bleiben, wie sie am Spieltag waren."""
+
+    __tablename__ = "match_venue"
+    __table_args__ = (UniqueConstraint("competition", "match_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competition: Mapped[str] = mapped_column(String(4))
+    match_id: Mapped[int] = mapped_column(index=True)
+    fotmob_id: Mapped[int | None]
+    stadium: Mapped[str] = mapped_column(String(120))
+    city: Mapped[str | None] = mapped_column(String(80))
+    country: Mapped[str | None] = mapped_column(String(60))
+    capacity: Mapped[int | None]
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    frozen: Mapped[bool] = mapped_column(Boolean, default=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MatchWeather(Base):
+    """Wetter am Stadion zur Spielzeit (Stunde nach dem Anpfiff) von Open-Meteo. Vor dem Spiel Vorhersage,
+    danach gemessen (Reanalyse) und eingefroren."""
+
+    __tablename__ = "match_weather"
+    __table_args__ = (UniqueConstraint("competition", "match_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competition: Mapped[str] = mapped_column(String(4))
+    match_id: Mapped[int] = mapped_column(index=True)
+    kind: Mapped[str] = mapped_column(String(12))  # vorhersage | gemessen
+    temp_c: Mapped[float | None] = mapped_column(Float)
+    precip_mm: Mapped[float | None] = mapped_column(Float)
+    precip_prob: Mapped[float | None] = mapped_column(Float)  # nur bei der Vorhersage
+    wind_kmh: Mapped[float | None] = mapped_column(Float)
+    weather_code: Mapped[int | None]  # WMO-Code (0 klar … 95 Gewitter)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
