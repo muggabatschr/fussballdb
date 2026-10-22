@@ -15,7 +15,8 @@ Was es alles gibt:
 - **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
 - **Torschützen-Prognose** je Spiel
 - **Spiel-Detailseite** mit Form, Direktvergleich, Tabelle, Ausfällen, Aufstellung und Quoten
-- **Stadion, Kapazität und Wetter** je Spiel, so wie am Spieltag, vor dem Spiel mit Kleidungsempfehlung
+- **Stadion, Kapazität und Wetter** je Spiel, so wie am Spieltag, vor dem Spiel mit Kleidungsempfehlung und
+  Link zur Anreise mit Bus und Bahn
 - **Web-App** mit Spieltagen, Tabelle, Teamseiten, Champions League, Chat und einem Kickbase-Tab
 - **Chat** mit einem lokalen Sprachmodell (LM Studio, ohne Cloud)
 - **MCP-Server** und Skill `/fussball`, damit Claude direkt auf die Daten zugreift
@@ -343,7 +344,21 @@ dem Spiel die Vorhersage von Open-Meteo (alle 6 Std. neu), drei Stunden nach dem
 2 °C Abzug für 90 Minuten im Stadion; unter 0 °C dicke Winterjacke mit Mütze, Schal, Handschuhen, bis 5 °C
 Winterjacke, bis 10 °C warme Jacke, bis 15 °C Übergangsjacke, bis 20 °C Pullover), ab 40 %
 Regenwahrscheinlichkeit Regenjacke oder Poncho (Schirme sind in den meisten Stadien verboten), bei Wind ab
-30 km/h etwas Winddichtes, ab 25 °C und Sonne Kappe und Sonnencreme. Ab 2026/27; ältere Spiele haben keinen Spielort, weil frei verfügbare Daten die
+30 km/h etwas Winddichtes, ab 25 °C und Sonne Kappe und Sonnencreme.
+
+**Anreise mit Bus und Bahn** (offene Spiele, `route` in `ingest/venues.py`, `components/RouteLink.tsx`, im MCP
+das Werkzeug `anreise`): Link zu Google Maps mit öffentlichen Verkehrsmitteln und „Ankunft bis“ eine Stunde
+vor dem Anpfiff, in Ortszeit am Stadion (CL-Spiele im Ausland umgerechnet). Beim Klick fragt die Seite zuerst
+im selben Tab den Standort ab und öffnet danach Google Maps mit den Koordinaten als Start (ein vorher
+geöffnetes Tab würde die Nachfrage des Browsers verdecken). Ohne Standort (abgelehnt, keine Antwort nach
+10 Sekunden, Seite nicht über https oder localhost, z. B. über die IP im Heimnetz) und bei „Link in neuem Tab
+öffnen“ kommt der offizielle Link ohne Uhrzeit; dort setzt Google den aktuellen Standort selbst ein. Es
+braucht keinen API-Schlüssel. Die Uhrzeit steht im Format `data=!4m6!4m5!2m3!6e1!7e2!8j<Zeit>!3e3`,
+das Google selbst für seine Links nutzt, das aber nicht offiziell dokumentiert ist; `url_ohne_zeit` ist der
+dokumentierte Rückfall (`api=1`, `travelmode=transit`). Die Verkehrsverbünde direkt anzusprechen geht nicht
+einheitlich (jeder Verbund hat ein eigenes Linkformat, bahn.de seit 2024 keine dokumentierten Parameter).
+
+Stadion und Wetter gibt es ab 2026/27; ältere Spiele haben keinen Spielort, weil frei verfügbare Daten die
 Sponsorennamen der Stadien nicht mit Zeitraum führen (Wikidata kennt z. B. nur „Signal Iduna Park“).
 
 **TV-Sender in der Kachel:** Bei offenen Spielen steht unten je eine Zeile für Deutschland und Österreich
@@ -532,7 +547,8 @@ Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl
 ## Zugriff aus Claude (MCP)
 
 `fussballdb-mcp` ist ein MCP-Server mit den Werkzeugen `naechste_spiele`, `spieltag`, `prognose`,
-`team_form`, `direkte_duelle`, `ausfaelle`, `tabelle`, `kickbase`, `sql` und `datenstand`. Damit beantwortet
+`team_form`, `direkte_duelle`, `ausfaelle`, `tabelle`, `kickbase`, `champions_league`, `wettbewerb`,
+`tabelle_2_liga`, `cl_tabelle`, `anreise`, `sql` und `datenstand`. Damit beantwortet
 Claude Fragen direkt auf den eigenen Daten. Es braucht keinen API-Schlüssel: Claude ruft den Server
 auf, abgerechnet wird über das Claude-Abo. Die Datenbank muss laufen (`docker compose up -d`).
 
@@ -573,6 +589,7 @@ nach einem Neustart von Claude Desktop.
 | `wettbewerb` | Runde der 2. Bundesliga (`D2`), des DFB-Pokals (`DFB`) oder der CL mit Prognosen und Tipps |
 | `tabelle_2_liga` | Tabelle der 2. Bundesliga mit Modell-Platz und Hochrechnung (Aufstieg, Relegation, Abstieg) |
 | `cl_tabelle` | Tabelle der CL-Ligaphase mit Modell-Platz und Hochrechnung (Achtelfinale, Play-offs, Aus) |
+| `anreise` | nächstes Spiel eines Teams mit Stadion, Ankunftszeit (1 Std. vor Anpfiff) und Google-Maps-Link für Bus und Bahn; `start` = wo man gerade ist |
 | `sql` | freie Abfrage, nur lesend |
 | `datenstand` | wie aktuell die Daten sind, mit Hinweis, wenn eine Quelle noch nichts bereitgestellt hat |
 
@@ -879,6 +896,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     bleibt bei den Daten ab 2014/15; Direktvergleich auf der Detailseite nur vor dem Spiel und aufklappbar.
 27. **Stadion, Kapazität und Wetter** je Spiel (FotMob, Open-Meteo), eingefroren nach dem Spiel, damit Namen
     und Kapazität dem Spieltag entsprechen. Vor dem Spiel eine Kleidungsempfehlung aus der Vorhersage.
+28. **Anreise mit Bus und Bahn**: Google-Maps-Link mit Ankunft eine Stunde vor dem Anpfiff, Start = aktueller
+    Standort; im MCP als Werkzeug `anreise`.
 
 Offen:
 

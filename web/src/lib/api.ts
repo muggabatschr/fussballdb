@@ -208,6 +208,8 @@ export type Venue = {
     wind_kmh: number | null;
     code: number | null;
   } | null;
+  // nur bei offenen Spielen: Google Maps mit ÖPNV, Ankunft eine Stunde vor dem Anpfiff (Ortszeit am Stadion)
+  anreise?: { ankunft: string; url: string; url_vorlage: string; url_ohne_zeit: string } | null;
 };
 
 export type Scorer = { name: string; p: number; tore: number };

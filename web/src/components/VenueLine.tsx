@@ -1,6 +1,7 @@
 import type { Venue } from "@/lib/api";
 import { num } from "@/lib/format";
 import { clothingAdvice, weatherText } from "@/lib/weather";
+import { RouteLink } from "./RouteLink";
 
 /** Stadion mit Kapazität, darunter das Wetter zur Spielzeit (Vorhersage oder gemessen) und vor dem Spiel eine
  * Kleidungsempfehlung für Zuschauer. */
@@ -32,6 +33,11 @@ export function VenueLine({ ort, className = "" }: { ort?: Venue | null; classNa
       {clothing && (
         <p className="truncate" title="Empfehlung für Zuschauer nach gefühlter Temperatur (Wind, 90 Minuten im Stadion), Regen und Sonne">
           <span className="text-foreground/80">Anziehen:</span> {clothing}
+        </p>
+      )}
+      {ort.anreise && (
+        <p className="truncate">
+          <RouteLink template={ort.anreise.url_vorlage} fallback={ort.anreise.url_ohne_zeit} arrival={ort.anreise.ankunft} />
         </p>
       )}
     </div>

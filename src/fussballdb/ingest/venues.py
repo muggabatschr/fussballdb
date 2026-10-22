@@ -7,6 +7,8 @@ Name und Kapazität, wie sie am Spieltag waren, auch wenn ein Stadion später um
 Ältere Spiele haben keinen Spielort (Wikidata kennt Sponsorennamen nicht mit Zeitraum)."""
 
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -24,6 +26,33 @@ LEAGUES = {"BL": (54, "bundesliga"), "D2": (146, "2-bundesliga"), "DFB": (209, "
            "CL": (42, "champions-league")}
 FIXTURES = "https://www.fotmob.com/leagues/{id}/fixtures/{slug}?season={season}-{next}"
 AHEAD = timedelta(days=14)  # offene Spiele so weit im Voraus
+
+# Anreise: Google-Maps-Link mit ÖPNV und "Ankunft bis" eine Stunde vor dem Anpfiff. Das Format mit Uhrzeit
+# (data=…!6e1!8j<Zeit>!3e3) ist nicht offiziell dokumentiert, Google nutzt es aber selbst für seine Links;
+# die Zeit ist die Ortszeit am Stadion, kodiert als Sekunden seit 1970 (als wäre sie UTC).
+ARRIVE_BEFORE = timedelta(hours=1)
+ROUTE = "https://www.google.com/maps/dir/{start}/{lat},{lon}/data=!4m6!4m5!2m3!6e1!7e2!8j{ts}!3e3"
+ROUTE_PLAIN = "https://www.google.com/maps/dir/?api=1&destination={lat},{lon}&travelmode=transit"
+# Zeitzone je Land laut FotMob; ohne Eintrag Mitteleuropa
+COUNTRY_TZ = {"England": "Europe/London", "Scotland": "Europe/London", "Wales": "Europe/London",
+              "Northern Ireland": "Europe/London", "Ireland": "Europe/Dublin", "Portugal": "Europe/Lisbon",
+              "Greece": "Europe/Athens", "Cyprus": "Asia/Nicosia", "Romania": "Europe/Bucharest",
+              "Bulgaria": "Europe/Sofia", "Ukraine": "Europe/Kyiv", "Moldova": "Europe/Chisinau",
+              "Finland": "Europe/Helsinki", "Israel": "Asia/Jerusalem", "Türkiye": "Europe/Istanbul",
+              "Turkey": "Europe/Istanbul", "Azerbaijan": "Asia/Baku", "Kazakhstan": "Asia/Almaty",
+              "Russia": "Europe/Moscow", "Georgia": "Asia/Tbilisi", "Armenia": "Asia/Yerevan"}
+
+
+def route(lat: float, lon: float, kickoff: datetime, country: str | None, start: str = "") -> dict:
+    """Anreise-Links: `url` mit Ankunft eine Stunde vor dem Anpfiff (Start leer = in der Google-Maps-App der
+    aktuelle Standort; `start` z. B. "Stuttgart Hbf" oder "48.78,9.18"), `url_vorlage` mit {start} für das Web,
+    `url_ohne_zeit` im offiziell dokumentierten Format als Rückfall."""
+    local = (kickoff - ARRIVE_BEFORE).astimezone(ZoneInfo(COUNTRY_TZ.get(country or "", "Europe/Berlin")))
+    wall = int(local.replace(tzinfo=timezone.utc).timestamp())
+    lat_s, lon_s = f"{lat:.5f}", f"{lon:.5f}"
+    template = ROUTE.format(start="{start}", lat=lat_s, lon=lon_s, ts=wall)
+    return {"ankunft": local.isoformat(timespec="minutes"), "url": template.replace("{start}", quote(start)),
+            "url_vorlage": template, "url_ohne_zeit": ROUTE_PLAIN.format(lat=lat_s, lon=lon_s)}
 
 
 def _candidates(session: Session, comp: str, season: int) -> list[tuple]:
@@ -106,17 +135,21 @@ def ingest(session: Session, season: int | None = None, log=print) -> dict:
 
 
 def for_matches(competition: str, match_ids: list[int]) -> dict[int, dict]:
-    """Match-ID -> {"stadion", "stadt", "land", "kapazitaet", "wetter"} für API und Web. wetter: art
-    (vorhersage | gemessen), temp_c, regen_mm, regen_pct (nur Vorhersage), wind_kmh, code (WMO)."""
+    """Match-ID -> {"stadion", "stadt", "land", "kapazitaet", "wetter", "anreise"} für API und Web. wetter: art
+    (vorhersage | gemessen), temp_c, regen_mm, regen_pct (nur Vorhersage), wind_kmh, code (WMO); anreise nur
+    bei offenen Spielen (siehe route)."""
     from fussballdb.db.session import engine
 
     if not match_ids:
         return {}
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT v.match_id, v.stadium, v.city, v.country, v.capacity,
+            SELECT v.match_id, v.stadium, v.city, v.country, v.capacity, v.lat, v.lon,
+                   coalesce(m.kickoff, e.kickoff) AS kickoff, coalesce(m.finished, e.finished) AS finished,
                    w.kind, w.temp_c, w.precip_mm, w.precip_prob, w.wind_kmh, w.weather_code
             FROM match_venue v
+            LEFT JOIN match m ON v.competition = 'BL' AND m.id = v.match_id
+            LEFT JOIN eu_match e ON v.competition <> 'BL' AND e.id = v.match_id
             LEFT JOIN match_weather w ON w.competition = v.competition AND w.match_id = v.match_id
             WHERE v.competition = :c AND v.match_id = ANY(:ids)"""), {"c": competition, "ids": list(match_ids)}).all()
     out = {}
@@ -124,5 +157,7 @@ def for_matches(competition: str, match_ids: list[int]) -> dict[int, dict]:
         out[r.match_id] = {"stadion": r.stadium, "stadt": r.city, "land": r.country, "kapazitaet": r.capacity,
                            "wetter": None if r.kind is None else {
                                "art": r.kind, "temp_c": r.temp_c, "regen_mm": r.precip_mm, "regen_pct": r.precip_prob,
-                               "wind_kmh": r.wind_kmh, "code": r.weather_code}}
+                               "wind_kmh": r.wind_kmh, "code": r.weather_code},
+                           "anreise": route(r.lat, r.lon, r.kickoff, r.country)
+                           if r.lat is not None and not r.finished else None}
     return out

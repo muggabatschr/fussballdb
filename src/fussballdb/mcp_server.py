@@ -23,6 +23,8 @@ Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistis
 - Der Tipp ist das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde.
 - Prognosen sind Wahrscheinlichkeiten, keine Wettempfehlung. Ballbesitz liegt nicht vor.
 - Teamnamen dürfen umgangssprachlich sein (BVB, Gladbach, Bayern).
+- Anreise zum Spiel: Werkzeug `anreise` (Google-Maps-Link mit Bus und Bahn, Ankunft eine Stunde vor dem
+  Anpfiff); den Ort des Nutzers als `start` mitgeben, wenn er ihn nennt.
 - Vor 2014/15 gibt es nur Ergebnisse, Statistik (Schüsse ab 2000/01, Karten, Ecken) und Quoten, kein xG und
   keine Prognosen. 1993/94 und 1994/95 gab es zwei Punkte für einen Sieg (die Tabelle rechnet das so)."""
 
@@ -198,6 +200,48 @@ def tabelle_2_liga(saison: int | None = None) -> str:
         return json.dumps(comp_table("D2", saison or comp_rounds("D2")[0]["season"]), default=str, ensure_ascii=False)
     except (ValueError, IndexError) as exc:
         raise ToolError(str(exc) or "Keine Daten.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
+def anreise(team: str, start: str | None = None) -> str:
+    """Anreise mit Bus und Bahn zum nächsten Spiel eines Teams (Bundesliga, 2. Liga, Pokal, CL): Stadion,
+    Anstoß, Ankunftszeit (eine Stunde vor dem Anpfiff, Ortszeit am Stadion) und ein Google-Maps-Link mit
+    ÖPNV-Verbindungen. start = wo der Nutzer gerade ist (Adresse, Ort oder "lat,lon"); ohne start nimmt die
+    Google-Maps-App den aktuellen Standort. Den Link `url` unverändert weitergeben; `url_ohne_zeit` ist der
+    Rückfall ohne Ankunftszeit. Spielorte gibt es für Spiele der nächsten 14 Tage."""
+    from fussballdb.assistant.tools import _rows
+    from fussballdb.ingest.venues import route
+
+    team_id = _tb().teams.find(team)
+    q = f"%{team.strip()}%"
+    rows = _rows(
+        """
+        SELECT * FROM (
+            SELECT 'Bundesliga' AS wettbewerb, m.kickoff, ht.name AS heim, at.name AS gast, v.*
+            FROM match m JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
+            JOIN match_venue v ON v.competition = 'BL' AND v.match_id = m.id
+            WHERE NOT m.finished AND m.kickoff > now() AND :tid IN (m.home_team_id, m.away_team_id)
+            UNION ALL
+            SELECT CASE e.competition WHEN 'CL' THEN 'Champions League' WHEN 'D2' THEN '2. Bundesliga'
+                   ELSE 'DFB-Pokal' END, e.kickoff, ht.name, at.name, v.*
+            FROM eu_match e JOIN eu_team ht ON ht.id = e.home_id JOIN eu_team at ON at.id = e.away_id
+            JOIN match_venue v ON v.competition = e.competition AND v.match_id = e.id
+            WHERE NOT e.finished AND e.kickoff > now() AND EXISTS (
+                SELECT 1 FROM eu_team t LEFT JOIN eu_team_alias a ON a.team_id = t.id
+                WHERE t.id IN (e.home_id, e.away_id) AND (t.name ILIKE :q OR a.alias ILIKE :q))
+        ) x ORDER BY kickoff LIMIT 1
+        """, tid=team_id or -1, q=q)
+    if not rows:
+        raise ToolError(f"Kein Spiel von {team!r} mit Spielort in den nächsten 14 Tagen gefunden.")
+    r = rows[0]
+    if r["lat"] is None:
+        raise ToolError(f"Für {r['heim']} – {r['gast']} fehlen die Koordinaten des Stadions.")
+    return json.dumps({"spiel": f"{r['heim']} – {r['gast']}", "wettbewerb": r["wettbewerb"],
+                       "anstoss": r["kickoff"].astimezone().isoformat(timespec="minutes"),
+                       "stadion": r["stadium"], "stadt": r["city"], "kapazitaet": r["capacity"],
+                       **{k: v for k, v in route(r["lat"], r["lon"], r["kickoff"], r["country"], start or "").items()
+                          if k != "url_vorlage"}},
+                      ensure_ascii=False, default=str)
 
 
 @mcp.tool(annotations=READ_ONLY)
