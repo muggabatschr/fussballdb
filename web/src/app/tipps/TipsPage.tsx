@@ -11,5 +11,14 @@ export async function TipsPage({ season, matchday }: { season?: number; matchday
   });
   if (!res.ok) return <ErrorBox message={res.error} />;
   const [s, data] = res.data;
-  return <TipSheet data={data} label={s.label} />;
+  return (
+    <TipSheet
+      title={`${data.matchday}. Spieltag`}
+      subtitle={`Bundesliga ${s.label}`}
+      games={data.games}
+      backHref={`/spieltag/${data.season}/${data.matchday}`}
+      backLabel="zum Spieltag"
+      fileName={`tipps-bundesliga-${data.season}-${data.matchday}.png`}
+    />
+  );
 }

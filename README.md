@@ -247,6 +247,7 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 | `/cl`, `/cl/<saison>/<runde>` | Champions League: Runde mit Prognosen, Tipps und Bilanz, Saison- und Rundenauswahl |
 | `/cl/tabelle`, `/cl/tabelle/<saison>` | Tabelle der CL-Ligaphase mit Platzdifferenz zum Modell, darunter die geschätzte Abschlusstabelle der Ligaphase |
 | `/tipps`, `/tipps/<saison>/<nr>` | Tipp-Zettel eines Spieltags: als Text kopieren oder als Bild teilen |
+| `/2bl/tipps`, `/cl/tipps`, `/pokal/tipps` (auch `/<saison>/<runde>`) | Tipp-Zettel einer Runde von 2. Liga, CL und Pokal |
 | `/2bl`, `/2bl/<saison>/<runde>`, `/2bl/tabelle` | 2. Bundesliga: Spieltage mit Prognosen, Tabelle mit Aufstiegs- und Abstiegschancen |
 | `/pokal`, `/pokal/<saison>/<runde>` | DFB-Pokal: Runden mit Prognosen |
 | `/kickbase` | Kickbase-Prognose, Aufstellungsvorschlag, Kauf- und Verkaufskandidaten |
@@ -270,8 +271,8 @@ Vergleich.
 **Wettbewerbe:** Über den Spieltagen und Runden lässt sich zwischen Bundesliga, 2. Liga, Pokal und CL
 umschalten.
 
-**Tipp-Zettel** (`/tipps`, Link „Tipp-Zettel“ neben der Spieltagsauswahl): alle Tipps eines Spieltags
-untereinander. „Als Text“ kopiert sie zum Einfügen, „Als Bild“ zeichnet ein PNG mit Wappen; auf dem Handy
+**Tipp-Zettel** (`/tipps`, Link „Tipp-Zettel“ neben der Spieltags- bzw. Rundenauswahl, für Bundesliga,
+2. Liga, CL und Pokal): alle Tipps eines Spieltags oder einer Runde untereinander. „Als Text“ kopiert sie zum Einfügen, „Als Bild“ zeichnet ein PNG mit Wappen; auf dem Handy
 öffnet sich das Teilen-Menü (z. B. Messenger), am Rechner wird es heruntergeladen.
 
 **Erinnerung vor dem Tippschluss** (`fussballdb erinnerung`, `reminder.py`): Beginnt der nächste

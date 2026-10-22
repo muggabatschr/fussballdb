@@ -5,6 +5,7 @@ import { ErrorBox } from "./Card";
 import { ClLeagueTable, ClProjectionTable, ClTableSeasons } from "./ClTable";
 import { ClView } from "./ClView";
 import { CompetitionTabs } from "./CompetitionTabs";
+import { TipSheet } from "./TipSheet";
 
 /** Runde eines Wettbewerbs; ohne Angaben die aktuelle Runde der neuesten Saison. */
 export async function CompRoundPage({ comp, season, round }: { comp: CompCode; season?: number; round?: number }) {
@@ -62,5 +63,27 @@ export async function CompTablePage({ comp, season }: { comp: CompCode; season?:
         </section>
       )}
     </div>
+  );
+}
+
+/** Tipp-Zettel einer Runde (2. Liga, CL, Pokal); ohne Angaben die aktuelle Runde. */
+export async function CompTipsPage({ comp, season, round }: { comp: CompCode; season?: number; round?: number }) {
+  const c = COMPETITIONS[comp];
+  const res = await load(async () => {
+    const seasons = await getCompRounds(comp);
+    const s = seasons.find((x) => x.season === season) ?? seasons[0];
+    return [s, await getCompRound(comp, s.season, round ?? s.current_round)] as const;
+  });
+  if (!res.ok) return <ErrorBox message={res.error} />;
+  const [s, data] = res.data;
+  return (
+    <TipSheet
+      title={data.round_name}
+      subtitle={`${c.name} ${s.label}`}
+      games={data.games}
+      backHref={`${c.base}/${data.season}/${data.round_no}`}
+      backLabel="zur Runde"
+      fileName={`tipps-${c.base.slice(1)}-${data.season}-${data.round_no}.png`}
+    />
   );
 }

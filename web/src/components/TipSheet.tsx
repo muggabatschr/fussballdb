@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { Matchday } from "@/lib/api";
+/** Ein Spiel auf dem Tipp-Zettel (Bundesliga-Spieltag oder Runde von 2. Liga, CL, Pokal). */
+export type TipGame = { id: number; kickoff: string; home: string; away: string; tip_home: number | null; tip_away: number | null };
+export type TipSheetProps = {
+  title: string; // "7. Spieltag", "2. Runde"
+  subtitle: string; // "Bundesliga 2026/27"
+  games: TipGame[];
+  backHref: string;
+  backLabel: string;
+  fileName: string;
+};
 import { resolveTeam, shortName } from "@/lib/teams";
 import { TeamName } from "./TeamName";
 
@@ -25,12 +34,12 @@ const loadImage = (src: string) =>
   });
 
 /** Tipp-Zettel als PNG zeichnen (mit Wappen), z. B. zum Weiterleiten per Messenger. */
-async function renderImage(data: Matchday, label: string): Promise<Blob | null> {
+async function renderImage({ title, subtitle, games }: TipSheetProps): Promise<Blob | null> {
   const scale = 2; // scharf auf Handy-Displays
   const w = 640;
   const rowH = 52;
   const top = 92;
-  const h = top + data.games.length * rowH + 44;
+  const h = top + games.length * rowH + 44;
   const canvas = document.createElement("canvas");
   canvas.width = w * scale;
   canvas.height = h * scale;
@@ -42,18 +51,18 @@ async function renderImage(data: Matchday, label: string): Promise<Blob | null> 
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = "#f2f2f2";
   ctx.font = `600 24px ${font}`;
-  ctx.fillText(`Tipp-Zettel ${data.matchday}. Spieltag`, 24, 42);
+  ctx.fillText(`Tipp-Zettel ${title}`, 24, 42);
   ctx.fillStyle = "#9aa0a6";
   ctx.font = `15px ${font}`;
-  ctx.fillText(`Bundesliga ${label}`, 24, 68);
+  ctx.fillText(subtitle, 24, 68);
 
   const logos = await Promise.all(
-    data.games.flatMap((g) => [g.home, g.away]).map((n) => {
+    games.flatMap((g) => [g.home, g.away]).map((n) => {
       const src = resolveTeam(n)?.info.logo;
       return src ? loadImage(src) : Promise.resolve(null);
     }),
   );
-  data.games.forEach((g, i) => {
+  games.forEach((g, i) => {
     const y = top + i * rowH;
     if (i % 2 === 0) {
       ctx.fillStyle = "#1b1e23";
@@ -63,8 +72,13 @@ async function renderImage(data: Matchday, label: string): Promise<Blob | null> 
     ctx.fillStyle = "#9aa0a6";
     ctx.font = `13px ${font}`;
     ctx.fillText(day(g.kickoff), 24, mid + 5);
+    // Wappen in ein 26×26-Feld einpassen (breite Wappen sonst über dem Namen)
     const draw = (img: HTMLImageElement | null, x: number) => {
-      if (img) ctx.drawImage(img, x, mid - 13, (26 * img.width) / img.height, 26);
+      if (!img || !img.width || !img.height) return;
+      const f = Math.min(26 / img.width, 26 / img.height);
+      const iw = img.width * f;
+      const ih = img.height * f;
+      ctx.drawImage(img, x + (26 - iw) / 2, mid - ih / 2, iw, ih);
     };
     draw(logos[2 * i], 150);
     ctx.fillStyle = "#f2f2f2";
@@ -83,19 +97,19 @@ async function renderImage(data: Matchday, label: string): Promise<Blob | null> 
 }
 
 /** Alle Tipps eines Spieltags kompakt, zum Abschreiben, Kopieren oder als Bild (z. B. für Kicktipp). */
-export function TipSheet({ data, label }: { data: Matchday; label: string }) {
+export function TipSheet(props: TipSheetProps) {
+  const { title, subtitle, games, backHref, backLabel, fileName } = props;
   const [copied, setCopied] = useState(false);
-  const games = data.games;
   const text = [
-    `${data.matchday}. Spieltag ${label}`,
+    `${title} · ${subtitle}`,
     ...games.map((g) => `${day(g.kickoff)}  ${shortName(g.home)} – ${shortName(g.away)}  ${g.tip_home ?? "–"}:${g.tip_away ?? "–"}`),
   ].join("\n");
   const [imgState, setImgState] = useState<"" | "busy" | "done">("");
   const saveImage = async () => {
     setImgState("busy");
-    const blob = await renderImage(data, label);
+    const blob = await renderImage(props);
     if (!blob) return setImgState("");
-    const file = new File([blob], `tipps-${data.season}-${data.matchday}.png`, { type: "image/png" });
+    const file = new File([blob], fileName, { type: "image/png" });
     try {
       // Handy: Teilen-Menü (Messenger, Fotos …); sonst herunterladen
       if (navigator.canShare?.({ files: [file] })) {
@@ -127,8 +141,8 @@ export function TipSheet({ data, label }: { data: Matchday; label: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="whitespace-nowrap text-xl font-semibold">
-          Tipp-Zettel <span className="text-muted">{data.matchday}. Spieltag {label}</span>
+        <h1 className="min-w-0 truncate whitespace-nowrap text-xl font-semibold">
+          Tipp-Zettel <span className="text-muted">{title} · {subtitle}</span>
         </h1>
         <div className="flex items-center gap-3 text-sm">
           <button
@@ -146,8 +160,8 @@ export function TipSheet({ data, label }: { data: Matchday; label: string }) {
           >
             {copied ? "Kopiert" : "Als Text"}
           </button>
-          <Link href={`/spieltag/${data.season}/${data.matchday}`} className="text-muted underline hover:text-foreground">
-            zum Spieltag
+          <Link href={backHref} className="text-muted underline hover:text-foreground">
+            {backLabel}
           </Link>
         </div>
       </div>

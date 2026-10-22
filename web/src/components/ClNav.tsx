@@ -67,6 +67,9 @@ export function ClNav({ seasons, season, round, comp = "CL" }: { seasons: ClSeas
       </div>
 
       <div className="flex gap-4">
+        <Link href={`${c.base}/tipps/${season}/${round}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
+          Tipp-Zettel
+        </Link>
         {c.table && (
           <Link href={`${c.base}/tabelle/${season}`} className="whitespace-nowrap text-sm text-muted underline hover:text-foreground">
             {c.table}
