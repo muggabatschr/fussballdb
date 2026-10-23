@@ -57,5 +57,7 @@ def test_bonus_question_kinds():
     assert kind("Wer wird Deutscher Meister?")[:3] == ("p_meister", 3, None)
     assert kind("Welche Mannschaften belegen die Plätze 16-18?")[0] == "p_16_18"
     assert kind("Wo findet der erste Trainerwechsel statt?")[2] == 8
-    assert kind("Welche Mannschaft stellt den Spieler mit den meisten Toren?") is None
+    from fussballdb.model.bonus import SCORER
+
+    assert SCORER.search("welche mannschaft stellt den spieler mit den meisten toren?")
     assert _deadline("28.08.26 20:30").isoformat() == "2026-08-28T20:30:00+02:00"

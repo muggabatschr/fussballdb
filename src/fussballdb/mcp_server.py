@@ -215,7 +215,8 @@ def tipprunden(runde: str | None = None) -> str:
     Extratipps. Mit runde (Kurzname): zusätzlich die Bonusfragen (Extratipps) mit den wahrscheinlichsten Antworten
     in %: `prognose` mit dem Wissen zum Tippschluss (Modell und Saisonsimulation nur mit Daten bis dahin; so hätte
     man tippen sollen), `heute` mit dem aktuellen Stand, `antworten` wenn schon entschieden. Der erste
-    Trainerwechsel ist nur eine Näherung (wer nach dem 8. Spieltag unten steht). Tipps je Runde liefert
+    Trainerwechsel ist nur eine Näherung (wer nach dem 8. Spieltag unten steht); das Team des Torschützenkönigs
+    kommt aus den Torraten der Spieler, der `hinweis` nennt die Favoriten. Tipps je Runde liefert
     `spieltag` mit `tipprunde`."""
     from fussballdb.api import tip_round_bonus, tip_rounds
 

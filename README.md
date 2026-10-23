@@ -331,8 +331,14 @@ vorhergesagt und die Saison 10.000-mal von vorn durchgespielt. Daneben steht der
 Live-Prognosen), bei entschiedenen Fragen die Antwort. Erkannt werden Meister, Herbstmeister (bis zum
 17. Spieltag), Plätze 16–18, Abstieg und Platz 1–4. Der erste Trainerwechsel ist eine Näherung, weil es
 keine Trainerdaten gibt: wer nach dem 8. Spieltag am wahrscheinlichsten auf Platz 16–18 steht (2026/27 hätte
-sie Gladbach nicht vorhergesehen). Für den Torschützenkönig gibt es keine Prognose, dafür fehlen die
-Transfers vor der Saison. Gelesen werden nur diese
+sie Gladbach nicht vorhergesehen). Für das Team des Torschützenkönigs (`top_scorer`) bekommt jeder Spieler
+seine Tore bis zum Stichtag plus erwartete Tore in jedem übrigen Spiel: Torrate je zur Hälfte aus xG und echten
+Toren pro 90 Minuten (zum Positionsschnitt geglättet, weil Torjäger dauerhaft öfter treffen als ihr xG), mal
+erwartete Minuten (Startelf- und Einwechselquote ab seinem ersten Spiel für den Verein), skaliert mit der
+Torerwartung seines Teams gegen den jeweiligen Gegner. Die Saison wird 10.000-mal ausgespielt, je Durchlauf
+streut die Torrate um rund ±35 % (Verletzung, Form, Rotation). Zum Tippschluss 2026/27: Kane rund 31
+erwartete Tore, Bayern 37 %. Grenze: Zum Tippschluss kennt das Modell keine Neuzugänge, die noch nicht in der
+Bundesliga gespielt hatten, und ordnet Wechsel innerhalb der Liga dem alten Verein zu. Gelesen werden nur diese
 beiden öffentlichen Seiten, ohne Anmeldung; Kicktipp hat keine offizielle Schnittstelle. Die Tipp-Zettel
 und Tabellen von CL, 2. Liga und Pokal nutzen weiter die Standardregel.
 

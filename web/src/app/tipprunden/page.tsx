@@ -64,8 +64,8 @@ async function Rounds() {
               <p className="mt-1 text-xs text-muted">
                 „Zum Tippschluss“ nutzt nur, was bis zum Tippschluss bekannt war (Spiele, Kaderwerte, gemeldete
                 Verletzte), und spielt die ganze Saison 10.000-mal durch; so hätte man tippen sollen. „Stand heute“ ist
-                die aktuelle Hochrechnung. Der erste Trainerwechsel ist nur eine Näherung (wer nach dem 8. Spieltag
-                unten steht), für den Torschützenkönig gibt es keine Prognose.
+                die aktuelle Hochrechnung. Der Torschützenkönig kommt aus den Torraten der Spieler (xG und Tore), der
+                erste Trainerwechsel ist nur eine Näherung (wer nach dem 8. Spieltag unten steht).
               </p>
             </section>
           )}
