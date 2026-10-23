@@ -225,6 +225,7 @@ export type Matchday = {
   summary: Bilanz;
   season_summary: Bilanz;
   punkteregel: Punkteregel;
+  tipprunde?: TipRoundInfo;
 };
 
 export const getSeasons = () => api<Season[]>("/seasons");
@@ -275,7 +276,8 @@ export const getCompRounds = (comp: string) => api<ClSeason[]>(`/eu/${comp}/roun
 export const getCompRound = (comp: string, season: number, round: number) =>
   api<ClRound>(`/eu/${comp}/round/${season}/${round}`);
 export const getCompTable = (comp: string, season: number) => api<ClTable>(`/eu/${comp}/table/${season}`);
-export const getMatchday = (season: number, matchday: number) => api<Matchday>(`/matchday/${season}/${matchday}`);
+export const getMatchday = (season: number, matchday: number, runde?: string) =>
+  api<Matchday>(`/matchday/${season}/${matchday}?${q({ runde })}`);
 
 export type KickbaseRow = {
   player_id: number;
@@ -382,6 +384,7 @@ export type MatchDetail = {
   wettbewerb: string;
   game: ClGame & { season: number; season_label?: string; matchday?: number; round_no?: number };
   punkteregel: Punkteregel;
+  tipprunde?: TipRoundInfo;
   form: Sides<DetailFormGame[]>;
   h2h: DetailH2H[];
   h2h_summary: H2HSummary;
@@ -398,5 +401,32 @@ export type MatchDetail = {
   kaderwert?: Sides<number | null>;
 };
 
-export const getMatchDetail = (id: number) => api<MatchDetail>(`/match/${id}`);
+export const getMatchDetail = (id: number, runde?: string) => api<MatchDetail>(`/match/${id}?${q({ runde })}`);
 export const getCompMatchDetail = (comp: string, id: number) => api<MatchDetail>(`/eu/${comp}/match/${id}`);
+
+/** Kicktipp-Tipprunde mit Punkteregel (Tipps und Punkte werden je Runde gerechnet). */
+export type TipRound = {
+  slug: string;
+  name: string;
+  url: string | null;
+  lead_minutes: number | null;
+  bonus_points: number | null;
+  punkteregel: Punkteregel;
+  standard: boolean;
+};
+export type TipRoundInfo = Pick<TipRound, "slug" | "name" | "url" | "lead_minutes" | "bonus_points">;
+
+export type BonusQuestion = {
+  termin: string;
+  frage: string;
+  kurz: string;
+  antworten: string[];
+  prognose: { team: string; p: number }[] | null; // mit dem Wissen zum Tippschluss (stichtag)
+  heute: { team: string; p: number }[] | null; // Stand heute zum Vergleich
+  stichtag: string | null;
+  hinweis: string | null;
+};
+
+export const getTipRounds = () => api<TipRound[]>("/tipprunden");
+export const getTipBonus = (slug: string) =>
+  api<{ tipprunde: TipRoundInfo; fragen: BonusQuestion[] }>(`/tipprunden/${encodeURIComponent(slug)}/extratipps`);

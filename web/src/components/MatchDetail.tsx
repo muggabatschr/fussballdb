@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { DetailAbsence, DetailFormGame, DetailH2H, MatchDetail, MatchStats, Scorer } from "@/lib/api";
+import type { DetailAbsence, DetailFormGame, DetailH2H, MatchDetail, MatchStats, Scorer, TipRound } from "@/lib/api";
 import { kickoff, num, pct } from "@/lib/format";
 import { shortName } from "@/lib/teams";
 import { Card } from "./Card";
@@ -7,6 +7,7 @@ import { Legend, TERMS } from "./Legend";
 import { lastName, TvLine } from "./MatchdayView";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamName } from "./TeamName";
+import { TipRoundSelect } from "./TipRoundSelect";
 import { VenueLine } from "./VenueLine";
 
 const result = (own: number, opp: number) => (own > opp ? "S" : own === opp ? "U" : "N");
@@ -441,7 +442,19 @@ function Header({ d, meta }: { d: MatchDetail; meta: string }) {
   );
 }
 
-export function MatchDetailView({ d, meta, backHref, backLabel }: { d: MatchDetail; meta: string; backHref: string; backLabel: string }) {
+export function MatchDetailView({
+  d,
+  meta,
+  backHref,
+  backLabel,
+  rounds = [],
+}: {
+  d: MatchDetail;
+  meta: string;
+  backHref: string;
+  backLabel: string;
+  rounds?: TipRound[];
+}) {
   const g = d.game;
   const tip = g.tip_home != null ? `${g.tip_home}:${g.tip_away}` : null;
   const euro = d.form.home.some((x) => x.wettbewerb) || d.form.away.some((x) => x.wettbewerb);
@@ -451,6 +464,7 @@ export function MatchDetailView({ d, meta, backHref, backLabel }: { d: MatchDeta
         ← {backLabel}
       </Link>
       <Header d={d} meta={meta} />
+      <TipRoundSelect rounds={rounds} current={d.tipprunde?.slug} />
 
       {tip && g.explanation.length > 0 && (
         <Section title={`Warum ${tip}?`}>

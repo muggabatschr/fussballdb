@@ -1,4 +1,4 @@
-import type { Bilanz, Matchday, MatchdayGame, Punkteregel, Scorer, Season } from "@/lib/api";
+import type { Bilanz, Matchday, MatchdayGame, Punkteregel, Scorer, Season, TipRound } from "@/lib/api";
 import Image from "next/image";
 import Link from "next/link";
 import { kickoff, num } from "@/lib/format";
@@ -9,6 +9,7 @@ import { CompetitionTabs } from "./CompetitionTabs";
 import { MatchdayNav } from "./MatchdayNav";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamName } from "./TeamName";
+import { TipRoundSelect } from "./TipRoundSelect";
 import { VenueLine } from "./VenueLine";
 import { WhyTip } from "./WhyTip";
 import { Legend, TILE_LEGEND } from "./Legend";
@@ -245,7 +246,7 @@ export function BilanzText({ label, b }: { label: string; b: Bilanz }) {
   );
 }
 
-export function MatchdayView({ seasons, data }: { seasons: Season[]; data: Matchday }) {
+export function MatchdayView({ seasons, data, rounds = [] }: { seasons: Season[]; data: Matchday; rounds?: TipRound[] }) {
   const label = seasons.find((s) => s.start_year === data.season)?.label;
   return (
     <div className="space-y-4">
@@ -256,12 +257,13 @@ export function MatchdayView({ seasons, data }: { seasons: Season[]; data: Match
         </h1>
         <MatchdayNav seasons={seasons} season={data.season} matchday={data.matchday} />
       </div>
+      <TipRoundSelect rounds={rounds} current={data.tipprunde?.slug} />
       {data.summary.spiele > 0 && (
         <Card className="grid gap-4 sm:grid-cols-2">
           <BilanzText label="Tipps dieses Spieltags" b={data.summary} />
           <BilanzText label={`Saison ${label} bis hier`} b={data.season_summary} />
           <p className="text-xs text-muted sm:col-span-2">
-            Punkteregel der Tipprunde: Sieg {data.punkteregel.sieg_tendenz} Tendenz, {data.punkteregel.sieg_tordifferenz}{" "}
+            Punkteregel der Tipprunde{data.tipprunde?.name ? ` ${data.tipprunde.name}` : ""}: Sieg {data.punkteregel.sieg_tendenz} Tendenz, {data.punkteregel.sieg_tordifferenz}{" "}
             Tordifferenz, {data.punkteregel.exakt} exakt · Remis {data.punkteregel.remis_tendenz} Tendenz,{" "}
             {data.punkteregel.exakt} exakt. Der Tipp ist das Ergebnis mit den meisten erwarteten Punkten nach dieser Regel.
             Rückblick-Prognosen nutzen nur Daten bis zum ersten Anpfiff des Spieltags, als Ausfälle die damals gemeldeten

@@ -23,6 +23,8 @@ Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistis
 - Der Tipp ist das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde.
 - Prognosen sind Wahrscheinlichkeiten, keine Wettempfehlung. Ballbesitz liegt nicht vor.
 - Teamnamen dürfen umgangssprachlich sein (BVB, Gladbach, Bayern).
+- Tipps hängen von der Punkteregel der Kicktipp-Tipprunde ab: `tipprunden` listet die Runden, `spieltag` mit
+  `tipprunde` liefert Tipps und Punkte nach ihrer Regel; ohne Angabe gilt die Standardrunde.
 - Anreise zum Spiel: Werkzeug `anreise` (Google-Maps-Link mit Bus und Bahn, Ankunft eine Stunde vor dem
   Anpfiff); den Ort des Nutzers als `start` mitgeben, wenn er ihn nennt.
 - Vor 2014/15 gibt es nur Ergebnisse, Statistik (Schüsse ab 2000/01, Karten, Ecken) und Quoten, kein xG und
@@ -55,14 +57,19 @@ def naechste_spiele(anzahl: int = 9) -> str:
 
 
 @mcp.tool(annotations=READ_ONLY)
-def spieltag(saison: int, spieltag: int) -> str:
+def spieltag(saison: int, spieltag: int, tipprunde: str | None = None) -> str:
     """Alle Spiele eines Spieltags mit Ergebnis, xG, Prognose, Tipp des Modells und Tipp-Punkten sowie
     der Bilanz des Spieltags und der Saison. saison = Startjahr (2025 für 2025/26), ab 1993; Prognosen und xG
     erst ab 2014. Ab 2026 je Spiel `ort`: Stadion und Kapazität wie am Spieltag, Wetter zur Spielzeit
-    (art vorhersage oder gemessen, temp_c, regen_mm, regen_pct, wind_kmh, code = WMO-Wettercode)."""
+    (art vorhersage oder gemessen, temp_c, regen_mm, regen_pct, wind_kmh, code = WMO-Wettercode).
+    tipprunde = Kurzname einer Kicktipp-Tipprunde (siehe `tipprunden`): Tipps, Punkte und Bilanz nach ihrer
+    Punkteregel; ohne Angabe die Standardrunde."""
     from fussballdb.api import matchday
 
-    return _json(matchday(saison, spieltag))
+    try:
+        return _json(matchday(saison, spieltag, tipprunde))
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -200,6 +207,22 @@ def tabelle_2_liga(saison: int | None = None) -> str:
         return json.dumps(comp_table("D2", saison or comp_rounds("D2")[0]["season"]), default=str, ensure_ascii=False)
     except (ValueError, IndexError) as exc:
         raise ToolError(str(exc) or "Keine Daten.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
+def tipprunden(runde: str | None = None) -> str:
+    """Kicktipp-Tipprunden mit Punkteregel (Sieg Tendenz/Tordifferenz/exakt, Remis Tendenz), Tippschluss und
+    Extratipps. Mit runde (Kurzname): zusätzlich die Bonusfragen (Extratipps) mit den wahrscheinlichsten Antworten
+    in %: `prognose` mit dem Wissen zum Tippschluss (Modell und Saisonsimulation nur mit Daten bis dahin; so hätte
+    man tippen sollen), `heute` mit dem aktuellen Stand, `antworten` wenn schon entschieden. Der erste
+    Trainerwechsel ist nur eine Näherung (wer nach dem 8. Spieltag unten steht). Tipps je Runde liefert
+    `spieltag` mit `tipprunde`."""
+    from fussballdb.api import tip_round_bonus, tip_rounds
+
+    try:
+        return _json(tip_round_bonus(runde) if runde else tip_rounds())
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
 
 
 @mcp.tool(annotations=READ_ONLY)

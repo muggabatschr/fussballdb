@@ -1,13 +1,15 @@
 import { Suspense } from "react";
 import { ErrorBox } from "@/components/Card";
 import { MatchDetailView } from "@/components/MatchDetail";
-import { getMatchDetail, load } from "@/lib/api";
+import { getMatchDetail, getTipRounds, load } from "@/lib/api";
+import { selectedTipRound } from "@/lib/tipround";
 
 async function Content({ params }: { params: PageProps<"/spiel/[id]">["params"] }) {
   const { id } = await params;
-  const res = await load(() => getMatchDetail(Number(id)));
+  const runde = await selectedTipRound();
+  const res = await load(() => Promise.all([getMatchDetail(Number(id), runde), getTipRounds()]));
   if (!res.ok) return <ErrorBox message={res.error} />;
-  const d = res.data;
+  const [d, rounds] = res.data;
   const g = d.game;
   return (
     <MatchDetailView
@@ -15,6 +17,7 @@ async function Content({ params }: { params: PageProps<"/spiel/[id]">["params"] 
       meta={`Bundesliga · ${g.matchday}. Spieltag · ${g.season_label}`}
       backHref={`/spieltag/${g.season}/${g.matchday}`}
       backLabel={`zum ${g.matchday}. Spieltag`}
+      rounds={rounds}
     />
   );
 }

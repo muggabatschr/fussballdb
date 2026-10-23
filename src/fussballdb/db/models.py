@@ -166,6 +166,9 @@ class Prediction(Base):
     missing_home: Mapped[str | None] = mapped_column(String(400))  # angenommene Ausfälle (Stammspieler)
     missing_away: Mapped[str | None] = mapped_column(String(400))
     explanation: Mapped[str | None] = mapped_column(Text)  # JSON-Liste kurzer Sätze (model/explain.py)
+    # Wahrscheinlichkeit jedes Ergebnisses 0:0 bis 9:9 (JSON, Zeile = Heimtore), passend zu p_home/p_draw/p_away;
+    # daraus der Tipp nach der Punkteregel jeder Tipprunde (model/tips.py)
+    score_probs: Mapped[str | None] = mapped_column(Text)
 
 
 class SquadValue(Base):
@@ -419,6 +422,7 @@ class KbSession(Base):
 
 # Spalten, die nach dem ersten Anlegen dazugekommen sind (create_all ergänzt keine Spalten)
 MIGRATIONS = [
+    "ALTER TABLE prediction ADD COLUMN IF NOT EXISTS score_probs text",
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS home_xg double precision",
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS away_xg double precision",
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS fotmob_id integer",
@@ -520,3 +524,24 @@ class MatchWeather(Base):
     wind_kmh: Mapped[float | None] = mapped_column(Float)
     weather_code: Mapped[int | None]  # WMO-Code (0 klar … 95 Gewitter)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TipRound(Base):
+    """Kicktipp-Tipprunde mit ihrer Punkteregel (von der öffentlichen Seite /<runde>/spielregeln gelesen oder von
+    Hand eingetragen). Tipps und Punkte lassen sich je Runde anzeigen (model/tips.py)."""
+
+    __tablename__ = "tip_round"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(80), unique=True)  # Name in der Kicktipp-URL
+    name: Mapped[str] = mapped_column(String(120))
+    url: Mapped[str | None] = mapped_column(String(200))
+    win_tendency: Mapped[int]
+    win_diff: Mapped[int]
+    exact: Mapped[int]
+    draw_tendency: Mapped[int]
+    competition: Mapped[str] = mapped_column(String(4), default="BL")
+    lead_minutes: Mapped[int | None]  # Tippschluss so viele Minuten vor dem Anpfiff
+    bonus_points: Mapped[int | None]  # Punkte je richtiger Bonusfrage (Extratipps), None = keine
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

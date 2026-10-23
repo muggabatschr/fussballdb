@@ -25,7 +25,7 @@ def _load(season: int) -> tuple[pd.DataFrame, pd.DataFrame]:
             JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
             WHERE s.start_year = :y AND m.finished"""), conn, params={"y": season})
         open_ = pd.read_sql(text("""
-            SELECT ht.name AS home, at.name AS away, p.p_home, p.p_draw, p.p_away,
+            SELECT m.matchday, ht.name AS home, at.name AS away, p.p_home, p.p_draw, p.p_away,
                    p.exp_home_goals AS eh, p.exp_away_goals AS ea
             FROM match m JOIN season s ON s.id = m.season_id
             JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
@@ -34,11 +34,22 @@ def _load(season: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     return played, open_
 
 
-def simulate(season: int, n: int = N_SIMS, seed: int = 0) -> pd.DataFrame:
+def simulate(season: int, n: int = N_SIMS, seed: int = 0, until_matchday: int | None = None) -> pd.DataFrame:
     """Je Team: Punkte und Platz heute, erwartete Punkte, erwarteter Endplatz (prognose_platz),
-    Differenz (positiv = besser als heute) und Wahrscheinlichkeiten in Prozent. Leer, wenn nichts mehr offen ist."""
+    Differenz (positiv = besser als heute) und Wahrscheinlichkeiten in Prozent. Leer, wenn nichts mehr offen ist.
+    until_matchday: nur bis zu diesem Spieltag simulieren (17 = Herbstmeister)."""
     played, open_ = _load(season)
-    if open_.empty or played.empty:
+    if until_matchday is not None:
+        open_ = open_[open_["matchday"] <= until_matchday]
+    if played.empty:
+        return pd.DataFrame()
+    return simulate_games(played, open_, n, seed)
+
+
+def simulate_games(played: pd.DataFrame, open_: pd.DataFrame, n: int = N_SIMS, seed: int = 0) -> pd.DataFrame:
+    """Simulation aus gespielten Spielen (home, away, hg, ag) und offenen mit Wahrscheinlichkeiten (home, away,
+    p_home, p_draw, p_away, eh, ea). played darf leer sein (Vorsaison-Prognose ab null Punkten)."""
+    if open_.empty:
         return pd.DataFrame()
     teams = sorted(set(played["home"]) | set(played["away"]) | set(open_["home"]) | set(open_["away"]))
     idx = {t: i for i, t in enumerate(teams)}
@@ -101,4 +112,5 @@ def simulate(season: int, n: int = N_SIMS, seed: int = 0) -> pd.DataFrame:
         "p_meister": (100 * (ranks == 1).mean(axis=0)).round(1),
         "p_top4": (100 * (ranks <= 4).mean(axis=0)).round(1),
         "p_abstieg": (100 * (ranks >= k - 1).mean(axis=0)).round(1),
+        "p_16_18": (100 * (ranks >= k - 2).mean(axis=0)).round(1),  # Relegation und Abstieg
     }).sort_values("platz")

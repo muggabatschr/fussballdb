@@ -13,6 +13,7 @@ Was es alles gibt:
   Kicktipp-Runde, für kommende Spiele und im Rückblick mit dem damaligen Datenstand
 - **Champions League, 2. Bundesliga, DFB-Pokal**: Prognosen und Tipps aus einem Modell über alle Ligen
 - **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
+- **Mehrere Kicktipp-Tipprunden**: Tipps und Punkte je Runde nach ihrer Punkteregel, Prognosen für Extratipps
 - **Torschützen-Prognose** je Spiel
 - **Spiel-Detailseite** mit Form, Direktvergleich, Tabelle, Ausfällen, Aufstellung und Quoten
 - **Stadion, Kapazität und Wetter** je Spiel, so wie am Spieltag, vor dem Spiel mit Kleidungsempfehlung und
@@ -227,7 +228,7 @@ nach der Punkteregel der Tipprunde samt Bilanz des Spieltags und der Saison:
   mit dem damaligen Datenstand.
 - **Tipp**: das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde
   (`TIPP_PUNKTE` in `.env`, Standard `2,3,4,3` = Sieg 2 Tendenz / 3 Tordifferenz / 4 exakt, Remis 3
-  Tendenz / 4 exakt). Remis-Tipps sind trotzdem selten (~1 %): Das Modell erkennt nicht, welche
+  Tendenz / 4 exakt; für weitere Tipprunden siehe „Tipprunden“ unter Web-App). Remis-Tipps sind trotzdem selten (~1 %): Das Modell erkennt nicht, welche
   ausgeglichenen Spiele remis enden, und ein knapper Sieg-Tipp holt im Mittel mehr Punkte. Daten und Prognosen kommen aus der Python-API (`fussballdb serve`, FastAPI,
 Doku unter http://127.0.0.1:8000/docs). Der Chat nutzt das AI SDK mit dem lokalen Modell. Die
 Werkzeuge in `web/src/app/api/chat/tools.ts` sind nur dünne Hüllen um die API, die Ergebnisse
@@ -265,6 +266,7 @@ cd web && cp .env.example .env.local && npm install && npm run dev   # Web auf P
 | `/cl`, `/cl/<saison>/<runde>` | Champions League: Runde mit Prognosen, Tipps und Bilanz, Saison- und Rundenauswahl |
 | `/cl/tabelle`, `/cl/tabelle/<saison>` | Tabelle der CL-Ligaphase mit Platzdifferenz zum Modell, darunter die geschätzte Abschlusstabelle der Ligaphase |
 | `/tipps`, `/tipps/<saison>/<nr>` | Tipp-Zettel eines Spieltags: als Text kopieren oder als Bild teilen |
+| `/tipprunden` | Kicktipp-Tipprunden verwalten (per Link hinzufügen, Standard setzen, löschen) und Prognosen für ihre Extratipps |
 | `/2bl/tipps`, `/cl/tipps`, `/pokal/tipps` (auch `/<saison>/<runde>`) | Tipp-Zettel einer Runde von 2. Liga, CL und Pokal |
 | `/2bl`, `/2bl/<saison>/<runde>`, `/2bl/tabelle` | 2. Bundesliga: Spieltage mit Prognosen, Tabelle mit Aufstiegs- und Abstiegschancen |
 | `/pokal`, `/pokal/<saison>/<runde>` | DFB-Pokal: Runden mit Prognosen |
@@ -306,6 +308,33 @@ gespielte die Spielstatistik (Schüsse, Großchancen, Ecken, PPDA, Karten …) u
 Quoten. Ausfälle bei CL, 2. Liga und Pokal kommen aus der Transfermarkt-Liste der CL-Teams, sonst aus der
 Bundesliga-Liste, wenn ein Bundesligist spielt. Teamnamen, „Warum?“ und „Wer trifft?“ in der Kachel bleiben
 einzeln klickbar.
+
+**Tipprunden** (`/tipprunden`, `ingest/kicktipp.py`, `model/tips.py`, Tabelle `tip_round`): Mehrere
+Kicktipp-Runden lassen sich per Link hinterlegen; die App liest von der öffentlichen Seite
+`kicktipp.de/<runde>/spielregeln` die Punkteregel (Sieg Tendenz/Tordifferenz/exakt, Remis Tendenz),
+den Tippschluss und ob es Extratipps gibt. Private Runden zeigen die Regeln nicht öffentlich, Runden mit
+anderen Modi (z. B. Punkte nach Quote) werden nicht unterstützt. Unter der Spieltagsauswahl, auf dem
+Tipp-Zettel und der Detailseite steht ein Auswahlfeld „Tipprunde“ (gemerkt im Cookie `tipprunde`, gilt für
+die ganze App). Tipps, Begründung („… bringt im Schnitt …“), Tipp-Punkte und Bilanz richten sich dann nach
+ihrer Regel. Dafür speichert jede Prognose die Wahrscheinlichkeit jedes Ergebnisses 0:0 bis 9:9
+(`prediction.score_probs`); daraus folgt für jede Regel der Tipp mit den meisten erwarteten Punkten, ohne das
+Modell neu zu rechnen. Für die Standardregel bleiben die gespeicherten Tipps unverändert (geprüft: aus
+`score_probs` ergibt sich bei allen 3.969 Prognosen derselbe Tipp). Ältere Prognosen bekamen `score_probs`
+einmal mit `fill_score_probs` nachgetragen, ausgerichtet an ihren gespeicherten 1/X/2-Werten. Die Regeln der
+beiden Runden 2026/27 liegen nah beieinander, die Tipps unterscheiden sich nur bei wenigen ausgeglichenen
+Spielen (2 von 252 offenen); die Punkte zählen aber unterschiedlich (2025/26 rückblickend 421 bzw. 273).
+Für Runden mit Extratipps (Bonusfragen) zeigt `/tipprunden` die Fragen von
+`kicktipp.de/<runde>/tippuebersicht?bonus=true` mit den wahrscheinlichsten Antworten (`model/bonus.py`).
+Weil Extratipps vor dem 1. Spieltag abgegeben werden, gilt als Prognose der Wissensstand zum Tippschluss der
+Frage: Modell nur mit Spielen, Kaderwerten und gemeldeten Verletzten bis dahin, alle Saisonspiele damit
+vorhergesagt und die Saison 10.000-mal von vorn durchgespielt. Daneben steht der Stand heute (aus den
+Live-Prognosen), bei entschiedenen Fragen die Antwort. Erkannt werden Meister, Herbstmeister (bis zum
+17. Spieltag), Plätze 16–18, Abstieg und Platz 1–4. Der erste Trainerwechsel ist eine Näherung, weil es
+keine Trainerdaten gibt: wer nach dem 8. Spieltag am wahrscheinlichsten auf Platz 16–18 steht (2026/27 hätte
+sie Gladbach nicht vorhergesehen). Für den Torschützenkönig gibt es keine Prognose, dafür fehlen die
+Transfers vor der Saison. Gelesen werden nur diese
+beiden öffentlichen Seiten, ohne Anmeldung; Kicktipp hat keine offizielle Schnittstelle. Die Tipp-Zettel
+und Tabellen von CL, 2. Liga und Pokal nutzen weiter die Standardregel.
 
 **Tipp-Zettel** (`/tipps`, Link „Tipp-Zettel“ neben der Spieltags- bzw. Rundenauswahl, für Bundesliga,
 2. Liga, CL und Pokal): alle Tipps eines Spieltags oder einer Runde untereinander. „Als Text“ kopiert sie zum Einfügen, „Als Bild“ zeichnet ein PNG mit Wappen; auf dem Handy
@@ -549,7 +578,7 @@ Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl
 
 `fussballdb-mcp` ist ein MCP-Server mit den Werkzeugen `naechste_spiele`, `spieltag`, `prognose`,
 `team_form`, `direkte_duelle`, `ausfaelle`, `tabelle`, `kickbase`, `champions_league`, `wettbewerb`,
-`tabelle_2_liga`, `cl_tabelle`, `anreise`, `sql` und `datenstand`. Damit beantwortet
+`tabelle_2_liga`, `cl_tabelle`, `anreise`, `tipprunden`, `sql` und `datenstand`. Damit beantwortet
 Claude Fragen direkt auf den eigenen Daten. Es braucht keinen API-Schlüssel: Claude ruft den Server
 auf, abgerechnet wird über das Claude-Abo. Die Datenbank muss laufen (`docker compose up -d`).
 
@@ -579,7 +608,8 @@ nach einem Neustart von Claude Desktop.
 | Werkzeug | Liefert |
 |---|---|
 | `naechste_spiele` | kommende Spiele mit Prognose und Tipp |
-| `spieltag` | ganzer Spieltag (Saison = Startjahr) mit Tipps, Punkten und Bilanz |
+| `spieltag` | ganzer Spieltag (Saison = Startjahr) mit Tipps, Punkten und Bilanz; `tipprunde` = Tipps und Punkte nach der Regel dieser Kicktipp-Runde |
+| `tipprunden` | hinterlegte Kicktipp-Runden mit Punkteregel; mit `runde` die Extratipps mit Prognose |
 | `prognose` | Wahrscheinlichkeiten, erwartete Tore, wahrscheinlichste Ergebnisse, Tipp, Begründung, Ausfälle |
 | `team_form` | letzte Spiele mit xG |
 | `direkte_duelle` | frühere Duelle zweier Teams |
@@ -814,7 +844,8 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `player_injury` | Verletzungshistorie je Spieler (von–bis, verpasste Spiele) |
 | `lineup_snapshot` | voraussichtliche und tatsächliche Aufstellungen (Ligainsider) |
 | `squad_value` | Kaderwerte je Team und Stichtag |
-| `prediction` | Prognosen (`basis` = live oder rueckblick), Tipp, Ausfälle, Begründung als JSON |
+| `prediction` | Prognosen (`basis` = live oder rueckblick), Tipp, Ausfälle, Begründung als JSON, Ergebnis-Wahrscheinlichkeiten 0:0 bis 9:9 (`score_probs`) |
+| `tip_round` | Kicktipp-Tipprunden mit Punkteregel, Tippschluss, Bonuspunkten und Standardrunde |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
 | `match_venue` | Spielort je Spiel (`competition` BL → `match`, sonst `eu_match`), nach dem Spiel eingefroren (`frozen`) |
 | `match_weather` | Wetter je Spiel zur Spielzeit (`kind` vorhersage oder gemessen) |
@@ -899,6 +930,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     und Kapazität dem Spieltag entsprechen. Vor dem Spiel eine Kleidungsempfehlung aus der Vorhersage.
 28. **Anreise mit Bus und Bahn**: Google-Maps-Link mit Ankunft eine Stunde vor dem Anpfiff, Start = aktueller
     Standort; im MCP als Werkzeug `anreise`.
+29. **Mehrere Kicktipp-Tipprunden**: Regeln von der Kicktipp-Seite, Auswahlfeld für Tipps und Punkte je
+    Runde, Prognosen für Extratipps (Meister, Herbstmeister, Plätze 16–18).
 
 Offen:
 

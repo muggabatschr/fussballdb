@@ -2,6 +2,7 @@
 
 import json
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import select, text
 
@@ -85,12 +86,20 @@ def market_probs() -> dict[int, tuple[float, float, float]]:
     return {int(r.match_id): (r.p_home, r.p_draw, r.p_away) for r in m.itertuples()}
 
 
+SCORE_GOALS = 10  # gespeicherte Ergebnisse 0:0 bis 9:9
+
+
+def score_json(matrix: np.ndarray) -> str:
+    return json.dumps(np.round(matrix[:SCORE_GOALS, :SCORE_GOALS], 5).tolist())
+
+
 def _row(match_id: int, p: dict, as_of: pd.Timestamp, basis: str, home: str = "", away: str = "",
          market: tuple[float, float, float] | None = None) -> dict:
     return {
         "explanation": json.dumps(explain(p, home, away, market), ensure_ascii=False) if home else None,
         "match_id": int(match_id), "model_version": MODEL_VERSION, **{k: float(p[k]) for k in PRED_FIELDS},
         "as_of": as_of, "basis": basis, "tip_home": p["tip"][0], "tip_away": p["tip"][1],
+        "score_probs": score_json(p["score_probs"]) if "score_probs" in p else None,
         # "" statt None, damit ein Update eine leere Ausfallliste auch wirklich speichert
         "missing_home": ", ".join(p["absences"]["home"]["missing_regulars"])[:400],
         "missing_away": ", ".join(p["absences"]["away"]["missing_regulars"])[:400],
@@ -180,6 +189,51 @@ def backfill(seasons: list[int] | None = None, force: bool = False, progress=Non
         total += len(rows)
         if progress:
             progress(season, md, len(rows))
+    return total
+
+
+def fill_score_probs(progress=None) -> int:
+    """Ergebnis-Wahrscheinlichkeiten für gespeicherte Prognosen ohne score_probs nachtragen (Rückblick wie in
+    backfill: je Spieltag nur Daten vor dem Anpfiff). Nur diese Spalte wird geschrieben, ausgerichtet an den
+    gespeicherten 1/X/2-Wahrscheinlichkeiten; Tipps, Punkte und Begründungen bleiben, wie sie sind."""
+    from fussballdb.model.data import load_squad_values
+    from fussballdb.model.ensemble import aligned_matrix
+    from fussballdb.model.evaluate import load_injuries
+
+    df = load_matches()
+    with engine.connect() as conn:
+        stored = {r.match_id: r for r in conn.execute(text(
+            "SELECT match_id, p_home, p_draw, p_away FROM prediction WHERE model_version = :v AND score_probs IS NULL"),
+            {"v": MODEL_VERSION})}
+    todo = df[df["match_id"].isin(stored)]
+    values, injuries = load_squad_values(), load_injuries()
+    availability = AvailabilityModel()
+    schedule = euro_load.euro_schedule()
+    total = 0
+    for (season, md), games in todo.groupby(["season", "matchday"], sort=True):
+        cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
+        if not (df["finished"] & (df["kickoff"] < cutoff)).any():
+            continue
+        model = Forecaster(values=values).fit(df, cutoff)
+        updates = []
+        for r in games.itertuples():
+            impacts = []
+            for team in (r.home_id, r.away_id):
+                suspended = availability.suspended_as_of(team, cutoff)
+                missing = availability.injured_as_of(team, cutoff, injuries) | suspended
+                impacts.append(euro_load.apply(availability.impact(team, cutoff, missing, suspended),
+                                               team, r.kickoff, schedule))
+            p = model.predict_match(r.home_id, r.away_id, r.match_id, *impacts)
+            s = stored[r.match_id]
+            probs = {"p_home": s.p_home, "p_draw": s.p_draw, "p_away": s.p_away}
+            updates.append({"m": int(r.match_id), "s": score_json(aligned_matrix(p["score_probs"], probs)),
+                            "v": MODEL_VERSION})
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE prediction SET score_probs = :s WHERE match_id = :m AND model_version = :v"),
+                         updates)
+        total += len(updates)
+        if progress:
+            progress(season, md, len(updates))
     return total
 
 

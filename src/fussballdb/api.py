@@ -9,11 +9,14 @@ from fastapi import FastAPI, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from fussballdb.assistant.tools import Toolbox, _rows
 from fussballdb.config import TIPP_PUNKTE
 from fussballdb.ingest.tv import for_matches as tv_for
 from fussballdb.ingest.venues import for_matches as venues_for
+from fussballdb.model.tips import apply_rule
+from fussballdb.model.tips import summary as tip_summary
 from fussballdb.maintenance import STATUS, check, ensure_in_background
 from fussballdb.model.ensemble import MODEL_VERSION
 
@@ -166,7 +169,7 @@ def _bl_games(where: str, **params) -> list[dict]:
                round(p.p_away::numeric, 3) AS p_away,
                round(p.exp_home_goals::numeric, 2) AS exp_home_goals, round(p.exp_away_goals::numeric, 2) AS exp_away_goals,
                p.tip_home, p.tip_away, p.basis, p.as_of, p.missing_home, p.missing_away, p.explanation,
-               {POINTS_SQL} AS points
+               p.score_probs, {POINTS_SQL} AS points
         FROM match m JOIN season s ON s.id = m.season_id
         JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
         LEFT JOIN match_team_stats hs ON hs.match_id = m.id AND hs.team_id = m.home_team_id
@@ -179,8 +182,29 @@ def _bl_games(where: str, **params) -> list[dict]:
     )
 
 
-def _decorate_bl(games: list[dict]) -> None:
-    """Begründung als Liste, TV-Sender und (bei offenen Spielen) wahrscheinliche Torschützen ergänzen."""
+def _tip_round(slug: str | None) -> dict:
+    """Tipprunde nach Kurzname, ohne Angabe die Standardrunde; ohne angelegte Runden die Regel aus config."""
+    rows = _rows("""SELECT slug, name, url, win_tendency, win_diff, exact, draw_tendency, lead_minutes, bonus_points,
+                            is_default FROM tip_round ORDER BY is_default DESC, id""")
+    rnd = next((r for r in rows if r["slug"] == slug), None) if slug else (rows[0] if rows else None)
+    if slug and rnd is None:
+        raise ValueError(f"Tipprunde {slug!r} gibt es nicht.")
+    if rnd is None:
+        return {"slug": None, "name": "Standard", "rule": tuple(TIPP_PUNKTE), "bonus_points": None}
+    return {**rnd, "rule": (rnd["win_tendency"], rnd["win_diff"], rnd["exact"], rnd["draw_tendency"])}
+
+
+def _punkteregel(rule=TIPP_PUNKTE) -> dict:
+    return {"sieg_tendenz": rule[0], "sieg_tordifferenz": rule[1], "exakt": rule[2], "remis_tendenz": rule[3]}
+
+
+def _round_info(rnd: dict) -> dict:
+    return {k: rnd.get(k) for k in ("slug", "name", "url", "lead_minutes", "bonus_points")}
+
+
+def _decorate_bl(games: list[dict], rule=TIPP_PUNKTE) -> None:
+    """Begründung als Liste, TV-Sender und (bei offenen Spielen) wahrscheinliche Torschützen ergänzen; Tipp und
+    Punkte nach der Punkteregel der gewählten Tipprunde."""
     tv = tv_for("BL", [g["id"] for g in games])
     places = venues_for("BL", [g["id"] for g in games])
     scorers = _scorers() if any(not g["finished"] for g in games) else {}
@@ -191,16 +215,27 @@ def _decorate_bl(games: list[dict]) -> None:
         sc = scorers.get(g["id"], {})
         if sc:
             g["torschuetzen"] = {"home": sc.get(g["home_team_id"], []), "away": sc.get(g["away_team_id"], [])}
+        apply_rule(g, rule)
 
 
 @app.get("/matchday/{season}/{matchday}")
-def matchday(season: int, matchday: int):
-    """Alle Spiele eines Spieltags mit Ergebnis, gespeicherter Prognose, Tipp und Tipp-Punkten
-    nach der Punkteregel der Tipprunde (config.TIPP_PUNKTE). Dazu die Bilanz des Spieltags und der Saison bis dahin."""
+def matchday(season: int, matchday: int, runde: str | None = None):
+    """Alle Spiele eines Spieltags mit Ergebnis, gespeicherter Prognose, Tipp und Tipp-Punkten nach der Punkteregel
+    der Tipprunde (runde = Kurzname, ohne Angabe die Standardrunde). Dazu die Bilanz des Spieltags und der Saison
+    bis dahin."""
+    rnd = _tip_round(runde)
+    rule = rnd["rule"]
     games = _bl_games("s.start_year = :y AND m.matchday = :md", y=season, md=matchday)
     if not games:
         raise ValueError(f"Spieltag {matchday} der Saison {season} gibt es nicht.")
-    season_summary = _rows(
+    if tuple(rule) != tuple(TIPP_PUNKTE):
+        # Tipps nach anderer Regel: Saisonbilanz aus den Ergebnis-Wahrscheinlichkeiten nachrechnen
+        played = _bl_games("s.start_year = :y AND m.matchday <= :md AND m.finished", y=season, md=matchday)
+        pts = [apply_rule(g, rule)["points"] for g in played if g["tip_home"] is not None]
+        season_summary = tip_summary([p for p in pts if p is not None], rule)
+    else:
+        season_summary = None
+    season_summary = season_summary or _rows(
         f"""
         SELECT count(*) FILTER (WHERE m.finished AND p.tip_home IS NOT NULL) AS spiele,
                coalesce(sum({POINTS_SQL}), 0) AS punkte,
@@ -212,20 +247,15 @@ def matchday(season: int, matchday: int):
         """,
         y=season, md=matchday, v=MODEL_VERSION,
     )[0]
-    _decorate_bl(games)
-    scored = [g for g in games if g["points"] is not None]
+    _decorate_bl(games, rule)
+    scored = [g["points"] for g in games if g["points"] is not None]
     return {
         "season": season,
         "matchday": matchday,
         "games": games,
-        "summary": {
-            "spiele": len(scored),
-            "punkte": sum(g["points"] for g in scored),
-            "tendenz": sum(1 for g in scored if g["points"] > 0),
-            "exakt": sum(1 for g in scored if g["points"] == EXACT),
-        },
-        "punkteregel": {"sieg_tendenz": WIN_TENDENCY, "sieg_tordifferenz": WIN_DIFF, "exakt": EXACT,
-                        "remis_tendenz": DRAW_TENDENCY},
+        "summary": tip_summary(scored, rule),
+        "punkteregel": _punkteregel(rule),
+        "tipprunde": _round_info(rnd),
         "season_summary": season_summary,
     }
 
@@ -422,10 +452,6 @@ COMP_NAMES = {
 }
 
 
-def _punkteregel() -> dict:
-    return {"sieg_tendenz": WIN_TENDENCY, "sieg_tordifferenz": WIN_DIFF, "exakt": EXACT, "remis_tendenz": DRAW_TENDENCY}
-
-
 def _h2h_summary(games: list[dict], home: str) -> dict:
     """Bilanz der direkten Duelle aus Sicht des heutigen Heimteams."""
     s = {"spiele": len(games), "siege_heim": 0, "remis": 0, "siege_gast": 0, "tore_heim": 0, "tore_gast": 0}
@@ -475,13 +501,14 @@ def _implied(odds: list[dict]) -> list[dict]:
 
 
 @app.get("/match/{match_id}")
-def match_detail(match_id: int):
+def match_detail(match_id: int, runde: str | None = None):
     """Ein Bundesliga-Spiel im Detail: Prognose wie auf der Spieltag-Kachel, dazu Form beider Teams vor dem Spiel,
     direkte Duelle vor dem Spiel, Tabelle, Ausfälle, voraussichtliche Aufstellung, Marktquoten und (gespielt) die Spielstatistik."""
     games = _bl_games("m.id = :id", id=match_id)
     if not games:
         raise ValueError(f"Spiel {match_id} gibt es nicht.")
-    _decorate_bl(games)
+    rnd = _tip_round(runde)
+    _decorate_bl(games, rnd["rule"])
     g = games[0]
     h, a = g["home_team_id"], g["away_team_id"]
     h2h = _rows(
@@ -507,7 +534,7 @@ def match_detail(match_id: int):
         """SELECT bookmaker, is_closing, home, draw, away FROM odds
            WHERE match_id = :id AND bookmaker IN ('Avg', 'B365') ORDER BY bookmaker, is_closing""", id=match_id))
     return {
-        "wettbewerb": "Bundesliga", "game": g, "punkteregel": _punkteregel(),
+        "wettbewerb": "Bundesliga", "game": g, "punkteregel": _punkteregel(rnd["rule"]), "tipprunde": _round_info(rnd),
         "form": {"home": _bl_form(h, g["kickoff"]), "away": _bl_form(a, g["kickoff"])},
         "h2h": h2h, "h2h_summary": _h2h_summary(h2h, g["home"]),
         "tabelle": {"home": table.get(g["home"]), "away": table.get(g["away"]), "stand": g["season_label"]},
@@ -595,6 +622,83 @@ def comp_match_detail(comp: str, match_id: int):
         "kaderwert": {"home": values.get(h), "away": values.get(a)},
         "ausfaelle": None if g["finished"] else {"home": _eu_absences(h, g["home"]), "away": _eu_absences(a, g["away"])},
     }
+
+
+class TipRoundIn(BaseModel):
+    url: str  # Kicktipp-Link oder Kurzname der Runde
+    name: str | None = None
+
+
+@app.get("/tipprunden")
+def tip_rounds():
+    """Hinterlegte Kicktipp-Tipprunden mit Punkteregel; die erste ist die Standardrunde."""
+    return [{**_round_info(r), "punkteregel": _punkteregel(r["rule"]), "standard": bool(r.get("is_default"))}
+            for r in (_tip_round(x["slug"]) for x in _rows("SELECT slug FROM tip_round ORDER BY is_default DESC, id"))]
+
+
+@app.post("/tipprunden")
+def add_tip_round(body: TipRoundIn):
+    """Tipprunde per Kicktipp-Link anlegen (oder ihre Regel neu lesen)."""
+    from fussballdb.db.session import session_scope
+    from fussballdb.ingest import kicktipp
+
+    try:
+        with session_scope() as s:
+            slug = kicktipp.add_round(s, body.url, body.name).slug
+    except ValueError:
+        raise
+    except Exception as exc:  # Seite nicht erreichbar o. Ä.
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        raise ValueError("Diese Tipprunde gibt es bei Kicktipp nicht." if status == 404
+                         else "Kicktipp ist gerade nicht erreichbar, bitte später noch einmal.") from None
+    return _round_info(_tip_round(slug))
+
+
+@app.post("/tipprunden/{slug}/standard")
+def default_tip_round(slug: str):
+    """Tipprunde als Standard setzen (gilt, wenn keine Runde gewählt ist, z. B. im Chat)."""
+    from fussballdb.db.session import session_scope
+
+    _tip_round(slug)
+    with session_scope() as s:
+        s.execute(text("UPDATE tip_round SET is_default = (slug = :s)"), {"s": slug})
+    return tip_rounds()
+
+
+@app.delete("/tipprunden/{slug}")
+def delete_tip_round(slug: str):
+    from fussballdb.db.session import session_scope
+
+    _tip_round(slug)
+    with session_scope() as s:
+        s.execute(text("DELETE FROM tip_round WHERE slug = :s"), {"s": slug})
+        s.execute(text("""UPDATE tip_round SET is_default = true WHERE id = (SELECT min(id) FROM tip_round)
+                          AND NOT EXISTS (SELECT 1 FROM tip_round WHERE is_default)"""))
+    return tip_rounds()
+
+
+_BONUS_CACHE: dict = {}
+
+
+@app.get("/tipprunden/{slug}/extratipps")
+def tip_round_bonus(slug: str):
+    """Bonusfragen (Extratipps) der Runde von Kicktipp mit Prognose aus der Saison-Hochrechnung, 1 Std.
+    zwischengespeichert. Leer, wenn die Runde keine Bonusfragen hat."""
+    import time
+
+    from fussballdb.ingest.kicktipp import bonus_questions
+    from fussballdb.maintenance import CURRENT_SEASON
+    from fussballdb.model.bonus import forecasts
+
+    rnd = _tip_round(slug)
+    if not rnd.get("bonus_points"):
+        return {"tipprunde": _round_info(rnd), "fragen": []}
+    cached = _BONUS_CACHE.get(slug)
+    if cached and cached[0] > time.time() - 3600:
+        return cached[1]
+    data = {"tipprunde": _round_info(rnd), "fragen": forecasts(bonus_questions(slug), CURRENT_SEASON)}
+    _BONUS_CACHE[slug] = (time.time(), data)
+    return data
 
 
 @app.get("/kickbase/projections")

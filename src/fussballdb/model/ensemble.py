@@ -103,7 +103,9 @@ class Forecaster:
         for k, v in (("p_home", p_home), ("p_draw", p_draw), ("p_away", p_away)):
             out[k] = self.alpha * out[k] + (1 - self.alpha) * float(v)
         # Tipp mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde (config.TIPP_PUNKTE)
-        out["tip_options"] = tip_options(self.dc.score_matrix(home_id, away_id, adj), out)
+        matrix = self.dc.score_matrix(home_id, away_id, adj)
+        out["tip_options"] = tip_options(matrix, out)
+        out["score_probs"] = aligned_matrix(matrix, out)  # für Tipps nach anderen Punkteregeln (Tipprunden)
         out["tip"] = out["tip_options"][0][0]
         # Einfluss von Form und Ausfällen auf die erwartete Torzahl (für die Begründung)
         out["form"] = {"home": form[0], "away": form[1]}

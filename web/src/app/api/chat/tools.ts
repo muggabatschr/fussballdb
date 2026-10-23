@@ -16,16 +16,18 @@ import {
 } from "@/lib/api";
 import { COMPETITIONS } from "@/lib/competitions";
 import type { TipSheetProps } from "@/components/TipSheet";
+import { selectedTipRound } from "@/lib/tipround";
 
 /** Tipp-Zettel wie auf /tipps: Bundesliga-Spieltag oder Runde von 2. Liga, CL, Pokal; ohne Angabe die aktuelle. */
-async function tipSheet(comp: "BL" | "D2" | "CL" | "DFB", season?: number, round?: number): Promise<TipSheetProps> {
+async function tipSheet(comp: "BL" | "D2" | "CL" | "DFB", season?: number, round?: number, tipRound?: string): Promise<TipSheetProps> {
   if (comp === "BL") {
     const seasons = await getSeasons();
     const s = seasons.find((x) => x.start_year === season) ?? seasons[0];
-    const d = await getMatchday(s.start_year, round ?? s.current_matchday);
+    // Tipprunde: genannt, sonst die im Browser gewählte (Cookie), sonst die Standardrunde
+    const d = await getMatchday(s.start_year, round ?? s.current_matchday, tipRound ?? (await selectedTipRound()));
     return {
       title: `${d.matchday}. Spieltag`,
-      subtitle: `Bundesliga ${s.label}`,
+      subtitle: `Bundesliga ${s.label}${d.tipprunde?.name ? ` · ${d.tipprunde.name}` : ""}`,
       games: d.games,
       backHref: `/tipps/${d.season}/${d.matchday}`,
       backLabel: "öffnen",
@@ -95,7 +97,8 @@ export const tools = {
   get_tip_sheet: tool({
     description:
       "Tipp-Zettel: alle Tipps eines Spieltags bzw. einer Runde (Ergebnis mit den meisten erwarteten Tipp-Punkten). " +
-      "Nutzen bei Fragen nach Tipp-Zettel, Tippzettel oder allen Tipps eines Spieltags. Der Nutzer sieht den Zettel " +
+      "Nutzen bei Fragen nach Tipp-Zettel, Tippzettel oder allen Tipps eines Spieltags. Bundesliga-Tipps richten " +
+      "sich nach der Punkteregel der Tipprunde (Kicktipp). Der Nutzer sieht den Zettel " +
       "als Box mit Wappen und kann ihn als Bild oder Text teilen.",
     inputSchema: z.object({
       wettbewerb: z
@@ -104,9 +107,13 @@ export const tools = {
         .describe("BL = Bundesliga (Standard), D2 = 2. Bundesliga, CL = Champions League, DFB = DFB-Pokal"),
       saison: z.number().int().optional().describe("Startjahr, z. B. 2026; Standard aktuelle Saison"),
       spieltag: z.number().int().optional().describe("Spieltag bzw. Runde; Standard der nächste offene"),
+      tipprunde: z
+        .string()
+        .optional()
+        .describe("Kicktipp-Tipprunde (Kurzname, z. B. waschndalos), nur Bundesliga; Standard die gewählte Runde"),
     }),
-    execute: async ({ wettbewerb, saison, spieltag }) => {
-      const sheet = await tipSheet(wettbewerb ?? "BL", saison, spieltag);
+    execute: async ({ wettbewerb, saison, spieltag, tipprunde }) => {
+      const sheet = await tipSheet(wettbewerb ?? "BL", saison, spieltag, tipprunde);
       // nur was Box und Modell brauchen
       return {
         ...sheet,
