@@ -199,7 +199,9 @@ def _need_europe() -> str | None:
     """Champions League: Ergebnisse, Ligaspiele, Kaderwerte und Prognosen."""
     if not _scalar("SELECT count(*) FROM eu_match WHERE competition = 'CL'"):
         return None  # Europa noch nie geladen (fussballdb europa), nicht automatisch nachholen
-    open_ = _scalar("SELECT count(*) FROM eu_match WHERE NOT finished AND kickoff < now() - interval '3 hours'")
+    # nur die letzten 30 Tage: ältere Spiele ohne Ergebnis sind Lücken der Quelle (3. Liga 2022/23), kein Update hilft
+    open_ = _scalar("""SELECT count(*) FROM eu_match WHERE NOT finished
+                       AND kickoff BETWEEN now() - interval '30 days' AND now() - interval '3 hours'""")
     if open_:
         return f"{open_} Europapokal-Spiele ohne Ergebnis"
     no_xg = _scalar("""SELECT count(*) FROM eu_match WHERE competition = 'CL' AND finished AND home_xg IS NULL

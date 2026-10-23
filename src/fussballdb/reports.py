@@ -301,7 +301,8 @@ def _story(m: dict, shots: list[dict], starters: set[str], season_goals: dict,
         if pack and total > n:
             star_line.append(f"{who} schnürte {pack} und steht nun bei {_num(total)} Saisontoren.")
         elif pack:
-            star_line.append(_pick(rnd, f"{who} schnürte {pack}.", f"Mann des Tages war {who} mit {pack}."))
+            dative = pack.replace("einen ", "einem ")  # "mit einem Doppelpack"
+            star_line.append(_pick(rnd, f"{who} schnürte {pack}.", f"Mann des Tages war {who} mit {dative}."))
         elif total >= 5:
             star_line.append(_pick(rnd, f"Für {who} war es bereits das {_ord(total)} Saisontor.",
                                    f"{who} hält nun bei {_num(total)} Saisontoren."))
@@ -488,13 +489,26 @@ def _formations(m: dict, rnd: random.Random) -> list[str]:
     return [_pick(rnd, f"{home} begann im {fh}, {away} im {fa}.", f"{home} lief im {fh} auf, {away} im {fa}.")]
 
 
-def _best_player(m: dict, rnd: random.Random) -> list[str]:
-    """Spieler des Spiels laut FotMob mit Note."""
+def _best_player(m: dict, rnd: random.Random, star: list[str]) -> list[str]:
+    """Spieler des Spiels laut FotMob mit Note. Ist es der Torschütze aus `star` (Doppelpack, Saisontore), wird
+    das in dessen Satz eingebaut statt ihn zweimal zu loben; `star` wird dabei angepasst."""
     lu = _page(m)
     for side in ("home", "away"):
         for p in (lu.get(side) or {}).get("startelf", []) + (lu.get(side) or {}).get("bank", []):
             if p.get("spieler_des_spiels") and p.get("note"):
                 team = _prose(m[f"{side}_short"])
+                if star and star[0].split()[0] == p["name"].split()[-1] or star and p["name"] in star[0].split(" schnürte")[0]:
+                    s = star[0].rstrip(".")
+                    s = s.replace(f"Mann des Tages war {p['name']} mit ", f"{p['name']} glänzte mit ")
+                    note = de(p["note"])
+                    if " und steht nun bei " in s:
+                        a, b = s.split(" und steht nun bei ")
+                        star[0] = f"{a}, war mit der Note {note} der beste Mann auf dem Platz und steht nun bei {b}."
+                    elif s.startswith("Für "):
+                        star[0] = f"{s}. Mit der Note {note} war er zudem der beste Mann auf dem Platz."
+                    else:
+                        star[0] = f"{s} und war mit der Note {note} der beste Mann auf dem Platz."
+                    return []
                 gf, ga = (m["home_goals"], m["away_goals"]) if side == "home" else (m["away_goals"], m["home_goals"])
                 if gf < ga:
                     return [f"Bester Mann auf dem Platz war trotz der Niederlage {p['name']} von {team} (Note {de(p['note'])})."]
@@ -657,7 +671,8 @@ def build(m: dict, shots: list[dict], starters: set[str], reds: list[dict], stat
     lines.append(" ".join([_lead(m, goals, keywords, kick, rnd)] + _formations(m, rnd) + first))
     if second:
         lines.append(" ".join(second))
-    close = star + _best_player(m, rnd) + _assessment(m, stats, rnd) + _standing(m, rnd)
+    best = _best_player(m, rnd, star)
+    close = star + best + _assessment(m, stats, rnd) + _standing(m, rnd)
     for side in ("home", "away"):
         if m.get(f"missing_{side}"):
             played = m.get("players") or set()

@@ -170,7 +170,7 @@ uv sync
 uv run fussballdb init-db
 uv run fussballdb ingest      # alle Saisons seit 2014/15, beim ersten Mal ~30 Min. (wird gecacht)
 uv run fussballdb historie    # 1993/94 bis 2013/14, nur zum Nachschlagen (~1 Min.)
-uv run fussballdb aufstellungen -s 2025 -s 2024   # optional: Aufstellung und Momentum älterer Saisons (~10 Min. je Saison)
+uv run fussballdb aufstellungen -s 2025 -s 2024   # optional: Aufstellung und Momentum älterer Saisons ab 2014 (~6 Min. je Saison)
 uv run fussballdb ensure      # alles Weitere: Kaderwerte, Ausfälle, Quoten, Prognosen, Verletzungshistorie
 uv run fussballdb logos
 cd web && cp .env.example .env.local && npm install
@@ -323,7 +323,9 @@ Aufstellung (etwa zwei Tage vorher), rund eine Stunde vor dem Anpfiff die offizi
 FotMob-Aufstellung gibt, steht die von Ligainsider da. Das Momentum zeigt je Minute, wer Druck gemacht hat
 (Balken nach oben Heim, nach unten Gast), mit Toren, Platzverweisen und vergebenen Elfmetern an der Zeitachse.
 Gespielte Spiele werden einmal geladen und eingefroren. Die laufende Saison kommt mit dem Update, ältere
-Bundesliga-Saisons mit `fussballdb aufstellungen -s 2024` (~1 s je Spiel); geladen sind 2024/25 bis heute.
+Bundesliga-Saisons mit `fussballdb aufstellungen -s 2024` (~1 s je Spiel). Geladen ist die Bundesliga ab
+2014/15: Aufstellung und Formation für alle Spiele, Noten und Spieler des Spiels ab 2016/17 (2015/16 nur
+vereinzelt), Momentum ab 2023/24 (2022/23 zur Hälfte); davor hat FotMob beides nicht.
 
 **Teamfarben**: Wahrscheinlichkeitsbalken, Direktvergleich, Spielstatistik, Spielfeld und Momentum auf der
 Detailseite und das xG-Diagramm der Teamseite (xG in Vereinsfarbe, xGA grau) nutzen die Farben laut FotMob,
@@ -376,8 +378,8 @@ größte vergebene Chance je Team. Der letzte Absatz ordnet ein: Doppelpack und 
 oder glücklich nach den Chancen, Überraschung, Folgen für die Tabelle (Tabellenführung, Abstiegszone, „vorerst“,
 wenn der Spieltag noch läuft), Serien („der dritte Sieg in Folge“, „seit sieben Spielen ohne Sieg“) und Ausfälle.
 Derbys, Spitzenspiele (beide unter den ersten drei) und Kellerduelle (beide ab Platz 15) werden als solche
-benannt. Wo die FotMob-Aufstellung geladen ist (ab 2024/25), nennt der Bericht die Formationen und den Spieler
-des Spiels mit Note. Danach folgt die Zeile „Zahlen zum Spiel“. Die Formulierungen wechseln von Spiel zu Spiel, bleiben für
+benannt. Mit der FotMob-Aufstellung nennt der Bericht die Formationen (ab 2014/15) und den Spieler des Spiels
+mit Note (ab 2016/17). Danach folgt die Zeile „Zahlen zum Spiel“. Die Formulierungen wechseln von Spiel zu Spiel, bleiben für
 ein Spiel aber gleich. Dazu eine Zeile
 **Stichworte** zum Verlauf, je Team zugeordnet („Comeback von Gladbach“, „spätes Siegtor von HSV“,
 „glücklicher Sieg von …“, Platzverweis, Elfmeter, Eigentor, Überraschung …). Die Berichte stehen auf der
