@@ -14,6 +14,8 @@ from sqlalchemy import text
 
 from fussballdb.config import DEFAULT_SEASONS
 from fussballdb.db.session import engine
+from fussballdb.features.lineup_strength import _norm
+from fussballdb.ingest import matchpage
 
 POSITION = {"GK": "TW", "DC": "ABW", "DR": "ABW", "DL": "ABW", "DML": "ABW", "DMR": "ABW",
             "DMC": "MF", "MC": "MF", "AMC": "MF", "AML": "MF", "AMR": "MF", "ML": "MF", "MR": "MF",
@@ -74,6 +76,45 @@ LINEUP_SQL = text(
 )
 
 
+def _fotmob_role(fm: dict | None, name: str) -> str | None:
+    """Rolle laut FotMob-Aufstellung. Offiziell: "elf", "bank", "fehlt"; voraussichtlich: "elf?", "nicht_elf?".
+    None ohne FotMob-Aufstellung."""
+    if not fm:
+        return None
+    n = _norm(name)
+    keys = {n, "_last:" + n.split(" ")[-1]} if n else set()
+    if fm["offiziell"]:
+        return "elf" if keys & fm["startelf"] else "bank" if keys & fm["bank"] else "fehlt"
+    return "elf?" if keys & fm["startelf"] else "nicht_elf?"
+
+
+# (Ligainsider, FotMob voraussichtlich) -> (Chance Startelf, Chance Einwechslung)
+START_TABLE = {
+    ("start", "elf?"): (0.92, 0.05), ("start", "nicht_elf?"): (0.6, 0.25), ("start", None): (0.9, 0.05),
+    ("alternative", "elf?"): (0.6, 0.25), ("alternative", "nicht_elf?"): (0.15, 0.45), ("alternative", None): (0.35, 0.4),
+    ("bank", "elf?"): (0.4, 0.4), ("bank", "nicht_elf?"): (0.03, 0.5), ("bank", None): (0.05, 0.5),
+}
+
+
+def start_chance(ligainsider: str | None, fotmob: str | None, p_start: float, p_sub: float) -> tuple[float, float]:
+    """Chance auf Startelf und Einwechslung aus Ligainsider (start, alternative, bank), FotMob und der
+    Startelf-Quote der letzten Spiele. Die offizielle FotMob-Aufstellung (etwa eine Stunde vor dem Anpfiff) gilt
+    allein; vorher zählen Ligainsider und die voraussichtliche FotMob-Elf zusammen."""
+    if fotmob == "elf":
+        return 0.98, 0.0
+    if fotmob == "bank":
+        return 0.0, max(p_sub, 0.3)
+    if fotmob == "fehlt":
+        return 0.0, 0.0
+    if (ligainsider, fotmob) in START_TABLE:
+        return START_TABLE[(ligainsider, fotmob)]
+    if fotmob == "elf?":
+        return max(0.75, p_start), min(p_sub, 0.1)
+    if fotmob == "nicht_elf?":
+        return p_start * 0.4, p_sub
+    return p_start, p_sub
+
+
 def _player_table(apps: pd.DataFrame) -> pd.DataFrame:
     """Raten pro 90 Minuten je Spieler (letzter Verein), Position, Startelf-Quote."""
     apps = apps.sort_values("kickoff")
@@ -129,6 +170,7 @@ def match_rows(matchdays: int = 1) -> pd.DataFrame:
     kb = pd.read_sql(KB_SQL, engine).drop_duplicates("player_id").set_index("player_id")
     lineup = pd.read_sql(LINEUP_SQL, engine)
     lineup = {(r.match_id, r.player_id): r.role for r in lineup.itertuples()}
+    fotmob = matchpage.lineup_names(fixtures["match_id"].tolist())
     players = _player_table(apps)
 
     rows = []
@@ -147,14 +189,11 @@ def match_rows(matchdays: int = 1) -> pd.DataFrame:
             for pid, p in players[players["team_id"] == team].iterrows():
                 status = absent.get(pid)
                 role = lineup.get((f.match_id, pid))
+                fm = _fotmob_role(fotmob.get((f.match_id, team == f.home_team_id)), p["name"])
                 if status:
                     p_start = p_sub = 0.0
-                elif role == "start":
-                    p_start, p_sub = 0.9, 0.05
-                elif role == "alternative":
-                    p_start, p_sub = 0.35, 0.4
                 else:
-                    p_start, p_sub = float(p["p_start"]), float(p["p_sub"])
+                    p_start, p_sub = start_chance(role, fm, float(p["p_start"]), float(p["p_sub"]))
                 kbp = kb.loc[pid] if pid in kb.index else None
                 if kbp is not None and not status:
                     factor = KB_STATUS_FACTOR.get(int(kbp["kb_status"] or 0), 1.0)

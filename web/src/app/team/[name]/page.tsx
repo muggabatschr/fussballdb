@@ -39,7 +39,7 @@ async function Team({ params }: { params: PageProps<"/team/[name]">["params"] })
           </Card>
         ))}
       </div>
-      <TeamGames games={form.spiele}>
+      <TeamGames games={form.spiele} color={form.farbe}>
         <Legend
           items={[
             TERMS.erg,

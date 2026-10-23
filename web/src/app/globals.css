@@ -10,6 +10,10 @@
   --draw: #a8a29e;
   --away: #b45309;
   --accent: #0f766e;
+  --home-std: #0f766e;
+  --away-std: #b45309;
+  --home-fg: #ffffff;
+  --away-fg: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +27,27 @@
     --draw: #78716c;
     --away: #f59e0b;
     --accent: #2dd4bf;
+    --home-std: #2dd4bf;
+    --away-std: #f59e0b;
+    --home-fg: #000000;
+    --away-fg: #000000;
+  }
+}
+
+/* Teamfarben laut FotMob (components/TeamColors.tsx); fehlt eine Farbe, gilt der Standard */
+.team-colors {
+  --home: var(--tc-home, var(--home-std));
+  --away: var(--tc-away, var(--away-std));
+  --home-fg: var(--tc-home-fg, #ffffff);
+  --away-fg: var(--tc-away-fg, #ffffff);
+}
+
+@media (prefers-color-scheme: dark) {
+  .team-colors {
+    --home: var(--tc-home-dark, var(--home-std));
+    --away: var(--tc-away-dark, var(--away-std));
+    --home-fg: var(--tc-home-fg-dark, #000000);
+    --away-fg: var(--tc-away-fg-dark, #000000);
   }
 }
 

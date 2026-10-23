@@ -448,6 +448,28 @@ def _run_venues() -> str:
         f", nicht zugeordnet: {', '.join(res['nicht_zugeordnet'][:5])}" if res["nicht_zugeordnet"] else "")
 
 
+def _need_lineups() -> str | None:
+    """Aufstellung und Momentum: gespielte Spiele mit FotMob-ID einmal (dann eingefroren), offene der nächsten
+    zwei Tage stündlich neu (voraussichtliche, dann offizielle Aufstellung)."""
+    n = _scalar("""
+        WITH games AS (
+            SELECT 'BL' AS c, id, kickoff, finished FROM match
+            UNION ALL SELECT competition, id, kickoff, finished FROM eu_match)
+        SELECT count(*) FROM match_venue v JOIN games g ON g.c = v.competition AND g.id = v.match_id
+        LEFT JOIN match_page p ON p.competition = v.competition AND p.match_id = v.match_id
+        WHERE v.fotmob_id IS NOT NULL AND (p.id IS NULL OR NOT p.frozen)
+          AND (g.finished OR g.kickoff < now() + interval '2 days')
+          AND (p.id IS NULL OR g.finished OR p.fetched_at < now() - interval '1 hour')""")
+    return f"{n} Aufstellungen fehlen oder sind veraltet" if n else None
+
+
+def _run_lineups() -> str:
+    from fussballdb.ingest import matchpage
+
+    with session_scope() as s:
+        return f"Aufstellung und Momentum für {matchpage.ingest(s, log=lambda m: None)} Spiele"
+
+
 def _run_weather() -> str:
     from fussballdb.ingest import weather
 
@@ -479,9 +501,10 @@ STEPS = [
     Step("cl_ausfaelle", "CL-Ausfälle", _need_cl_absences, _run_cl_absences, timedelta(hours=6)),
     Step("tv", "TV-Sender (DE, AT)", _need_tv, _run_tv, timedelta(hours=6)),
     Step("kicktipp", "Reihenfolge wie bei Kicktipp", _need_kicktipp_order, _run_kicktipp_order, timedelta(hours=12)),
-    Step("spielberichte", "Spielberichte für die Suche", _need_reports, _run_reports, timedelta(hours=6)),
     Step("stadien", "Spielorte (Stadion, Kapazität)", _need_venues, _run_venues, timedelta(hours=6)),
     Step("wetter", "Wetter zur Spielzeit", _need_weather, _run_weather, timedelta(hours=3)),
+    Step("aufstellungen", "Aufstellung und Momentum (FotMob)", _need_lineups, _run_lineups, timedelta(hours=1)),
+    Step("spielberichte", "Spielberichte für die Suche", _need_reports, _run_reports, timedelta(hours=6)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,
          timedelta(days=7), slow=True),
     Step("kickbase_punkte", "Kickbase-Punkte und neue Spieler", _need_kickbase_points, _run_kickbase_points,

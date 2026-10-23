@@ -435,6 +435,7 @@ MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS match_report_emb ON match_report USING hnsw (embedding vector_cosine_ops)",
     "CREATE INDEX IF NOT EXISTS match_report_teams ON match_report (home_id, away_id, season)",
     "ALTER TABLE match ADD COLUMN IF NOT EXISTS kicktipp_pos integer",
+    "ALTER TABLE match_page ADD COLUMN IF NOT EXISTS colors text",
     "ALTER TABLE prediction ADD COLUMN IF NOT EXISTS score_probs text",
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS home_xg double precision",
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS away_xg double precision",
@@ -516,6 +517,27 @@ class MatchVenue(Base):
     capacity: Mapped[int | None]
     lat: Mapped[float | None] = mapped_column(Float)
     lon: Mapped[float | None] = mapped_column(Float)
+    frozen: Mapped[bool] = mapped_column(Boolean, default=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MatchPage(Base):
+    """Aufstellung (Formation, Positionen auf dem Feld, Noten, Tore, Karten, Wechsel) und Momentum je Spiel von
+    der FotMob-Spielseite (competition BL → match, sonst eu_match). Offene Spiele werden kurz vor dem Anpfiff neu
+    geladen (voraussichtliche, dann offizielle Aufstellung), gespielte einmal danach und dann eingefroren."""
+
+    __tablename__ = "match_page"
+    __table_args__ = (UniqueConstraint("competition", "match_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competition: Mapped[str] = mapped_column(String(4))
+    match_id: Mapped[int] = mapped_column(index=True)
+    fotmob_id: Mapped[int]
+    lineup_type: Mapped[str | None] = mapped_column(String(20))  # standard | predicted | …
+    lineup: Mapped[str | None] = mapped_column(Text)  # JSON {"home": Team, "away": Team}, siehe ingest/matchpage.py
+    momentum: Mapped[str | None] = mapped_column(Text)  # JSON [[Minute, Wert]], Wert > 0 = Heimteam drückt
+    events: Mapped[str | None] = mapped_column(Text)  # JSON [{minute, home, type, player, score}] Tore und Platzverweise
+    colors: Mapped[str | None] = mapped_column(Text)  # JSON Teamfarben {hell: {home, away}, dunkel: {…}, schrift…}
     frozen: Mapped[bool] = mapped_column(Boolean, default=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

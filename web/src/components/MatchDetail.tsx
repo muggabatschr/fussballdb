@@ -5,7 +5,10 @@ import { shortName } from "@/lib/teams";
 import { Card } from "./Card";
 import { Legend, TERMS } from "./Legend";
 import { lastName, TvLine } from "./MatchdayView";
+import { Momentum } from "./Momentum";
+import { Pitch } from "./Pitch";
 import { ProbabilityBar } from "./ProbabilityBar";
+import { TeamColors } from "./TeamColors";
 import { TeamName } from "./TeamName";
 import { TipRoundSelect } from "./TipRoundSelect";
 import { VenueLine } from "./VenueLine";
@@ -463,7 +466,9 @@ export function MatchDetailView({
       <Link href={backHref} className="text-sm text-muted underline hover:text-foreground">
         ← {backLabel}
       </Link>
-      <Header d={d} meta={meta} />
+      <TeamColors colors={d.farben}>
+        <Header d={d} meta={meta} />
+      </TeamColors>
       <TipRoundSelect rounds={rounds} current={d.tipprunde?.slug} />
 
       {tip && g.explanation.length > 0 && (
@@ -483,7 +488,9 @@ export function MatchDetailView({
       </Section>
 
       <Section title="Direktvergleich vor dem Spiel">
-        <H2HBlock d={d} />
+        <TeamColors colors={d.farben}>
+          <H2HBlock d={d} />
+        </TeamColors>
       </Section>
 
       {d.tabelle && (d.tabelle.home || d.tabelle.away) && (
@@ -499,7 +506,31 @@ export function MatchDetailView({
         </Section>
       )}
 
-      {d.aufstellung && (
+      {d.spielfeld?.aufstellung && (
+        <Section title={d.spielfeld.art === "voraussichtlich" ? "Voraussichtliche Aufstellung" : "Aufstellung"}>
+          <TeamColors colors={d.farben}>
+            <Pitch home={d.spielfeld.aufstellung.home} away={d.spielfeld.aufstellung.away} homeName={g.home} awayName={g.away} />
+          </TeamColors>
+          <p className="mt-2 text-xs text-muted">
+            Laut FotMob{d.spielfeld.art === "voraussichtlich" ? ", kann sich bis zum Anpfiff noch ändern" : ""}. Note von 0 bis
+            10, ★ Spieler des Spiels, C Kapitän, ↓ ausgewechselt, ↑ eingewechselt (Minute).
+          </p>
+        </Section>
+      )}
+
+      {d.spielfeld?.momentum && (
+        <Section title="Momentum">
+          <TeamColors colors={d.farben}>
+            <Momentum data={d.spielfeld.momentum} events={d.spielfeld.ereignisse} home={g.home} away={g.away} />
+          </TeamColors>
+          <p className="mt-2 text-xs text-muted">
+            Laut FotMob: wer in welcher Minute Druck gemacht hat (Ballbesitz in gefährlichen Zonen, Schüsse,
+            Standards). Balken nach oben für {shortName(g.home)}, nach unten für {shortName(g.away)}.
+          </p>
+        </Section>
+      )}
+
+      {d.aufstellung && !d.spielfeld?.aufstellung && (
         <Section title="Voraussichtliche Aufstellung">
           <Sides home={g.home} away={g.away} data={d.aufstellung} render={(p) => <Lineup players={p} />} />
           <p className="mt-2 text-xs text-muted">Laut Ligainsider, letzter Abruf. Kann sich bis zum Anpfiff noch ändern.</p>
@@ -529,7 +560,11 @@ export function MatchDetailView({
         </Section>
       )}
 
-      {d.statistik && <StatsBlock s={d.statistik} />}
+      {d.statistik && (
+        <TeamColors colors={d.farben}>
+          <StatsBlock s={d.statistik} />
+        </TeamColors>
+      )}
 
       {d.quoten && d.quoten.length > 0 && (
         <Section title="Modell und Wettmarkt">

@@ -84,6 +84,7 @@ export type TeamForm = {
   team_id: number;
   zusammenfassung: Record<string, number>;
   spiele: FormGame[];
+  farbe?: TeamColor | null; // Vereinsfarbe laut FotMob
 };
 
 export type Absence = {
@@ -400,6 +401,56 @@ export type MatchDetail = {
   quoten?: { bookmaker: string; is_closing: boolean; p_home: number; p_draw: number; p_away: number }[];
   kaderwert?: Sides<number | null>;
   bericht?: string | null; // Spielbericht aus den Daten (Bundesliga, gespielt)
+  spielfeld?: MatchPage | null; // Aufstellung und Momentum laut FotMob
+  farben?: Sides<TeamColor | null> | null; // Teamfarben laut FotMob
+};
+
+export type TeamColor = { hell: string; dunkel: string; schrift_hell?: string | null; schrift_dunkel?: string | null };
+
+/** Spieler auf dem Feld laut FotMob: x/y waagerecht (x 0 = eigenes Tor, 1 = Mittellinie), vx/vy senkrecht. */
+export type PitchPlayer = {
+  name: string;
+  voller_name: string;
+  nummer: string | null;
+  note: number | null;
+  tore: number;
+  vorlagen: number;
+  eigentore: number;
+  gelb: boolean;
+  rot: boolean;
+  elfmeter_verschossen: number;
+  elfmeter_gehalten: number;
+  raus: number | null;
+  rein: number | null;
+  spieler_des_spiels?: boolean;
+  kapitaen?: boolean;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+};
+export type PitchTeam = {
+  name: string;
+  formation: string | null;
+  note: number | null;
+  trainer: string | null;
+  startelf: PitchPlayer[];
+  bank: PitchPlayer[];
+};
+export type MatchEvent = {
+  minute: number;
+  nachspiel: number | null;
+  pos: number;
+  heim: boolean;
+  art: "tor" | "eigentor" | "rot" | "gelbrot" | "elfmeter_vergeben";
+  spieler: string;
+  stand?: [number, number];
+};
+export type MatchPage = {
+  art: "offiziell" | "voraussichtlich";
+  aufstellung: Sides<PitchTeam> | null;
+  momentum: [number, number][] | null; // Minute, Wert -100 bis 100 (> 0 = Heimteam drückt)
+  ereignisse: MatchEvent[];
 };
 
 export const getMatchDetail = (id: number, runde?: string) => api<MatchDetail>(`/match/${id}?${q({ runde })}`);

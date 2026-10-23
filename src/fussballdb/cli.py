@@ -94,6 +94,25 @@ def snapshot() -> None:
         console.print(f"  [red]{err}[/]")
 
 
+@app.command()
+def aufstellungen(seasons: SeasonsOpt = None) -> None:
+    """Aufstellungen und Momentum von FotMob: offene und neue Spiele aller Wettbewerbe; mit --season ältere
+    Bundesliga-Saisons nachladen (~1 s je Spiel, gespielte Spiele bleiben im Zwischenspeicher)."""
+    from fussballdb.db.session import session_scope
+    from fussballdb.ingest import matchpage
+
+    if not seasons:
+        with session_scope() as s:
+            console.print(f"{matchpage.ingest(s)} Spiele")
+        return
+    for year in seasons:
+        with session_scope() as s:
+            res = matchpage.backfill(s, year, log=console.print)
+        console.print(f"{year}/{(year + 1) % 100:02d}: {res['spiele']} Spiele")
+        for m in res["nicht_zugeordnet"]:
+            console.print(f"  [yellow]nicht zugeordnet:[/] {m}")
+
+
 @app.command("verletzungshistorie")
 def verletzungshistorie() -> None:
     """Verletzungshistorie aller Spieler seit 2023/24 laden (beim ersten Mal ~40 Min., danach aus dem Cache)."""
@@ -337,6 +356,18 @@ def elo_historie_test() -> None:
 
     console.print(compare_elo_history().round(4).to_string(index=False))
     console.print("RPS kleiner = besser. Übernehmen nur, wenn die Vorgeschichte im Test in rund 90 % der Ziehungen besser ist.")
+
+
+@app.command("startelf-test")
+def startelf_test() -> None:
+    """Startelf-Korrektur (Stärke der aufgebotenen gegen die übliche Elf aus Kickbase-Punkten, FotMob-Noten,
+    xG+xA) im Rückblick, je Modellvariante samt der verworfenen Erweiterungen (Einstellen 2024/25, Test ab 2025/26)."""
+    from fussballdb.model.evaluate import compare_lineup_strength
+
+    res = compare_lineup_strength(progress=lambda s, md: console.print(f"  {s}/{md}", end="\r"))
+    console.print(res.round(4).to_string(index=False))
+    console.print("delta < 0 = besser. Übernehmen nur, wenn im Test in rund 90 % der Ziehungen besser und im "
+                  "Einstellzeitraum nicht schlechter.")
 
 
 @app.command("cl-xg-test")

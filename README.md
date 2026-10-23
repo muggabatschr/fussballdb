@@ -16,7 +16,8 @@ Was es alles gibt:
 - **Spielberichte** zu allen Bundesliga-Spielen ab 2014/15, durchsuchbar im Chat und per MCP
 - **Mehrere Kicktipp-Tipprunden**: Tipps und Punkte je Runde nach ihrer Punkteregel, Prognosen für Extratipps
 - **Torschützen-Prognose** je Spiel
-- **Spiel-Detailseite** mit Form, Direktvergleich, Tabelle, Ausfällen, Aufstellung und Quoten
+- **Spiel-Detailseite** mit Form, Direktvergleich, Tabelle, Ausfällen, Aufstellung auf dem Spielfeld mit
+  Formation und Noten, Momentum-Graph und Quoten, in den Farben der Teams
 - **Stadion, Kapazität und Wetter** je Spiel, so wie am Spieltag, vor dem Spiel mit Kleidungsempfehlung und
   Link zur Anreise mit Bus und Bahn
 - **Web-App** mit Spieltagen, Tabelle, Teamseiten, Champions League, Chat und einem Kickbase-Tab
@@ -169,6 +170,7 @@ uv sync
 uv run fussballdb init-db
 uv run fussballdb ingest      # alle Saisons seit 2014/15, beim ersten Mal ~30 Min. (wird gecacht)
 uv run fussballdb historie    # 1993/94 bis 2013/14, nur zum Nachschlagen (~1 Min.)
+uv run fussballdb aufstellungen -s 2025 -s 2024   # optional: Aufstellung und Momentum älterer Saisons (~10 Min. je Saison)
 uv run fussballdb ensure      # alles Weitere: Kaderwerte, Ausfälle, Quoten, Prognosen, Verletzungshistorie
 uv run fussballdb logos
 cd web && cp .env.example .env.local && npm install
@@ -214,7 +216,7 @@ Mit Claude statt lokal: `uv sync --extra claude`, `LLM_PROVIDER=anthropic` und `
 ## Web-App
 
 Next.js-App in `web/` mit allen Spieltagen aller Saisons (Saison-Dropdown, Blättern), Tabelle inkl.
-xG/xPts, Teamseiten (Form, xG-Diagramm, Ausfälle) und Chat.
+xG/xPts, Teamseiten (Form, xG-Diagramm in Vereinsfarbe, Ausfälle) und Chat.
 
 Jeder Spieltag zeigt Ergebnis, Wahrscheinlichkeiten, den Tipp des Modells und die Kicktipp-Punkte
 nach der Punkteregel der Tipprunde samt Bilanz des Spieltags und der Saison:
@@ -311,6 +313,27 @@ Quoten. Ausfälle bei CL, 2. Liga und Pokal kommen aus der Transfermarkt-Liste d
 Bundesliga-Liste, wenn ein Bundesligist spielt. Teamnamen, „Warum?“ und „Wer trifft?“ in der Kachel bleiben
 einzeln klickbar.
 
+**Aufstellung und Momentum** (`ingest/matchpage.py`, Tabelle `match_page`, `components/Pitch.tsx`,
+`components/Momentum.tsx`): von der FotMob-Spielseite, in allen vier Wettbewerben. Die Aufstellung steht auf
+einem Spielfeld wie bei FotMob, am Desktop waagerecht (Heim links), auf dem Handy senkrecht: Formation und
+Teamnote oben, je Spieler Rückennummer, Note (ab 8 blau, ab 7 grün, ab 6 orange), Spieler des Spiels (★),
+Kapitän, Tore, Vorlagen, Karten und Auswechselminute; darunter die Eingewechselten mit Minute und Note, die
+übrige Bank und der Trainer. Spielerfotos gibt es bewusst nicht. Vor dem Spiel ist es die voraussichtliche
+Aufstellung (etwa zwei Tage vorher), rund eine Stunde vor dem Anpfiff die offizielle; solange es keine
+FotMob-Aufstellung gibt, steht die von Ligainsider da. Das Momentum zeigt je Minute, wer Druck gemacht hat
+(Balken nach oben Heim, nach unten Gast), mit Toren, Platzverweisen und vergebenen Elfmetern an der Zeitachse.
+Gespielte Spiele werden einmal geladen und eingefroren. Die laufende Saison kommt mit dem Update, ältere
+Bundesliga-Saisons mit `fussballdb aufstellungen -s 2024` (~1 s je Spiel); geladen sind 2024/25 bis heute.
+
+**Teamfarben**: Wahrscheinlichkeitsbalken, Direktvergleich, Spielstatistik, Spielfeld und Momentum auf der
+Detailseite und das xG-Diagramm der Teamseite (xG in Vereinsfarbe, xGA grau) nutzen die Farben laut FotMob,
+für hellen und dunklen Modus getrennt. Je Spiel wählt FotMob sie so, dass sich Heim und Gast unterscheiden;
+für Spiele ohne FotMob-Seite gilt die Stammfarbe des Teams (die häufigste Farbe, `matchpage.team_colors`).
+Ähneln sich beide Farben zu sehr oder hebt sich eine schlecht vom Hintergrund ab (FotMob gibt im Dunkelmodus
+oft beiden Weiß), nimmt ein Team seine Zweitfarbe aus den Farben, die FotMob ihm sonst gibt; und zwar das, bei
+dem das Paar den besseren Kontrast zum Layout hat (`matchpage._pick`).
+Die S/U/N-Kästchen der Form bleiben grün/grau/orange.
+
 **Tipprunden** (`/tipprunden`, `ingest/kicktipp.py`, `model/tips.py`, Tabelle `tip_round`): Mehrere
 Kicktipp-Runden lassen sich per Link hinterlegen; die App liest von der öffentlichen Seite
 `kicktipp.de/<runde>/spielregeln` die Punkteregel (Sieg Tendenz/Tordifferenz/exakt, Remis Tendenz),
@@ -353,7 +376,8 @@ größte vergebene Chance je Team. Der letzte Absatz ordnet ein: Doppelpack und 
 oder glücklich nach den Chancen, Überraschung, Folgen für die Tabelle (Tabellenführung, Abstiegszone, „vorerst“,
 wenn der Spieltag noch läuft), Serien („der dritte Sieg in Folge“, „seit sieben Spielen ohne Sieg“) und Ausfälle.
 Derbys, Spitzenspiele (beide unter den ersten drei) und Kellerduelle (beide ab Platz 15) werden als solche
-benannt. Danach folgt die Zeile „Zahlen zum Spiel“. Die Formulierungen wechseln von Spiel zu Spiel, bleiben für
+benannt. Wo die FotMob-Aufstellung geladen ist (ab 2024/25), nennt der Bericht die Formationen und den Spieler
+des Spiels mit Note. Danach folgt die Zeile „Zahlen zum Spiel“. Die Formulierungen wechseln von Spiel zu Spiel, bleiben für
 ein Spiel aber gleich. Dazu eine Zeile
 **Stichworte** zum Verlauf, je Team zugeordnet („Comeback von Gladbach“, „spätes Siegtor von HSV“,
 „glücklicher Sieg von …“, Platzverweis, Elfmeter, Eigentor, Überraschung …). Die Berichte stehen auf der
@@ -393,7 +417,10 @@ Läuft alle 30 Minuten per launchd (`scripts/de.fussballdb.erinnerung.plist`, ei
 drei wahrscheinlichsten Torschützen je Team mit der Chance auf mindestens ein Tor. Grundlage sind xG pro
 90 Minuten (über 300 Tage, zum Positionsschnitt geglättet), die erwarteten Minuten aus Startelf-Quote,
 voraussichtlicher Aufstellung und Ausfällen sowie die Torerwartung des Teams gegen diesen Gegner;
-P = 1 − e^(−erwartete Tore). Nicht im Rückblick getestet. Bei Topstürmern liegt der Wert eher niedrig, weil
+P = 1 − e^(−erwartete Tore). Die Startelf-Chance kommt aus Ligainsider und der FotMob-Aufstellung zusammen
+(`start_chance` in `features/kickbase_projection.py`): sehen beide einen Spieler nicht in der Elf, sinkt sie auf
+15 %, steht er bei beiden drin, liegt sie bei 92 %; die offizielle FotMob-Aufstellung etwa eine Stunde vor dem
+Anpfiff gilt allein. Nicht im Rückblick getestet. Bei Topstürmern liegt der Wert eher niedrig, weil
 die Glättung sie zum Positionsschnitt zieht (Kane gegen Freiburg 39 %).
 
 **xG in der Kachel:** Bei gespielten Bundesliga-Spielen steht unter dem Ergebnis das xG und unter jedem Team
@@ -490,7 +517,7 @@ ein Torwart). Verletzte oder gesperrte eigene Spieler stehen rot darüber und sp
 Kickbase-Punkte aus Einsatz, Startelf, Minuten, Toren, Vorlagen, Gegentoren, zu null, Sieg/Remis und
 Karten, plus einem geglätteten Spielerwert für alles, was Understat nicht misst (Zweikämpfe, Pässe,
 Paraden). Für die Prognose werden die erwarteten Ereignisse eingesetzt: Einsatzchance aus Startelf-Quote,
-Aufstellungs-Vorschau, Ausfällen und Kickbase-Status; Tore und Vorlagen aus xG/xA skaliert mit der
+Aufstellungs-Vorschau (Ligainsider und FotMob), Ausfällen und Kickbase-Status; Tore und Vorlagen aus xG/xA skaliert mit der
 Torerwartung gegen den jeweiligen Gegner; Sieg-, Remis- und Zu-null-Chance aus der Spielprognose.
 Mit den tatsächlichen Ereignissen erklärt das Modell die Punkte gut (Korrelation 0,93 in 2026/27, der
 reine Punkteschnitt 0,43). Wie gut die Prognose vor dem Spiel ist, lässt sich erst nach den nächsten
@@ -713,6 +740,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb belastung-test` | Europapokal-Belastung im Rückblick-Test (`--tage`) |
 | `fussballdb cl-xg-test` | CL: europaweites xG-Modell gegen die Elo im Rückblick-Test |
 | `fussballdb elo-historie-test` | Elo mit Vorgeschichte ab 1993/94 gegen Elo ab 2014/15 (verworfen) |
+| `fussballdb startelf-test` | Startelf-Korrektur (Kickbase-Punkte, FotMob-Noten, xG+xA) im Rückblick, auch zusammen mit den verworfenen Erweiterungen (noch nicht übernommen) |
 | `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test (`--kombi`: zusammen mit den verworfenen Erweiterungen) |
 | `fussballdb kombi-test` | alle Erweiterungen zusammen, jeweils eine weggelassen |
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
@@ -750,6 +778,7 @@ Geprüft werden:
 | Reihenfolge wie bei Kicktipp | Spiele der Saison ohne Position oder letzter Abruf älter als 3 Tage | 12 Std. |
 | Spielorte (Stadion, Kapazität) | gespielte Spiele der Saison ohne eingefrorenen Ort oder offene der nächsten 14 Tage älter als 20 Std. | 6 Std. |
 | Wetter zur Spielzeit | Vorhersage älter als 6 Std. oder Spiel vorbei und noch nicht gemessen | 3 Std. |
+| Aufstellung und Momentum (FotMob) | gespielte Spiele mit FotMob-ID ohne eingefrorene Seite, offene der nächsten 2 Tage älter als 1 Std. | 1 Std. |
 | Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |
 | Verletzungshistorie (langsam) | noch nie vollständig geladen | 7 Tage |
 | Kickbase-Punkte (langsam) | neuer Spieltag ohne Punkte oder Spieler älter als 8 Tage | 12 Std. |
@@ -872,6 +901,8 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Europapokal-Belastung mit 3 statt 4 Tagen | −0,0019 | schwächer (62 Spiele, 81 %); 4 Tage erfassen auch Dienstag → Samstag |
 | Spielerwert über On/Off (xG für/gegen mit und ohne Spieler auf dem Platz) statt xG+xA | 2023–26: +0,0010 | verworfen; zu verrauscht, weil Stammspieler selten fehlen (`features/onoff.py`) |
 | Echte Aufstellung (Obergrenze, Wissen aus der Zukunft) | −0,0006 | nur zur Einordnung: Ausfälle sind kaum noch ein Hebel |
+| Startelf-Korrektur: Stärke der aufgebotenen gegen die übliche Elf (Startelf steht 1 Std. vor dem Anpfiff fest), Spielerstärke aus FotMob-Noten, Kickbase-Punkten, xG+xA oder gemischt, k 0,1–0,4, zusätzlich zu den Ausfällen oder statt ihrer (`fussballdb startelf-test`, Einstellen 2024/25, Test ab 2025/26) | allein: Noten/Mischung −0,0002 bis −0,0003 (60–69 %), Kickbase +0,0004 bis +0,0014, xG+xA ±0 | nicht übernommen; zu wenig Daten, Kickbase fehlen ehemalige Spieler (2024/25 nur die Hälfte abgedeckt). Kicktipp-Punkte im Test +0,02 bis +0,03 je Spiel, aber im Einstellzeitraum nicht besser. Ende 2026/27 erneut testen |
+| Startelf-Korrektur zusammen mit den verworfenen Erweiterungen (Heimvorteil je Team, Duelle, Remis-Kalibrierung, Halbwertszeit 3 Mon., Tor-Skalierung, alle zusammen) | bestes Paar Duelle + Mischung k 0,1: −0,0010 (90 %), Duelle allein −0,0008 (88 %) | nicht übernommen; der Gewinn kommt fast ganz von den Duellen, die im Einstellzeitraum 2024/25 schlechter waren (+0,0004). Duelle sollten mit der Historie ab 1993/94 neu getestet werden |
 | Elo mit Vorgeschichte ab 1993/94 statt ab 2014/15 (nur die Elo, `fussballdb elo-historie-test`) | Einstellen 2015–19: −0,0003, Test 2020–26: +0,0005 | verworfen; im Test in keiner der 7 Saisons besser, 9 % der Ziehungen. Die alten Ergebnisse bleiben reine Anzeige |
 
 ## Datenbank
@@ -892,6 +923,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `tip_round` | Kicktipp-Tipprunden mit Punkteregel, Tippschluss, Bonuspunkten und Standardrunde |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
 | `match_venue` | Spielort je Spiel (`competition` BL → `match`, sonst `eu_match`), nach dem Spiel eingefroren (`frozen`) |
+| `match_page` | Aufstellung (JSON mit Formation, Positionen, Noten, Ereignissen), Momentum, Tore/Platzverweise und Teamfarben je Spiel laut FotMob, nach dem Spiel eingefroren |
 | `match_weather` | Wetter je Spiel zur Spielzeit (`kind` vorhersage oder gemessen) |
 | `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |
 | `kb_session` | Kickbase-Anmeldung: Token, Ablauf, Ligen, gewählte Liga (nie das Passwort) |
@@ -991,8 +1023,14 @@ Was in welcher Reihenfolge entstanden ist und warum.
 
 30. **Spielberichte** zu allen Bundesliga-Spielen ab 2014/15 aus den Daten, Suche mit Volltext und pgvector im
     Chat, im MCP und auf der Detailseite; SQL-Fehler gehen als lesbare Meldung ans Sprachmodell.
+31. **Spielberichte im Zeitungsstil** mit Verlauf je Halbzeit, Tabelle, Serien, Formation und Spieler des Spiels;
+    Datenbankzugang nur noch aus `.env`.
+32. **Aufstellung auf dem Spielfeld und Momentum** (FotMob) auf der Detailseite, Diagramme in Teamfarben.
 Offen:
 
+- **Startelf-Korrektur Ende 2026/27 erneut testen** (`fussballdb startelf-test`, mit `tune=(2024, 2025)`), wenn
+  eine Saison mehr FotMob-Noten und vollständige Kickbase-Daten da sind; dazu die direkten Duelle mit der
+  Historie ab 1993/94
 - **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**
   (`fussballdb cl-xg-test`); hält es nicht, `ACTIVE_XG` in `model/europe.py` auf `None` setzen
 - Verletzte der CL-Teams ins Modell nehmen, sobald genug Spieltage zum Testen gesammelt sind

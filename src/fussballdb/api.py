@@ -14,6 +14,7 @@ from sqlalchemy import text
 from fussballdb.assistant.tools import Toolbox, _rows
 from fussballdb.config import TIPP_PUNKTE
 from fussballdb.ingest.tv import for_matches as tv_for
+from fussballdb.ingest import matchpage
 from fussballdb.ingest.venues import for_matches as venues_for
 from fussballdb.model.tips import apply_rule
 from fussballdb.model.tips import summary as tip_summary
@@ -82,7 +83,10 @@ def table(season: int | None = None):
 
 @app.get("/teams/{team}/form")
 def team_form(team: str, last_n: Annotated[int, Query(ge=1, le=40)] = 8):
-    return toolbox.get_team_form(team, last_n)
+    """Form der letzten Spiele, dazu die Vereinsfarbe laut FotMob (farbe, für die Diagramme)."""
+    res = toolbox.get_team_form(team, last_n)
+    name = (_rows("SELECT name FROM team WHERE id = :t", t=res["team_id"]) or [{}])[0].get("name")
+    return {**res, "farbe": matchpage.team_colors().get(name)}
 
 
 @app.get("/teams/{team}/absences")
@@ -503,7 +507,8 @@ def _implied(odds: list[dict]) -> list[dict]:
 @app.get("/match/{match_id}")
 def match_detail(match_id: int, runde: str | None = None):
     """Ein Bundesliga-Spiel im Detail: Prognose wie auf der Spieltag-Kachel, dazu Form beider Teams vor dem Spiel,
-    direkte Duelle vor dem Spiel, Tabelle, Ausfälle, voraussichtliche Aufstellung, Marktquoten und (gespielt) die Spielstatistik."""
+    direkte Duelle vor dem Spiel, Tabelle, Ausfälle, voraussichtliche Aufstellung, Marktquoten und (gespielt) die Spielstatistik.
+    spielfeld: Aufstellung mit Formation und Positionen und das Momentum laut FotMob (ingest/matchpage.py)."""
     games = _bl_games("m.id = :id", id=match_id)
     if not games:
         raise ValueError(f"Spiel {match_id} gibt es nicht.")
@@ -543,6 +548,8 @@ def match_detail(match_id: int, runde: str | None = None):
         "aufstellung": None if g["finished"] else {"home": _lineup(h), "away": _lineup(a)},
         "statistik": {"home": stats[0], "away": stats[1]} if len(stats) == 2 else None,
         "bericht": _report(match_id) if g["finished"] else None,
+        "spielfeld": matchpage.for_match("BL", match_id),
+        "farben": matchpage.colors_for("BL", match_id, g["home"], g["away"]),
         "quoten": odds,
     }
 
@@ -628,6 +635,8 @@ def comp_match_detail(comp: str, match_id: int):
         "tabelle": tabelle,
         "kaderwert": {"home": values.get(h), "away": values.get(a)},
         "ausfaelle": None if g["finished"] else {"home": _eu_absences(h, g["home"]), "away": _eu_absences(a, g["away"])},
+        "spielfeld": matchpage.for_match(comp, match_id),
+        "farben": matchpage.colors_for(comp, match_id, g["home"], g["away"]),
     }
 
 

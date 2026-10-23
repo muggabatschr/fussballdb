@@ -622,3 +622,109 @@ def compare_elo_history(first_long: int = 1993, tune=tuple(range(2015, 2020)), t
     rows[1] |= {"delta_test": d[~is_tune].mean(), "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean(),
                 "saisons_besser": int(sum(d[season_arr == s].mean() < 0 for s in test)), "saisons": len(test)}
     return pd.DataFrame(rows)
+
+
+LINEUP_KS = (0.1, 0.2, 0.4)
+
+
+def compare_lineup_strength(fit_configs: dict[str, dict] | None = None, tune=(2024,), test=(2025, 2026),
+                            seed: int = 0, progress=None) -> pd.DataFrame:
+    """Startelf-Korrektur (features/lineup_strength.py) im Rückblick: Stärke der aufgebotenen gegen die übliche
+    Elf, Spielerstärke aus Kickbase-Punkten, FotMob-Noten, xG+xA oder gemischt, je mit k aus LINEUP_KS.
+    Modus "+": zusätzlich zu den Ausfällen (Verletzte, Sperren); "statt": nur die Startelf (die Ausfälle stecken
+    darin). Dazu "startelf xg-anteil": fehlende Stammspieler aus der Startelf mit der bisherigen Gewichtung.
+    Jede Modellvariante (aktuelles Modell, jede verworfene Erweiterung, alle verworfenen) ohne und mit Korrektur,
+    alles gegen das aktuelle Modell wie live (Ausfälle, Europapokal-Belastung). Der mittlere Abstand je Quelle
+    im Einstellzeitraum wird abgezogen (die übliche Elf ist im Schnitt etwas stärker als die aufgebotene)."""
+    from fussballdb.config import TIPP_PUNKTE
+    from fussballdb.features import euro_load
+    from fussballdb.features.lineup_strength import SOURCES, LineupStrength
+    from fussballdb.model.data import load_squad_values
+    from fussballdb.model.ensemble import kicktipp_points
+
+    fit_configs = fit_configs or finishing_combo_configs()
+    df = load_matches()
+    values = load_squad_values()
+    injuries = load_injuries()
+    av = AvailabilityModel()
+    ls = LineupStrength(av)
+    schedule = euro_load.euro_schedule()
+    seasons = tune + test
+    games_all = df[df["finished"] & df["season"].isin(seasons)]
+    groups = list(games_all.groupby(["season", "matchday"]))
+    meta = pd.DataFrame([{"season": s, "matchday": md} for (s, md), g in groups for _ in range(len(g))])
+    outcome = np.array([0 if r.hg > r.ag else 1 if r.hg == r.ag else 2 for _, g in groups for r in g.itertuples()])
+    goals = [(r.hg, r.ag) for _, g in groups for r in g.itertuples()]
+
+    # Abstände vorab (hängen nicht von der Modellvariante ab), Mittelwert im Einstellzeitraum je Quelle
+    gaps: dict[tuple, float | None] = {}
+    for (season, md), games in groups:
+        cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
+        for r in games.itertuples():
+            for t in (r.home_id, r.away_id):
+                for src in SOURCES:
+                    gaps[(src, t, r.match_id)] = ls.gap(src, t, r.match_id, cutoff)
+    tune_ids = set(games_all.loc[games_all["season"].isin(tune), "match_id"])
+    offset = {src: float(np.mean([v for (s, _, m), v in gaps.items() if s == src and m in tune_ids and v is not None]))
+              for src in SOURCES}
+    coverage = {src: np.mean([v is not None for (s, _, _), v in gaps.items() if s == src]) for src in SOURCES}
+
+    variants = {"": None, "startelf xg-anteil": ("anteil", None, None)}
+    for src in SOURCES:
+        for k in LINEUP_KS:
+            variants[f"{src} + k={k}"] = ("plus", src, k)
+            variants[f"{src} statt k={k}"] = ("statt", src, k)
+    labels = {" + ".join(x for x in (f, v) if x) or "basis": (f, v) for f in fit_configs for v in variants}
+    probs = {label: [] for label in labels}
+    points = {label: [] for label in labels}
+    for (season, md), games in groups:
+        cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
+        base_imp, xi_imp = {}, {}
+        for r in games.itertuples():
+            for t in (r.home_id, r.away_id):
+                susp = av.suspended_as_of(t, cutoff)
+                base_imp[t] = av.impact(t, cutoff, av.injured_as_of(t, cutoff, injuries) | susp, susp)
+                prof = av.player_profile(t, cutoff)
+                xi = ls.starters.get((r.match_id, t))
+                missing = set(prof.loc[prof["regular"], "player_id"]) - xi if xi else set()
+                xi_imp[t] = av.impact(t, cutoff, missing)
+        for fit_name, cfg in fit_configs.items():
+            kw = {k: v for k, v in cfg.items() if k != "dc"}
+            model = Forecaster(dc=DixonColes(**cfg.get("dc", {})), values=values, **kw).fit(df, cutoff)
+            for var_name, spec in variants.items():
+                label = " + ".join(x for x in (fit_name, var_name) if x) or "basis"
+                for r in games.itertuples():
+                    imps = []
+                    for t in (r.home_id, r.away_id):
+                        if spec is None:
+                            imp = base_imp[t]
+                        elif spec[0] == "anteil":
+                            imp = xi_imp[t]
+                        else:
+                            mode, src, k = spec
+                            d = gaps[(src, t, r.match_id)]
+                            d = None if d is None else d - offset[src]
+                            imp = LineupStrength.apply(base_imp[t] if mode == "plus" else None, d, k)
+                        imps.append(euro_load.apply(imp, t, r.kickoff, schedule))
+                    p = model.predict_match(r.home_id, r.away_id, r.match_id, imps[0], imps[1])
+                    probs[label].append([p["p_home"], p["p_draw"], p["p_away"]])
+                    points[label].append(p["tip"])
+        if progress:
+            progress(season, md)
+    is_tune = meta["season"].isin(tune).to_numpy()
+    rng = np.random.default_rng(seed)
+    test_idx = np.flatnonzero(~is_tune)
+    boot = rng.choice(test_idx, (4000, len(test_idx)))
+    base = rps_per_match(np.array(probs["basis"]), outcome)
+    rows = []
+    for name, p in probs.items():
+        d = rps_per_match(np.array(p), outcome) - base
+        pts = np.array([kicktipp_points(th, ta, h, a, TIPP_PUNKTE) for (th, ta), (h, a) in zip(points[name], goals)])
+        rows.append({"variante": name, "rps_test": base[~is_tune].mean() + d[~is_tune].mean(),
+                     "delta_tune": d[is_tune].mean(), "delta_test": d[~is_tune].mean(),
+                     "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if name != "basis" else np.nan,
+                     "saisons_besser": f"{sum(d[(meta['season'] == s).to_numpy()].mean() < 0 for s in seasons)}/{len(seasons)}",
+                     "punkte_tune": pts[is_tune].mean(), "punkte_test": pts[~is_tune].mean()})
+    print("Abdeckung je Quelle (Anteil Team-Spiele mit Abstand):", {k: round(v, 2) for k, v in coverage.items()})
+    print("Mittlerer Abstand im Einstellzeitraum (abgezogen):", {k: round(v, 3) for k, v in offset.items()})
+    return pd.DataFrame(rows).sort_values("delta_test")

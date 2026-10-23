@@ -79,6 +79,17 @@ def _candidates(session: Session, comp: str, season: int) -> list[tuple]:
     return session.execute(text(sql), {"y": season, "c": comp}).all()
 
 
+def pair(fx: dict, todo: list[tuple]) -> tuple | None | bool:
+    """Unser Spiel (aus _candidates) zu einem FotMob-Spiel: gleicher Anstoß, oder gleicher Tag mit klar passenden
+    Namen (Uhrzeit offen oder Anpfiff verschoben). None = kein Spiel an dem Tag, False = Namen passen nicht."""
+    near = [c for c in todo if c[1].date() == fx["kickoff"].date()]
+    scored = [(_similarity(fx["home"], c[3]) + _similarity(fx["away"], c[4]), c) for c in near]
+    best = max(scored, default=None, key=lambda x: x[0])
+    if best is None:
+        return None
+    return best[1] if best[0] >= (1.0 if best[1][1] == fx["kickoff"] else 1.6) else False
+
+
 def _fixtures(comp: str, season: int) -> list[dict]:
     league_id, slug = LEAGUES[comp]
     html = get_text(FIXTURES.format(id=league_id, slug=slug, season=season, next=season + 1), headers=BROWSER_HEADERS)
@@ -111,16 +122,13 @@ def ingest(session: Session, season: int | None = None, log=print) -> dict:
         for fx in _fixtures(comp, season):
             if fx["id"] in done:
                 continue
-            # gleicher Anstoß, oder gleicher Tag mit klar passenden Namen (Uhrzeit offen oder Anpfiff verschoben)
-            near = [c for c in todo if c[1].date() == fx["kickoff"].date()]
-            scored = [(_similarity(fx["home"], c[3]) + _similarity(fx["away"], c[4]), c) for c in near]
-            best = max(scored, default=None, key=lambda x: x[0])
+            best = pair(fx, todo)
             if best is None:
                 continue  # schon eingefroren oder nicht in den nächsten 14 Tagen
-            if best[0] < (1.0 if best[1][1] == fx["kickoff"] else 1.6):
+            if best is False:
                 unmatched.append(f"{comp} {fx['home']} – {fx['away']}")
                 continue
-            match_id, _, finished = best[1][0], best[1][1], best[1][2]
+            match_id, finished = best[0], best[2]
             st = stadium(fx["id"], finished)
             todo = [c for c in todo if c[0] != match_id]
             if not st or not st.get("name"):

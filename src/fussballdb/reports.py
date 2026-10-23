@@ -2,8 +2,8 @@
 einem Sprachmodell geschrieben (schnell, rückwirkend für alle Spiele und ohne erfundene Details).
 
 Im Stil einer Sportzeitung: Schlagzeile, Ortszeile, Einstieg im Perfekt (Derby, Spitzenspiel, Comeback, spätes
-Siegtor), Spielverlauf je Halbzeit (Tore mit Minute, Schütze, Vorlage und Art, Pfosten, verschossene Elfmeter,
-vergebene Großchancen, wer die Halbzeit bestimmte, Doppelpack und Saisontore), Einordnung (verdient oder glücklich
+Siegtor) mit den Formationen (FotMob, falls geladen), Spielverlauf je Halbzeit (Tore mit Minute, Schütze, Vorlage und Art, Pfosten, verschossene Elfmeter,
+vergebene Großchancen, wer die Halbzeit bestimmte, Doppelpack und Saisontore), Spieler des Spiels, Einordnung (verdient oder glücklich
 nach den Chancen, Überraschung), Folgen für Tabelle und Serien, Ausfälle, Stadion und Wetter (ab 2026/27), dazu
 eine Zeile mit den Zahlen und Stichworte für die Suche.
 
@@ -470,6 +470,39 @@ def _standing(m: dict, rnd: random.Random) -> list[str]:
     return out[:3]
 
 
+def _page(m: dict) -> dict:
+    """Aufstellung laut FotMob (ingest/matchpage.py), falls geladen."""
+    raw = m.get("page_lineup")
+    return json.loads(raw) if raw else {}
+
+
+def _formations(m: dict, rnd: random.Random) -> list[str]:
+    """ "Hamburg begann im 3-5-2, Stuttgart im 4-2-3-1." """
+    lu = _page(m)
+    fh, fa = (lu.get("home") or {}).get("formation"), (lu.get("away") or {}).get("formation")
+    if not (fh and fa):
+        return []
+    home, away = _prose(m["home_short"]), _prose(m["away_short"])
+    if fh == fa:
+        return [f"Beide Teams liefen im {fh} auf."]
+    return [_pick(rnd, f"{home} begann im {fh}, {away} im {fa}.", f"{home} lief im {fh} auf, {away} im {fa}.")]
+
+
+def _best_player(m: dict, rnd: random.Random) -> list[str]:
+    """Spieler des Spiels laut FotMob mit Note."""
+    lu = _page(m)
+    for side in ("home", "away"):
+        for p in (lu.get(side) or {}).get("startelf", []) + (lu.get(side) or {}).get("bank", []):
+            if p.get("spieler_des_spiels") and p.get("note"):
+                team = _prose(m[f"{side}_short"])
+                gf, ga = (m["home_goals"], m["away_goals"]) if side == "home" else (m["away_goals"], m["home_goals"])
+                if gf < ga:
+                    return [f"Bester Mann auf dem Platz war trotz der Niederlage {p['name']} von {team} (Note {de(p['note'])})."]
+                return [_pick(rnd, f"Bester Mann auf dem Platz war {p['name']} von {team} (Note {de(p['note'])}).",
+                              f"Spieler des Spiels: {p['name']} ({team}) mit der Note {de(p['note'])}.")]
+    return []
+
+
 def _numbers_line(s: dict) -> str | None:
     h, a = s.get("home") or {}, s.get("away") or {}
     parts = []
@@ -621,10 +654,10 @@ def build(m: dict, shots: list[dict], starters: set[str], reds: list[dict], stat
     for r in reds:
         second.append(_pick(rnd, f"{_prose(r['team'])} musste nach einer Roten Karte für {_short(r['player'])} in Unterzahl auskommen.",
                             f"{_short(r['player'])} sah die Rote Karte, {_prose(r['team'])} spielte fortan mit einem Mann weniger."))
-    lines.append(" ".join([_lead(m, goals, keywords, kick, rnd)] + first))
+    lines.append(" ".join([_lead(m, goals, keywords, kick, rnd)] + _formations(m, rnd) + first))
     if second:
         lines.append(" ".join(second))
-    close = star + _assessment(m, stats, rnd) + _standing(m, rnd)
+    close = star + _best_player(m, rnd) + _assessment(m, stats, rnd) + _standing(m, rnd)
     for side in ("home", "away"):
         if m.get(f"missing_{side}"):
             played = m.get("players") or set()
@@ -698,7 +731,7 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
                    m.home_goals, m.away_goals, m.ht_home_goals AS ht_home, m.ht_away_goals AS ht_away,
                    hs.xg AS home_xg, as_.xg AS away_xg, p.p_home, p.p_draw, p.p_away, p.tip_home, p.tip_away,
                    p.missing_home, p.missing_away, v.stadium, v.city,
-                   w.temp_c, w.precip_mm, w.wind_kmh
+                   w.temp_c, w.precip_mm, w.wind_kmh, mp.lineup AS page_lineup
             FROM match m JOIN season s ON s.id = m.season_id
             JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
             LEFT JOIN match_team_stats hs ON hs.match_id = m.id AND hs.team_id = m.home_team_id
@@ -706,6 +739,7 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
             LEFT JOIN prediction p ON p.match_id = m.id AND p.model_version = :v
             LEFT JOIN match_venue v ON v.competition = 'BL' AND v.match_id = m.id
             LEFT JOIN match_weather w ON w.competition = 'BL' AND w.match_id = m.id AND w.kind = 'gemessen'
+            LEFT JOIN match_page mp ON mp.competition = 'BL' AND mp.match_id = m.id
             WHERE m.finished AND s.start_year >= :first AND {where}"""), {"v": MODEL_VERSION, "first": MODEL_FIRST_SEASON, **params})]
         if not matches:
             return []
