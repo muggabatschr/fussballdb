@@ -342,10 +342,14 @@ erwartete Tore, Bayern 37 %. Grenze: Zum Tippschluss kennt das Modell keine Neuz
 Bundesliga gespielt hatten, und ordnet Wechsel innerhalb der Liga dem alten Verein zu.
 
 **Spielberichte** (`reports.py`, Tabelle `match_report`): Zu jedem Bundesliga-Spiel ab 2014/15 gibt es einen
-kurzen Bericht, gebaut aus unseren Daten statt von einem Sprachmodell geschrieben (schnell, rückwirkend für
-alle 3.726 Spiele in Sekunden, ohne erfundene Details): Ergebnis und Halbzeit, jedes Tor mit Minute, Schütze,
-Vorlage, Art (Elfmeter, Kopfball, nach Ecke …), Joker-Tore und xG, Platzverweise, Statistik, Einordnung nach
-Chancen und nach der Prognose vor dem Spiel, Ausfälle, ab 2026/27 Stadion und Wetter. Dazu eine Zeile
+kurzen Bericht im Stil einer Sportzeitung, gebaut aus unseren Daten statt von einem Sprachmodell geschrieben
+(schnell, rückwirkend für alle 3.726 Spiele in Sekunden, ohne erfundene Details): Schlagzeile („Muheim erlöst
+HSV spät“), Vorspann mit Wochentag, Datum, Spieltag, Stadion, Wetter (ab 2026/27) und Ergebnis, dann der
+Spielverlauf als Fließtext: Führung, Ausgleich, Anschluss, Siegtor mit Minute, Schütze, Vorlage und Art
+(Elfmeter, Kopfball, nach Ecke, eingewechselter Spieler), Pausenstand, Platzverweise. Danach die Einordnung
+nach Chancen („Der Sieg geht in Ordnung …“, „Nach Chancen hätte … mehr verdient gehabt“) und ob das Ergebnis
+eine Überraschung war, Ausfälle und eine Zeile „Zahlen zum Spiel“. Die Formulierungen wechseln von Spiel zu
+Spiel, bleiben für ein Spiel aber gleich. Dazu eine Zeile
 **Stichworte** zum Verlauf, je Team zugeordnet („Comeback von Gladbach“, „spätes Siegtor von HSV“,
 „glücklicher Sieg von …“, Platzverweis, Elfmeter, Eigentor, Überraschung …). Die Berichte stehen auf der
 Detailseite gespielter Spiele.

@@ -515,14 +515,16 @@ export function MatchDetailView({
       {d.bericht && (
         <Section title="Spielbericht">
           <Card className="space-y-1 text-sm">
-            {d.bericht
-              .split("\n")
-              .slice(1)
-              .map((l) => (
-                <p key={l} className={l.startsWith("Stichworte") ? "text-xs text-muted" : ""}>
-                  {l}
-                </p>
-              ))}
+            {d.bericht.split("\n").map((l, i) => (
+              <p
+                key={l}
+                className={
+                  i === 0 ? "text-base font-semibold" : l.startsWith("Stichworte") ? "text-xs text-muted" : ""
+                }
+              >
+                {l}
+              </p>
+            ))}
           </Card>
         </Section>
       )}

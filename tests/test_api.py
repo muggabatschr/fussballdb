@@ -113,12 +113,11 @@ def test_matchday_order_like_kicktipp():
 
 
 def test_match_reports():
-    """Spielberichte: Tore mit laufendem Spielstand und Endstand passen zum Ergebnis, Suche filtert nach Team."""
+    """Spielberichte: Schlagzeile, Vorspann mit Ergebnis, Tore im Text ohne Modellsprache, Suche filtert nach Team."""
     md = client.get("/matchday/2025/10").json()
     g = next(x for x in md["games"] if x["home_goals"] + x["away_goals"] > 0)
-    report = client.get(f"/match/{g['id']}").json()["bericht"]
-    assert f"{g['home']} – {g['away']} {g['home_goals']}:{g['away_goals']}" in report.splitlines()[0]
-    tore = next(line for line in report.splitlines() if line.startswith("Tore:"))
-    assert tore.rstrip(".").split("; ")[-1].startswith(f"{g['home_goals']}:{g['away_goals']} ")
+    lines = client.get(f"/match/{g['id']}").json()["bericht"].splitlines()
+    assert f"{g['home']} – {g['away']} {g['home_goals']}:{g['away_goals']} (" in lines[1]
+    assert "Minute" in lines[2] and "Modell" not in "\n".join(lines)
     hits = client.get("/reports/search", params={"q": "Comeback", "team": "Gladbach", "limit": 3}).json()
-    assert hits and all("Mönchengladbach" in h["bericht"].splitlines()[0] for h in hits)
+    assert hits and all("Mönchengladbach" in h["bericht"].splitlines()[1] for h in hits)

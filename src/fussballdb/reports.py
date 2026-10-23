@@ -1,14 +1,16 @@
 """Spielberichte: kurzer deutscher Text je Bundesliga-Spiel (ab 2014/15), aus unseren Daten gebaut, nicht von
 einem Sprachmodell geschrieben (schnell, rückwirkend für alle Spiele und ohne erfundene Details).
 
-Inhalt: Ergebnis und Halbzeit, jedes Tor mit Minute, Schütze, Vorlage, Art (Elfmeter, Kopfball, Standard …)
-und xG (Understat-Schüsse), Joker-Tore, Platzverweise, Statistik (xG, Schüsse, Großchancen, Ecken, PPDA),
-Einordnung nach Chancen und nach der Prognose vor dem Spiel, Ausfälle, Stadion und Wetter (ab 2026/27).
+Im Stil einer Sportzeitung: Schlagzeile, Einstieg mit Ort und Ergebnis, Spielverlauf in Sätzen (jedes Tor mit
+Minute, Schütze, Vorlage und Art aus den Understat-Schüssen, Pausenstand, Joker, Eigentor, Platzverweis),
+Einordnung (verdient oder glücklich nach den Chancen, Überraschung, Dominanz), Ausfälle, Stadion und Wetter
+(ab 2026/27), dazu eine Zeile mit den Zahlen und Stichworte für die Suche.
 
 Gespeichert in match_report mit Volltextindex (Postgres, Deutsch) und Embedding (pgvector, Modell aus LM Studio)
 für die Suche in Chat und MCP (search)."""
 
 import json
+import random
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -36,66 +38,188 @@ def _short(name: str) -> str:
     return " ".join(parts[1:]) if len(parts) > 1 else name
 
 
-def _goal_lines(m: dict, goals: list[dict], starters: set[str]) -> list[str]:
+PROSE = {"HSV": "Hamburg"}  # Abkürzungen, die im Satz einen Artikel bräuchten ("für den HSV")
+
+
+def _prose(team: str) -> str:
+    return PROSE.get(team, team)
+
+
+def _venue(stadium: str | None) -> str:
+    """ "im Volksparkstadion", aber "in der Allianz Arena"."""
+    if not stadium:
+        return ""
+    return f" in der {stadium}" if stadium.lower().endswith("arena") or stadium.lower().endswith("arena an der kaiserlinde") else f" im {stadium}"
+
+
+METHOD = {"Penalty": " per Elfmeter", "DirectFreekick": " mit einem direkten Freistoß", "FromCorner": " nach einer Ecke"}
+
+
+def _pick(rnd: random.Random, *options: str) -> str:
+    return rnd.choice(options)
+
+
+def _goal_story(m: dict, goals: list[dict], starters: set[str], rnd: random.Random) -> list[str]:
+    """Spielverlauf in ganzen Sätzen: Führung, Ausgleich, Anschluss, Ausbau, Pausenstand, Joker, Eigentor."""
+    hg, ag = m["home_goals"], m["away_goals"]
+    names = {True: _prose(m["home_short"]), False: _prose(m["away_short"])}
     h = a = 0
-    lines = []
+    out: list[str] = []
+    halftime_told = False
+    tally: dict[str, int] = {}
     for g in goals:
+        if not halftime_told and g["minute"] > 45 and m["ht_home"] is not None:
+            ht = (m["ht_home"], m["ht_away"])  # offizieller Pausenstand (Torminuten bei Understat weichen selten ab)
+            out.append("Die erste Halbzeit blieb torlos." if ht == (0, 0)
+                       else _pick(rnd, f"Zur Pause stand es {ht[0]}:{ht[1]}.", f"Mit {ht[0]}:{ht[1]} ging es in die Kabinen."))
+            halftime_told = True
         own = g["result"] == "OwnGoal"
-        for_home = (g["team_id"] == m["home_id"]) != own  # Eigentor zählt für den Gegner
+        for_home = (g["team_id"] == m["home_id"]) != own
+        team = names[for_home]
+        before = (h, a)
         h, a = (h + 1, a) if for_home else (h, a + 1)
-        details = [f"{g['minute']}."]
+        mine, theirs = (h, a) if for_home else (a, h)
+        score = f"{h}:{a}"
+        minute = g["minute"]
         if own:
-            details.append("Eigentor")
+            out.append(_pick(rnd, f"Ein Eigentor von {_short(g['player'])} ({minute}.) bedeutete das {score}.",
+                             f"In der {minute}. Minute half {_short(g['player'])} mit einem Eigentor zum {score} nach."))
+            continue
+        tally[g["player"]] = tally.get(g["player"], 0) + 1
+        joker = g["player"] not in starters and starters
+        scorer = f"der eingewechselte {_short(g['player'])}" if joker else _short(g["player"])
+        scorer_dat = f"dem eingewechselten {_short(g['player'])}" if joker else _short(g["player"])  # "gelang dem …"
+        Scorer = scorer[0].upper() + scorer[1:]
+        how = METHOD.get(g["situation"], "") or (" per Kopf" if g["shot_type"] == "Head" else "")
+        assist = f" auf Vorlage von {_short(g['player_assisted'])}" if g["player_assisted"] and not how.startswith(" per Elf") else ""
+        if before == (0, 0):
+            out.append(_pick(rnd, f"{Scorer} brachte {team} in der {minute}. Minute{how}{assist} in Führung.",
+                             f"Den ersten Treffer erzielte {scorer} für {team} in der {minute}. Minute{how}{assist}.",
+                             f"In der {minute}. Minute traf {scorer}{how}{assist} zum {score} für {team}."))
+        elif mine == theirs:
+            out.append(_pick(rnd, f"{Scorer} glich in der {minute}. Minute{how}{assist} zum {score} aus.",
+                             f"In der {minute}. Minute gelang {scorer_dat}{how}{assist} der Ausgleich zum {score}."))
+        elif mine < theirs:
+            out.append(_pick(rnd, f"{Scorer} verkürzte in der {minute}. Minute{how}{assist} auf {score}.",
+                             f"Der Anschluss zum {score} gelang {scorer_dat} in der {minute}. Minute{how}{assist}."))
+        elif mine - theirs == 1 and before[0] == before[1]:  # erneute Führung
+            if g is _winning_goal(m, goals) and minute >= 85:
+                out.append(_pick(rnd, f"In der {minute}. Minute erlöste {scorer} {team}{how}{assist} mit dem {score}.",
+                                 f"Die Entscheidung fiel spät: {Scorer} traf in der {minute}. Minute{how}{assist} zum {score}."))
+            else:
+                out.append(_pick(rnd, f"{Scorer} brachte {team} in der {minute}. Minute{how}{assist} erneut in Führung.",
+                                 f"In der {minute}. Minute traf {scorer}{how}{assist} zum {score}."))
         else:
-            if g["situation"] in SITUATION:
-                details.append(SITUATION[g["situation"]])
-            if g["shot_type"] == "Head":
-                details.append("Kopfball")
-            if g["player_assisted"]:
-                details.append(f"Vorlage {_short(g['player_assisted'])}")
-            if g["player"] not in starters:
-                details.append("eingewechselt")
-            details.append(f"xG {de(g['xg'], 2)}")
-        lines.append(f"{h}:{a} {g['player']} ({', '.join(details)})")
-    return lines
-
-
-def _verdict(m: dict) -> list[str]:
-    out = []
-    hg, ag, hx, ax = m["home_goals"], m["away_goals"], m["home_xg"], m["away_xg"]
-    home, away = m["home_short"], m["away_short"]
-    if hx is not None and ax is not None:
-        diff = hx - ax
-        if hg > ag:
-            out.append(f"{home} gewinnt " + ("verdient" if diff >= 0.5 else "glücklich, der Gegner hatte die besseren Chancen"
-                                             if diff <= -0.5 else "in einem engen Spiel") + f" (xG {de(hx)} zu {de(ax)}).")
-        elif ag > hg:
-            out.append(f"{away} gewinnt auswärts " + ("verdient" if diff <= -0.5 else "glücklich, der Gegner hatte die besseren Chancen"
-                                                      if diff >= 0.5 else "in einem engen Spiel") + f" (xG {de(hx)} zu {de(ax)}).")
-        else:
-            out.append("Remis" + (f", obwohl {home if diff > 0 else away} klar die besseren Chancen hatte"
-                                  if abs(diff) >= 0.8 else " bei ausgeglichenen Chancen") + f" (xG {de(hx)} zu {de(ax)}).")
-    if m["p_home"] is not None:
-        winner_p = m["p_home"] if hg > ag else m["p_away"] if ag > hg else m["p_draw"]
-        fav = max(("p_home", home), ("p_draw", "ein Remis"), ("p_away", away), key=lambda x: m[x[0]])
-        text_fav = f"Vor dem Spiel sah das Modell {fav[1]} vorn ({round(100 * m[fav[0]])} %)"
-        if winner_p < 0.25:
-            out.append(f"{text_fav}; das Ergebnis war eine Überraschung (nur {round(100 * winner_p)} %).")
-        else:
-            out.append(f"{text_fav}, das Ergebnis hatte {round(100 * winner_p)} %.")
-        if m["tip_home"] is not None:
-            out.append(f"Tipp des Modells: {m['tip_home']}:{m['tip_away']}.")
+            out.append(_pick(rnd, f"{Scorer} erhöhte in der {minute}. Minute{how}{assist} auf {score}.",
+                             f"In der {minute}. Minute legte {scorer}{how}{assist} zum {score} nach.",
+                             f"{Scorer} baute die Führung in der {minute}. Minute{how}{assist} auf {score} aus."))
+    if not halftime_told and m["ht_home"] is not None and goals and goals[-1]["minute"] <= 45:
+        out.append(_pick(rnd, "Nach der Pause fielen keine Tore mehr.", "Die zweite Halbzeit blieb ohne Treffer."))
+    for player, n in tally.items():
+        if n >= 2:
+            out.append(f"{_short(player)} traf {'dreimal' if n == 3 else f'{n}-mal' if n > 3 else 'doppelt'}.")
     return out
 
 
-def _stats_line(s: dict) -> str | None:
+def _assessment(m: dict, stats: dict, rnd: random.Random) -> list[str]:
+    """Einordnung wie in der Zeitung: verdient oder glücklich (nach Chancen), Überraschung, Dominanz."""
+    out = []
+    hg, ag, hx, ax = m["home_goals"], m["away_goals"], m["home_xg"], m["away_xg"]
+    home, away = _prose(m["home_short"]), _prose(m["away_short"])
+    winner, loser = (home, away) if hg > ag else (away, home) if ag > hg else (None, None)
+    hs, as_ = stats.get("home") or {}, stats.get("away") or {}
+    big = (f", Großchancen {hs['big_chances']}:{as_['big_chances']}"
+           if hs.get("big_chances") is not None and as_.get("big_chances") is not None else "")
+    if hx is not None and ax is not None:
+        chances = f"(erwartete Tore {de(hx)} zu {de(ax)}{big})"
+        diff = (hx - ax) * (1 if hg > ag else -1 if ag > hg else 1)
+        if winner:
+            if diff <= -0.5:
+                out.append(_pick(rnd, f"Der Sieg war glücklich, {loser} hatte die besseren Chancen {chances}.",
+                                 f"Nach Chancen hätte {loser} mehr verdient gehabt {chances}."))
+            elif diff >= 0.5:
+                out.append(_pick(rnd, f"Ein verdienter Erfolg, {winner} war das gefährlichere Team {chances}.",
+                                 f"Der Sieg geht in Ordnung, {winner} hatte die klar besseren Chancen {chances}."))
+            else:
+                out.append(_pick(rnd, f"Ein enges Spiel, die Chancen waren fast ausgeglichen {chances}.",
+                                 f"Viel trennte die Teams nicht {chances}."))
+        else:
+            better = home if hx > ax else away
+            out.append(f"{better} hätte nach den Chancen gewinnen müssen {chances}." if abs(hx - ax) >= 0.8
+                       else _pick(rnd, f"Das Remis geht nach den Chancen in Ordnung {chances}.",
+                                  f"Eine gerechte Punkteteilung {chances}."))
+    if hs.get("shots") and as_.get("shots") and max(hs["shots"], as_["shots"]) >= 2 * min(hs["shots"], as_["shots"]) >= 8:
+        dom, other = (home, away) if hs["shots"] > as_["shots"] else (away, home)
+        many, few = max(hs["shots"], as_["shots"]), min(hs["shots"], as_["shots"])
+        out.append(f"{dom} gab {many} Schüsse ab, {other} nur {few}.")
+    if m["p_home"] is not None:
+        if winner:
+            p_win = m["p_home"] if hg > ag else m["p_away"]
+            p_lose = m["p_away"] if hg > ag else m["p_home"]
+            if p_win < 0.25 and p_lose > 0.5:
+                out.append(_pick(rnd, f"Eine Überraschung, {loser} war vor dem Spiel klarer Favorit.",
+                                 f"Damit gelang {winner} als Außenseiter ein Coup."))
+        else:
+            fav, p_fav = (home, m["p_home"]) if m["p_home"] > m["p_away"] else (away, m["p_away"])
+            if p_fav > 0.65:
+                out.append(f"Favorit {fav} kam nicht über ein Unentschieden hinaus.")
+    return out
+
+
+def _numbers_line(s: dict) -> str | None:
     h, a = s.get("home") or {}, s.get("away") or {}
     parts = []
     for key, label, digits in (("xg", "xG", 2), ("shots", "Schüsse", 0), ("shots_on_target", "aufs Tor", 0),
                                ("big_chances", "Großchancen", 0), ("corners", "Ecken", 0), ("ppda", "PPDA", 1)):
         if h.get(key) is not None and a.get(key) is not None:
             parts.append(f"{label} {de(h[key], digits)}:{de(a[key], digits)}" if digits else f"{label} {h[key]}:{a[key]}")
-    return "Statistik: " + ", ".join(parts) + "." if parts else None
+    return "Zahlen zum Spiel: " + ", ".join(parts) + "." if parts else None
+
+
+def _headline(m: dict, goals: list[dict], keywords: list[str], rnd: random.Random) -> str:
+    hg, ag = m["home_goals"], m["away_goals"]
+    home, away = _prose(m["home_short"]), _prose(m["away_short"])
+    winner, loser = (home, away) if hg > ag else (away, home) if ag > hg else (None, None)
+    kw = " ".join(keywords)
+    score = f"{hg}:{ag}"
+    if not winner:
+        if hg == 0:
+            return _pick(rnd, f"Nullnummer zwischen {home} und {away}", f"Keine Tore bei {home} gegen {away}")
+        if "später Ausgleich" in kw:
+            return f"Später Ausgleich: {home} und {away} trennen sich {score}"
+        return _pick(rnd, f"{home} und {away} trennen sich {score}", f"Punkteteilung beim {score} zwischen {home} und {away}")
+    if "Comeback" in kw:
+        return _pick(rnd, f"{winner} dreht das Spiel gegen {loser}", f"{winner} gewinnt nach Rückstand {score}")
+    if "spätes Siegtor" in kw:
+        win = _winning_goal(m, goals)
+        if win and win["result"] == "Goal":
+            return _pick(rnd, f"{_short(win['player'])} erlöst {winner} spät", f"Später Jubel für {winner} beim {score}")
+        return f"Später Jubel für {winner} beim {score}"
+    if abs(hg - ag) >= 3:
+        return _pick(rnd, f"{winner} überrollt {loser} mit {score}", f"Deutlicher {score}-Erfolg für {winner}")
+    if "Überraschung" in kw:
+        return f"Überraschung: {winner} schlägt {loser} {score}"
+    if "glücklicher Sieg" in kw:
+        return _pick(rnd, f"{winner} siegt glücklich gegen {loser}", f"Glücklicher {score}-Sieg für {winner}")
+    if ag > hg:
+        return _pick(rnd, f"{away} gewinnt {score} in {m['city'] or home}" if m.get("city") else f"Auswärtssieg für {away} bei {home}",
+                     f"{away} entführt drei Punkte bei {home}")
+    return _pick(rnd, f"{home} schlägt {away} {score}", f"Heimsieg für {home} gegen {away}")
+
+
+def _winning_goal(m: dict, goals: list[dict]) -> dict | None:
+    """Das Siegtor: das Tor des Siegers, das ihn endgültig in Führung brachte (sein Tor Nummer Gegentore + 1)."""
+    hg, ag = m["home_goals"], m["away_goals"]
+    if hg == ag:
+        return None
+    home_won = hg > ag
+    n = 0
+    for g in goals:
+        if ((g["team_id"] == m["home_id"]) != (g["result"] == "OwnGoal")) == home_won:
+            n += 1
+            if n == min(hg, ag) + 1:
+                return g
+    return None
 
 
 def _keywords(m: dict, goals: list[dict], starters: set[str], reds: list[dict]) -> list[str]:
@@ -107,7 +231,7 @@ def _keywords(m: dict, goals: list[dict], starters: set[str], reds: list[dict]) 
     # Spielstand nach jedem Tor, um Rückstände und späte Entscheidungen zu erkennen
     h = a = 0
     trailed_home = trailed_away = False
-    deciding_minute = None
+    deciding_minute = None  # Remis: Minute des letzten Tores
     for g in goals:
         for_home = (g["team_id"] == m["home_id"]) != (g["result"] == "OwnGoal")
         h, a = (h + 1, a) if for_home else (h, a + 1)
@@ -115,11 +239,14 @@ def _keywords(m: dict, goals: list[dict], starters: set[str], reds: list[dict]) 
         trailed_away |= a < h
         if (h, a) == (hg, ag):
             deciding_minute = g["minute"]
+    winning = _winning_goal(m, goals)
+    if winning:
+        deciding_minute = winning["minute"]
     if hg > ag and trailed_home or ag > hg and trailed_away:
         words.append(f"Comeback von {winner}, {winner} gewinnt nach Rückstand, Spiel gedreht")
     elif hg == ag and (trailed_home or trailed_away) and hg > 0:
         words.append("Aufholjagd, Rückstand ausgeglichen")
-    if hg != ag and deciding_minute and deciding_minute >= 85 and abs(hg - ag) == 1:
+    if hg != ag and deciding_minute and deciding_minute >= 85:
         words.append(f"spätes Siegtor von {winner}, Last-Minute-Tor")
     elif hg == ag and deciding_minute and deciding_minute >= 85:
         words.append("später Ausgleich in der Schlussphase")
@@ -155,30 +282,38 @@ def _keywords(m: dict, goals: list[dict], starters: set[str], reds: list[dict]) 
 
 
 def build(m: dict, goals: list[dict], starters: set[str], reds: list[dict], stats: dict) -> str:
-    """Bericht eines Spiels aus den gesammelten Daten (siehe _load)."""
+    """Bericht eines Spiels im Stil einer Sportzeitung: Schlagzeile, Einstieg, Spielverlauf, Einordnung, Zahlen
+    und Stichworte (für die Suche). Formulierungen wechseln je Spiel (fester Zufall nach Spiel-ID)."""
+    rnd = random.Random(m["id"])
     kick = m["kickoff"].astimezone(BERLIN)
-    venue = f" im {m['stadium']}" if m.get("stadium") else ""
+    keywords = _keywords(m, goals, starters, reds)
     ht = f" ({m['ht_home']}:{m['ht_away']})" if m["ht_home"] is not None else ""
-    lines = [f"Bundesliga {m['season_label']}, {m['matchday']}. Spieltag, {WEEKDAYS[kick.weekday()]} "
-             f"{kick:%d.%m.%Y}{venue}: {m['home']} – {m['away']} {m['home_goals']}:{m['away_goals']}{ht}."]
-    goal_lines = _goal_lines(m, goals, starters)
-    if goal_lines:
-        lines.append("Tore: " + "; ".join(goal_lines) + ".")
-    elif m["home_goals"] == m["away_goals"] == 0:
-        lines.append("Keine Tore.")
-    if reds:
-        lines.append("Platzverweis: " + ", ".join(f"{r['player']} ({r['team']})" for r in reds) + ".")
-    if (st := _stats_line(stats)):
-        lines.append(st)
-    lines += _verdict(m)
+    w = m.get("weather") or {}
+    weather = ""
+    if w.get("temp_c") is not None:
+        if (w.get("precip_mm") or 0) >= 1:
+            weather = " bei Regen"
+        elif w["temp_c"] <= 3:
+            weather = f" bei {de(w['temp_c'], 0)} Grad"
+        elif w["temp_c"] >= 27:
+            weather = f" bei sommerlichen {de(w['temp_c'], 0)} Grad"
+    venue = _venue(m.get("stadium"))
+    lines = [_headline(m, goals, keywords, rnd),
+             f"{WEEKDAYS[kick.weekday()]}, {kick:%d.%m.%Y}, {m['matchday']}. Spieltag der Bundesliga {m['season_label']}"
+             f"{venue}{weather}: {m['home']} – {m['away']} {m['home_goals']}:{m['away_goals']}{ht}."]
+    story = _goal_story(m, goals, starters, rnd)
+    if m["home_goals"] == m["away_goals"] == 0:
+        story = [_pick(rnd, "Tore fielen keine.", "Beide Abwehrreihen hielten dicht.")]
+    for r in reds:
+        story.append(f"{r['team']} musste nach einer Roten Karte für {_short(r['player'])} in Unterzahl auskommen.")
+    body = " ".join(story + _assessment(m, stats, rnd))
     for side, team in (("missing_home", m["home_short"]), ("missing_away", m["away_short"])):
         if m.get(side):
-            lines.append(f"Es fehlten bei {team}: {m[side]}.")
-    lines.append("Stichworte: " + "; ".join(_keywords(m, goals, starters, reds)) + ".")
-    w = m.get("weather")
-    if w and w.get("temp_c") is not None:
-        lines.append(f"Wetter: {de(w['temp_c'], 0)} °C" + (f", {de(w['precip_mm'], 1)} mm Regen" if w.get("precip_mm") else "")
-                     + (f", Wind {round(w['wind_kmh'])} km/h" if w.get("wind_kmh") is not None else "") + ".")
+            body += f" {team} musste auf {m[side]} verzichten."
+    lines.append(body.strip())
+    if (nums := _numbers_line(stats)):
+        lines.append(nums)
+    lines.append("Stichworte: " + "; ".join(keywords) + ".")
     return "\n".join(lines)
 
 
@@ -194,7 +329,7 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
                    m.home_team_id AS home_id, m.away_team_id AS away_id, ht.name AS home, at.name AS away,
                    m.home_goals, m.away_goals, m.ht_home_goals AS ht_home, m.ht_away_goals AS ht_away,
                    hs.xg AS home_xg, as_.xg AS away_xg, p.p_home, p.p_draw, p.p_away, p.tip_home, p.tip_away,
-                   p.missing_home, p.missing_away, v.stadium,
+                   p.missing_home, p.missing_away, v.stadium, v.city,
                    w.temp_c, w.precip_mm, w.wind_kmh
             FROM match m JOIN season s ON s.id = m.season_id
             JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
