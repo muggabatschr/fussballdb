@@ -841,7 +841,9 @@ Log: `~/Library/Logs/fussballdb-snapshot.log`. Abschalten mit
    in die Torerwartung gemischt.
 5. **Ausfälle**: Verletzte und gesperrte Spieler senken die Torerwartung ihres Teams um ihren halben
    Anteil an xG+xA der letzten 8 Spiele (β = 0,5); fehlende Stamm-Defensivspieler erhöhen die Gegentore
-   um 6 %. Verletzte live aus der aktuellen Transfermarkt-Liste, im Rückblick aus der Verletzungshistorie
+   um 6 %. Verletzte live aus der aktuellen Transfermarkt-Liste, ergänzt um Spieler, die Kickbase als verletzt
+   oder im Aufbautraining führt und die bei Transfermarkt (noch) fehlen (`reason` „… (laut Kickbase)“; nicht
+   im Rückblick getestet, weil es keinen alten Kickbase-Status gibt), im Rückblick aus der Verletzungshistorie
    zum Stichtag (ab 2023/24). Sperren aus den Karten des letzten Spiels: Rot/Gelb-Rot oder die
    5./10./15. Gelbe der Saison (seit 2014/15). Understat unterscheidet Gelb-Rot und glatt Rot nicht,
    längere Sperren nach glatt Rot sind deshalb nur für das nächste Spiel erfasst.
@@ -914,7 +916,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `odds` | Quoten je Buchmacher, Eröffnung (`is_closing = false`) und Schluss |
 | `elo_rating` | Elo je Team und Spiel |
 | `player`, `player_match` | Spieler und Einsätze mit Minuten, Toren, Vorlagen, xG, xA, Karten |
-| `player_absence` | aktuelle Verletzte von Transfermarkt (`active`), jeder Abruf bleibt erhalten |
+| `player_absence` | aktuelle Ausfälle (`active`), `source`: `transfermarkt`, `kickbase` (verletzt oder Aufbautraining, nur wenn Transfermarkt sie nicht führt) oder `karten` (Sperren); jeder Abruf bleibt erhalten |
 | `player_injury` | Verletzungshistorie je Spieler (von–bis, verpasste Spiele) |
 | `lineup_snapshot` | voraussichtliche und tatsächliche Aufstellungen (Ligainsider) |
 | `squad_value` | Kaderwerte je Team und Stichtag |

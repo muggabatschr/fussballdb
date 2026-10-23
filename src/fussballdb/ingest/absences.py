@@ -1,4 +1,6 @@
-"""Aktuelle Ausfälle: Verletzte/Kranke von Transfermarkt, Sperren aus den Karten der Kaderdaten."""
+"""Aktuelle Ausfälle: Verletzte/Kranke von Transfermarkt, Sperren aus den Karten der Kaderdaten, dazu Spieler,
+die Kickbase als verletzt oder im Aufbautraining führt und die bei Transfermarkt (noch) fehlen. Kickbase meldet
+Verletzungen oft früher; "angeschlagen" zählt nicht als Ausfall (senkt nur die Einsatzchance)."""
 
 import re
 import unicodedata
@@ -125,6 +127,34 @@ def fetch_injuries() -> list[dict]:
     return rows
 
 
+KICKBASE_OUT = {1: "verletzt", 4: "Aufbautraining"}  # Kickbase-Status, die als Ausfall zählen
+
+
+def kickbase_injuries(session: Session) -> int:
+    """Kickbase-Verletzte (Status 1) und Spieler im Aufbautraining (4) als Ausfall eintragen (source kickbase),
+    sofern Transfermarkt sie nicht schon führt. Vorherige Kickbase-Einträge werden ersetzt; nach dem
+    Kickbase-Update erneut aufrufen (maintenance), damit der Status aktuell ist."""
+    session.execute(update(PlayerAbsence).where(PlayerAbsence.active, PlayerAbsence.source == "kickbase")
+                    .values(active=False))
+    listed = session.execute(text("SELECT team_id, player_id, player_name FROM player_absence WHERE active")).all()
+    ids = {pid for _, pid, _ in listed if pid}
+    names = {(t, normalize(n).split()[-1]) for t, _, n in listed if n}
+    rows = session.execute(text("""
+        SELECT k.team_id, k.player_id, trim(coalesce(k.first_name, '') || ' ' || k.last_name) AS name, k.status,
+               k.market_value
+        FROM kb_player k WHERE k.status = ANY(:s) AND k.team_id IS NOT NULL"""), {"s": list(KICKBASE_OUT)}).all()
+    n = 0
+    for team_id, pid, name, status, mv in rows:
+        if (pid and pid in ids) or (team_id, (normalize(name).split() or [""])[-1]) in names:
+            continue
+        session.add(PlayerAbsence(team_id=team_id, player_id=pid, player_name=name, kind="injury",
+                                  reason=f"{KICKBASE_OUT[status]} (laut Kickbase)", expected_return=None,
+                                  market_value=f"{mv / 1e6:.1f} Mio. €".replace(".", ",") if mv else None,
+                                  source="kickbase"))
+        n += 1
+    return n
+
+
 def ingest(session: Session) -> dict:
     teams = TeamResolver(session)
     players = PlayerMatcher(session)
@@ -140,6 +170,8 @@ def ingest(session: Session) -> dict:
                                   kind="injury", reason=r["reason"], expected_return=r["expected_return"],
                                   market_value=r["market_value"], source="transfermarkt"))
         stats["injuries"] += 1
+
+    stats["kickbase"] = kickbase_injuries(session)
 
     for team_id, pid, name, red, yellow, season_yellows in session.execute(SUSPENSION_SQL):
         reason = None

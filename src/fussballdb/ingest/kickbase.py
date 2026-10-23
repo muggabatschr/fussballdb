@@ -286,7 +286,8 @@ def ingest_daily(session: Session) -> dict:
                 continue
             upsert(session, KbPlayer, [{"kb_id": kb_id, "kb_team_id": kb_tid, "team_id": team_id, "status": p.get("st"),
                                         "market_value": p.get("mv"), "mv_trend": p.get("mvt"), "avg_points": p.get("ap"),
-                                        "last_name": p.get("n"), "position": p["pos"]}], ["kb_id"])
+                                        "last_name": p.get("n"), "position": p["pos"],
+                                        "updated_at": datetime.now(timezone.utc)}], ["kb_id"])
             if p.get("mv"):
                 upsert(session, KbMarketValue, [{"kb_id": kb_id, "day": today, "value": p["mv"]}], ["kb_id", "day"])
             updated += 1

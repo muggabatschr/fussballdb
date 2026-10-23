@@ -29,6 +29,7 @@ Tabellen (PostgreSQL):
 - player_match(match_id, player_id, team_id, position, started, minutes, goals, assists, shots,
         key_passes, xg, xa, xg_chain, xg_buildup, yellow_cards, red_cards)
 - player_absence(team_id, player_id, player_name, kind, reason, expected_return, market_value, source, fetched_at, active)
+  source: transfermarkt | kickbase (verletzt/Aufbautraining nur laut Kickbase) | karten (Sperren)
 """
 
 TOOLS = [

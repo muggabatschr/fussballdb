@@ -141,9 +141,14 @@ def _need_kickbase_points() -> str | None:
 def _run_kickbase_daily() -> str:
     from fussballdb.ingest import kickbase
 
+    from fussballdb.ingest.absences import kickbase_injuries
+
     with session_scope() as s:
         r = kickbase.ingest_daily(s)
-    return f"{r['aktualisiert']} Marktwerte, Markt {r['markt']}, Kader {r['kader']}" + (f", {r['neu']} neue Spieler" if r["neu"] else "")
+    with session_scope() as s:  # Ausfälle mit dem frischen Kickbase-Status (verletzt, Aufbautraining)
+        n = kickbase_injuries(s)
+    return (f"{r['aktualisiert']} Marktwerte, Markt {r['markt']}, Kader {r['kader']}, {n} Ausfälle nur laut Kickbase"
+            + (f", {r['neu']} neue Spieler" if r["neu"] else ""))
 
 
 def _run_kickbase_points() -> str:
