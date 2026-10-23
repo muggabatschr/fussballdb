@@ -3,15 +3,16 @@ services:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: fussball
-      POSTGRES_PASSWORD: fussball
-      POSTGRES_DB: fussballdb
+      # Zugangsdaten nur aus .env (siehe .env.example), nichts davon steht im Repo
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER in .env eintragen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env eintragen}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB in .env eintragen}
     ports:
-      - "127.0.0.1:5442:5432"  # nur lokal erreichbar (Datenbank enthält auch das Kickbase-Token)
+      - "127.0.0.1:${POSTGRES_PORT:-5442}:5432"  # nur lokal erreichbar (Datenbank enthält auch das Kickbase-Token)
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fussball -d fussballdb"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 2s
       retries: 30
 
@@ -21,7 +22,10 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg://fussball:fussball@db:5432/fussballdb
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER in .env eintragen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env eintragen}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB in .env eintragen}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       # beim Start prüfen, ob Daten fehlen oder veraltet sind, und im Hintergrund aktualisieren
       AUTO_UPDATE: "1"
       TIPP_PUNKTE: ${TIPP_PUNKTE:-2,3,4,3}

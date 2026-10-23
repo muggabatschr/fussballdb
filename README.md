@@ -125,8 +125,9 @@ scripts/install.sh --launchd
 `scripts/install.sh` macht der Reihe nach:
 
 1. prüft Docker, uv und npm und startet Docker Desktop, falls es nicht läuft
-2. legt `.env` und `web/.env.local` aus den `.env.example`-Dateien an, falls sie fehlen. Leere Werte
-   bedeuten Standard, für den Start muss nichts eingetragen werden
+2. legt `.env` und `web/.env.local` aus den `.env.example`-Dateien an, falls sie fehlen, und erzeugt dabei
+   den Datenbankzugang mit einem Zufallspasswort. Sonst bedeuten leere Werte Standard, für den Start muss
+   nichts eingetragen werden
 3. startet die Datenbank (`docker compose up -d --wait db`, Port 5442)
 4. installiert die Python-Abhängigkeiten (`uv sync`)
 5. legt die Tabellen an (`fussballdb init-db`)
@@ -162,7 +163,7 @@ uv run fussballdb kickbase-login               # optional, Kickbase (Passwort nu
 **Von Hand**, falls nötig, sind es dieselben Schritte:
 
 ```bash
-cp .env.example .env
+cp .env.example .env          # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB eintragen (Passwort: openssl rand -hex 24)
 docker compose up -d --wait db
 uv sync
 uv run fussballdb init-db
@@ -904,8 +905,20 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 Direkt abfragen:
 
 ```bash
-docker compose exec db psql -U fussball -d fussballdb
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
+
+**Zugangsdaten:** Benutzer, Passwort und Name der Datenbank stehen nur in `.env` (`POSTGRES_USER`,
+`POSTGRES_PASSWORD`, `POSTGRES_DB`), nirgends im Code oder in `docker-compose.yml`. Fehlen sie, bricht
+`docker compose` mit einem Hinweis ab und die Python-Befehle melden „Datenbankzugang fehlt“. Postgres übernimmt
+das Passwort nur beim ersten Anlegen der Datenbank. Später ändern:
+
+```bash
+docker exec -it fussballdb-db-1 psql -U fussball -d fussballdb -c "ALTER ROLE fussball WITH PASSWORD 'neues-passwort'"
+```
+
+Danach `POSTGRES_PASSWORD` in `.env` anpassen und die App neu starten
+(`docker compose --profile app up -d api web`).
 
 Neue Teams (Aufsteiger) müssen in `src/fussballdb/ingest/team_mapping.py` eingetragen werden. Der
 Import bricht mit einer klaren Meldung ab, wenn ein Name unbekannt ist. Danach `uv run fussballdb logos`

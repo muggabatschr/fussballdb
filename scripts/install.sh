@@ -47,10 +47,14 @@ echo "ok"
 schritt "Konfiguration"
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo ".env aus .env.example angelegt (leere Werte = Standard). Bei Bedarf anpassen."
+  # Datenbankzugang mit Zufallspasswort, steht nur in .env (nicht im Repo)
+  sed -i '' -e "s/^POSTGRES_USER=$/POSTGRES_USER=fussball/" -e "s/^POSTGRES_DB=$/POSTGRES_DB=fussballdb/" \
+    -e "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" .env
+  echo ".env aus .env.example angelegt, Datenbankpasswort erzeugt (leere Werte = Standard). Bei Bedarf anpassen."
 else
   echo ".env vorhanden, bleibt unverändert."
 fi
+set -a; . ./.env; set +a  # Datenbankzugang für die psql-Abfragen unten
 if [ "$WEB" = 1 ] && [ ! -f web/.env.local ]; then
   cp web/.env.example web/.env.local
   echo "web/.env.local aus web/.env.example angelegt."
@@ -66,14 +70,14 @@ schritt "Tabellen anlegen"
 uv run fussballdb init-db
 
 schritt "Spiele importieren (alle Saisons seit 2014/15, beim ersten Mal ~30 Min.)"
-if [ "$(docker compose exec -T db psql -U fussball -d fussballdb -Atc 'SELECT count(*) FROM match' 2>/dev/null || echo 0)" -gt 0 ]; then
+if [ "$(docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc 'SELECT count(*) FROM match' 2>/dev/null || echo 0)" -gt 0 ]; then
   echo "Spiele schon vorhanden, nur die laufende Saison wird über das Update ergänzt."
 else
   uv run fussballdb ingest
 fi
 
 schritt "Ältere Saisons 1993/94 bis 2013/14 (nur zum Nachschlagen, ~1 Min.)"
-if [ "$(docker compose exec -T db psql -U fussball -d fussballdb -Atc 'SELECT count(*) FROM season WHERE start_year < 2014' 2>/dev/null || echo 0)" -gt 0 ]; then
+if [ "$(docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc 'SELECT count(*) FROM season WHERE start_year < 2014' 2>/dev/null || echo 0)" -gt 0 ]; then
   echo "Schon vorhanden."
 else
   uv run fussballdb historie

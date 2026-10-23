@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -7,7 +8,22 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
 # Leere Werte in .env (wie in .env.example) gelten als nicht gesetzt
-DATABASE_URL = os.environ.get("DATABASE_URL") or "postgresql+psycopg://fussball:fussball@localhost:5442/fussballdb"
+
+
+def _database_url() -> str:
+    """Zugang zur Datenbank nur aus der Umgebung (.env), nie aus dem Code: DATABASE_URL oder die Werte, mit
+    denen docker-compose.yml die Datenbank anlegt (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB)."""
+    if url := os.environ.get("DATABASE_URL"):
+        return url
+    user, password, db = (os.environ.get(k) for k in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"))
+    if not (user and password and db):
+        raise RuntimeError("Datenbankzugang fehlt: POSTGRES_USER, POSTGRES_PASSWORD und POSTGRES_DB (oder DATABASE_URL) "
+                           "in .env eintragen, siehe .env.example")
+    port = os.environ.get("POSTGRES_PORT") or "5442"
+    return f"postgresql+psycopg://{quote(user, safe='')}:{quote(password, safe='')}@localhost:{port}/{quote(db, safe='')}"
+
+
+DATABASE_URL = _database_url()
 # Chat-Backend: "local" = OpenAI-kompatibler Server auf dem eigenen Rechner (LM Studio/Bionic, Ollama),
 # "anthropic" = Claude API (optional, braucht `uv sync --extra claude` und einen API-Schlüssel)
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER") or "local"
