@@ -240,6 +240,21 @@ def _need_tv() -> str | None:
     return None
 
 
+def _need_kicktipp_order() -> str | None:
+    """Reihenfolge wie bei Kicktipp: fehlt sie bei Spielen der Saison, oder ist der letzte Abruf älter als
+    3 Tage (Kicktipp sortiert neu, wenn sich Anstoßzeiten verschieben)."""
+    if not _scalar("SELECT count(*) FROM tip_round"):
+        return None
+    missing = _scalar("""SELECT count(*) FROM match m JOIN season s ON s.id = m.season_id
+                         WHERE s.start_year = :y AND m.kicktipp_pos IS NULL""", y=CURRENT_SEASON)
+    if missing:
+        return f"{missing} Spiele ohne Kicktipp-Reihenfolge"
+    last = _last_run("kicktipp")
+    if last is None or last < datetime.now(timezone.utc) - timedelta(days=3):
+        return "Reihenfolge älter als 3 Tage"
+    return None
+
+
 def _need_venues() -> str | None:
     """Spielorte: gespielte Spiele der Saison einmal nach dem Spiel (dann eingefroren), offene der nächsten
     14 Tage täglich neu (Ausweichstadion, Kapazität)."""
@@ -385,6 +400,20 @@ def _run_tv() -> str:
         f", nicht zugeordnet: {', '.join(res['nicht_zugeordnet'][:5])}" if res["nicht_zugeordnet"] else "")
 
 
+def _run_kicktipp_order() -> str:
+    from fussballdb.ingest import kicktipp
+
+    open_md = _scalar("""SELECT min(m.matchday) FROM match m JOIN season s ON s.id = m.season_id
+                         WHERE s.start_year = :y AND NOT m.finished""", y=CURRENT_SEASON) or 34
+    with session_scope() as s:
+        missing = [r[0] for r in s.execute(text("""SELECT DISTINCT m.matchday FROM match m JOIN season s ON s.id = m.season_id
+                                                 WHERE s.start_year = :y AND m.kicktipp_pos IS NULL"""), {"y": CURRENT_SEASON})]
+        days = sorted(set(missing) | set(range(open_md, min(open_md + 3, 35))))
+        res = kicktipp.ingest_order(s, CURRENT_SEASON, days)
+    return f"Reihenfolge für {res['spiele']} Spiele" + (
+        f", ohne öffentlichen Spielplan: Spieltag {', '.join(map(str, res['ohne_spielplan']))}" if res["ohne_spielplan"] else "")
+
+
 def _run_venues() -> str:
     from fussballdb.ingest import venues
 
@@ -424,6 +453,7 @@ STEPS = [
     Step("europa", "CL, 2. Liga, Pokal", _need_europe, _run_europe, timedelta(hours=6)),
     Step("cl_ausfaelle", "CL-Ausfälle", _need_cl_absences, _run_cl_absences, timedelta(hours=6)),
     Step("tv", "TV-Sender (DE, AT)", _need_tv, _run_tv, timedelta(hours=6)),
+    Step("kicktipp", "Reihenfolge wie bei Kicktipp", _need_kicktipp_order, _run_kicktipp_order, timedelta(hours=12)),
     Step("stadien", "Spielorte (Stadion, Kapazität)", _need_venues, _run_venues, timedelta(hours=6)),
     Step("wetter", "Wetter zur Spielzeit", _need_weather, _run_weather, timedelta(hours=3)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,

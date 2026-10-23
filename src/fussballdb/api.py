@@ -176,7 +176,7 @@ def _bl_games(where: str, **params) -> list[dict]:
         LEFT JOIN match_team_stats as_ ON as_.match_id = m.id AND as_.team_id = m.away_team_id
         LEFT JOIN prediction p ON p.match_id = m.id AND p.model_version = :v
         WHERE {where}
-        ORDER BY m.kickoff, m.id
+        ORDER BY m.matchday, m.kicktipp_pos NULLS LAST, m.kickoff, m.id  -- Reihenfolge wie bei Kicktipp
         """,
         v=MODEL_VERSION, **params,
     )

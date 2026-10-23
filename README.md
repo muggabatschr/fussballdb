@@ -338,7 +338,14 @@ erwartete Minuten (Startelf- und Einwechselquote ab seinem ersten Spiel für den
 Torerwartung seines Teams gegen den jeweiligen Gegner. Die Saison wird 10.000-mal ausgespielt, je Durchlauf
 streut die Torrate um rund ±35 % (Verletzung, Form, Rotation). Zum Tippschluss 2026/27: Kane rund 31
 erwartete Tore, Bayern 37 %. Grenze: Zum Tippschluss kennt das Modell keine Neuzugänge, die noch nicht in der
-Bundesliga gespielt hatten, und ordnet Wechsel innerhalb der Liga dem alten Verein zu. Gelesen werden nur diese
+Bundesliga gespielt hatten, und ordnet Wechsel innerhalb der Liga dem alten Verein zu.
+
+**Reihenfolge wie bei Kicktipp:** Spieltag, Tipp-Zettel, Chat und Erinnerung zeigen die Bundesliga-Spiele in
+der Reihenfolge von Kicktipp (innerhalb einer Anstoßzeit folgt sie keiner erkennbaren Regel). Das Update liest
+sie vom öffentlichen Spielplan einer Tipprunde (`kicktipp.de/<runde>/tippspielplan?spieltagIndex=<nr>`,
+`ingest_order`), alle Bundesliga-Runden haben denselben. Gespeichert als `match.kicktipp_pos`; ohne Tipprunde
+mit öffentlichem Spielplan oder bei älteren Saisons wird nach Anstoß sortiert. Neu gelesen werden fehlende
+Spieltage und die nächsten drei offenen, weil Kicktipp neu sortiert, wenn sich Anstoßzeiten verschieben. Gelesen werden nur diese
 beiden öffentlichen Seiten, ohne Anmeldung; Kicktipp hat keine offizielle Schnittstelle. Die Tipp-Zettel
 und Tabellen von CL, 2. Liga und Pokal nutzen weiter die Standardregel.
 
@@ -711,6 +718,7 @@ Geprüft werden:
 | Live-Prognosen | offene Spiele ohne Prognose, neue Daten oder älter als 24 Std. | 1 Std. |
 | CL-Ausfälle | CL-Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
 | TV-Sender (DE, AT) | Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
+| Reihenfolge wie bei Kicktipp | Spiele der Saison ohne Position oder letzter Abruf älter als 3 Tage | 12 Std. |
 | Spielorte (Stadion, Kapazität) | gespielte Spiele der Saison ohne eingefrorenen Ort oder offene der nächsten 14 Tage älter als 20 Std. | 6 Std. |
 | Wetter zur Spielzeit | Vorhersage älter als 6 Std. oder Spiel vorbei und noch nicht gemessen | 3 Std. |
 | Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |

@@ -6,8 +6,9 @@ Schnittstelle; gelesen werden nur diese beiden Seiten, ohne Anmeldung. Private R
 import html
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from fussballdb.db.models import TipRound
@@ -73,3 +74,52 @@ def add_round(session: Session, url_or_slug: str, name: str | None = None) -> Ti
     rnd.fetched_at = datetime.now(timezone.utc)
     session.flush()
     return rnd
+
+
+def _schedule(slug: str, matchday: int) -> list[tuple[datetime, str, str]] | None:
+    """Spiele eines Spieltags in der Reihenfolge des Kicktipp-Spielplans (Anstoß, Heim, Gast); None, wenn die
+    Seite der Runde nicht öffentlich ist (Weiterleitung zum Login)."""
+    page = get_text(BASE.format(slug=slug, page=f"tippspielplan?spieltagIndex={matchday}"))
+    if "profil/login" in page[:5000] and "tippspielplan" not in page[:5000]:
+        return None
+    rows = []
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S):
+        cells = [re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", c))).strip()
+                 for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
+        date = r"\d\d\.\d\d\.\d\d \d\d:\d\d"
+        if len(cells) >= 3 and re.match(date, cells[0]):
+            when = datetime.strptime(cells[0][:14], "%d.%m.%y %H:%M").replace(tzinfo=ZoneInfo("Europe/Berlin"))
+            teams = [c for c in cells[1:] if c and not re.match(date, c)]  # danach evtl. Tippschluss
+            if len(teams) >= 2:
+                rows.append((when, teams[0], teams[1]))
+    return rows or None
+
+
+def ingest_order(session: Session, season: int, matchdays: list[int]) -> dict:
+    """Reihenfolge der Spiele je Spieltag wie bei Kicktipp (alle Bundesliga-Runden haben denselben Spielplan)
+    aus der ersten Tipprunde mit öffentlichem Spielplan; gespeichert als match.kicktipp_pos."""
+    from fussballdb.ingest.tv import _similarity
+
+    slugs = list(session.scalars(select(TipRound.slug).order_by(TipRound.is_default.desc(), TipRound.id)))
+    games = session.execute(text("""
+        SELECT m.id, m.matchday, m.kickoff,
+               string_agg(DISTINCT ha.alias, '|') || '|' || ht.name, string_agg(DISTINCT aa.alias, '|') || '|' || at.name
+        FROM match m JOIN season s ON s.id = m.season_id
+        JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
+        LEFT JOIN team_alias ha ON ha.team_id = ht.id LEFT JOIN team_alias aa ON aa.team_id = at.id
+        WHERE s.start_year = :y AND m.matchday = ANY(:md)
+        GROUP BY m.id, m.matchday, m.kickoff, ht.name, at.name"""), {"y": season, "md": matchdays}).all()
+    updated, missing = 0, []
+    for md in matchdays:
+        schedule = next((s for s in (_schedule(slug, md) for slug in slugs) if s), None)
+        if not schedule:
+            missing.append(md)
+            continue
+        ours = [g for g in games if g[1] == md]
+        for pos, (_, home, away) in enumerate(schedule, 1):
+            best = max(ours, key=lambda g: _similarity(home, g[3]) + _similarity(away, g[4]), default=None)
+            if best is not None and _similarity(home, best[3]) + _similarity(away, best[4]) >= 1.2:
+                session.execute(text("UPDATE match SET kicktipp_pos = :p WHERE id = :id"), {"p": pos, "id": best[0]})
+                ours = [g for g in ours if g[0] != best[0]]
+                updated += 1
+    return {"spiele": updated, "ohne_spielplan": missing}

@@ -65,6 +65,7 @@ class Match(Base):
     finished: Mapped[bool] = mapped_column(Boolean, default=False)
     openligadb_id: Mapped[int | None] = mapped_column(unique=True)
     understat_id: Mapped[int | None] = mapped_column(unique=True)
+    kicktipp_pos: Mapped[int | None]  # Reihenfolge im Spieltag wie bei Kicktipp (ingest/kicktipp.py)
 
     season: Mapped[Season] = relationship()
     home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
@@ -422,6 +423,7 @@ class KbSession(Base):
 
 # Spalten, die nach dem ersten Anlegen dazugekommen sind (create_all ergänzt keine Spalten)
 MIGRATIONS = [
+    "ALTER TABLE match ADD COLUMN IF NOT EXISTS kicktipp_pos integer",
     "ALTER TABLE prediction ADD COLUMN IF NOT EXISTS score_probs text",
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS home_xg double precision",
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS away_xg double precision",

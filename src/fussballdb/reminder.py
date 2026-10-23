@@ -36,7 +36,7 @@ def next_matchday() -> tuple[int, int, datetime, list[tuple]] | None:
             FROM match m JOIN season s ON s.id = m.season_id
             JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
             LEFT JOIN prediction p ON p.match_id = m.id AND p.model_version = :v
-            WHERE s.start_year = :y AND m.matchday = :md ORDER BY m.kickoff, m.id"""),
+            WHERE s.start_year = :y AND m.matchday = :md ORDER BY m.kicktipp_pos NULLS LAST, m.kickoff, m.id"""),
             {"y": first[0], "md": first[1], "v": MODEL_VERSION}).all()
     return first[0], first[1], min(r[4] for r in rows), rows
 

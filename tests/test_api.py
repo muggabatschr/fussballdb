@@ -96,3 +96,17 @@ def test_venue_and_weather():
     assert ort["stadion"] and ort["kapazitaet"] > 1000
     assert ort["wetter"]["art"] == "gemessen" and ort["wetter"]["temp_c"] is not None
     assert client.get("/matchday/2020/1").json()["games"][0]["ort"] is None  # ältere Saisons ohne Spielort
+
+
+def test_matchday_order_like_kicktipp():
+    """Spiele eines Spieltags in der Reihenfolge von Kicktipp, sofern geladen (match.kicktipp_pos)."""
+    from fussballdb.assistant.tools import _rows
+
+    current = max(s["start_year"] for s in client.get("/seasons").json())
+    pos = {r["id"]: r["kicktipp_pos"] for r in _rows(
+        "SELECT m.id, m.kicktipp_pos FROM match m JOIN season s ON s.id = m.season_id "
+        "WHERE s.start_year = :y AND m.matchday = 1", y=current)}
+    if not all(pos.values()):
+        return  # ohne Tipprunde mit öffentlichem Spielplan gibt es keine Reihenfolge
+    ids = [g["id"] for g in client.get(f"/matchday/{current}/1").json()["games"]]
+    assert [pos[i] for i in ids] == sorted(pos.values())
