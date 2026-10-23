@@ -13,6 +13,7 @@ import {
   getTable,
   getUpcoming,
   runSql,
+  searchReports,
 } from "@/lib/api";
 import { COMPETITIONS } from "@/lib/competitions";
 import type { TipSheetProps } from "@/components/TipSheet";
@@ -120,6 +121,21 @@ export const tools = {
         games: sheet.games.map(({ id, kickoff, home, away, tip_home, tip_away }) => ({ id, kickoff, home, away, tip_home, tip_away })),
       };
     },
+  }),
+  search_reports: tool({
+    description:
+      "Spielberichte der Bundesliga ab 2014/15 durchsuchen (Tore mit Minute, Schütze, Vorlage, Art; Statistik; " +
+      "Einordnung; Stichworte wie Comeback, spätes Siegtor, Platzverweis, Überraschung). Für Fragen zu " +
+      "Spielverläufen und Zusammenfassungen. Ohne frage die jüngsten Spiele des Teams/der Saison.",
+    inputSchema: z.object({
+      frage: z.string().optional().describe("Wonach gesucht wird, z. B. 'Sieg nach Rückstand' oder 'Rote Karte'"),
+      team: team.optional(),
+      saison: z.number().int().optional().describe("Startjahr, z. B. 2025 für 2025/26"),
+      anzahl: z.number().int().min(1).max(12).optional().describe("Anzahl Berichte, Standard 6"),
+      neueste_zuerst: z.boolean().optional().describe("true bei 'wann zuletzt …': die jüngsten Treffer"),
+    }),
+    execute: ({ frage, team, saison, anzahl, neueste_zuerst }) =>
+      searchReports(frage ?? "", team, saison, anzahl ?? 6, neueste_zuerst ?? false),
   }),
   run_sql: tool({
     description:

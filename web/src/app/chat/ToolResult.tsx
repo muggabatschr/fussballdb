@@ -5,6 +5,7 @@ import { AbsenceList } from "@/components/AbsenceList";
 import { FormTable } from "@/components/FormTable";
 import { LeagueTable } from "@/components/LeagueTable";
 import { PredictionCard } from "@/components/PredictionCard";
+import { ReportList } from "@/components/ReportList";
 import { TipSheet } from "@/components/TipSheet";
 import type { ChatTools } from "@/app/api/chat/tools";
 
@@ -16,6 +17,7 @@ const labels: Record<keyof ChatTools, string> = {
   get_absences: "Lade Ausfälle",
   get_table: "Lade Tabelle",
   get_tip_sheet: "Lade Tipp-Zettel",
+  search_reports: "Durchsuche Spielberichte",
   run_sql: "Frage Datenbank ab",
 };
 
@@ -50,6 +52,8 @@ export function ToolResult({ part }: { part: Part }) {
       );
     case "tool-get_table":
       return <LeagueTable rows={part.output} />;
+    case "tool-search_reports":
+      return <ReportList hits={part.output} />;
     case "tool-get_tip_sheet":
       return <TipSheet {...part.output} compact />;
     default:

@@ -110,3 +110,15 @@ def test_matchday_order_like_kicktipp():
         return  # ohne Tipprunde mit öffentlichem Spielplan gibt es keine Reihenfolge
     ids = [g["id"] for g in client.get(f"/matchday/{current}/1").json()["games"]]
     assert [pos[i] for i in ids] == sorted(pos.values())
+
+
+def test_match_reports():
+    """Spielberichte: Tore mit laufendem Spielstand und Endstand passen zum Ergebnis, Suche filtert nach Team."""
+    md = client.get("/matchday/2025/10").json()
+    g = next(x for x in md["games"] if x["home_goals"] + x["away_goals"] > 0)
+    report = client.get(f"/match/{g['id']}").json()["bericht"]
+    assert f"{g['home']} – {g['away']} {g['home_goals']}:{g['away_goals']}" in report.splitlines()[0]
+    tore = next(line for line in report.splitlines() if line.startswith("Tore:"))
+    assert tore.rstrip(".").split("; ")[-1].startswith(f"{g['home_goals']}:{g['away_goals']} ")
+    hits = client.get("/reports/search", params={"q": "Comeback", "team": "Gladbach", "limit": 3}).json()
+    assert hits and all("Mönchengladbach" in h["bericht"].splitlines()[0] for h in hits)

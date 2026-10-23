@@ -255,6 +255,20 @@ def _need_kicktipp_order() -> str | None:
     return None
 
 
+def _need_reports() -> str | None:
+    """Spielberichte: gespielte Bundesliga-Spiele ohne Bericht, Berichte der letzten Tage älter als 20 Std. (xG und
+    Statistik kommen nachträglich) oder Berichte ohne Embedding."""
+    from fussballdb.config import MODEL_FIRST_SEASON
+
+    n = _scalar("""SELECT count(*) FROM match m JOIN season s ON s.id = m.season_id
+                   LEFT JOIN match_report r ON r.match_id = m.id
+                   WHERE m.finished AND s.start_year >= :first
+                     AND (r.match_id IS NULL OR r.embedding IS NULL
+                          OR (m.kickoff > now() - interval '14 days' AND r.updated_at < now() - interval '20 hours'))""",
+                first=MODEL_FIRST_SEASON)
+    return f"{n} Spielberichte fehlen oder sind veraltet" if n else None
+
+
 def _need_venues() -> str | None:
     """Spielorte: gespielte Spiele der Saison einmal nach dem Spiel (dann eingefroren), offene der nächsten
     14 Tage täglich neu (Ausweichstadion, Kapazität)."""
@@ -414,6 +428,17 @@ def _run_kicktipp_order() -> str:
         f", ohne öffentlichen Spielplan: Spieltag {', '.join(map(str, res['ohne_spielplan']))}" if res["ohne_spielplan"] else "")
 
 
+def _run_reports() -> str:
+    from fussballdb import reports
+
+    n = reports.generate()
+    try:
+        e = reports.embed_missing()
+    except Exception as exc:  # LM Studio aus: Volltextsuche geht trotzdem
+        return f"{n} Spielberichte geschrieben, Embeddings ausgelassen (LM Studio nicht erreichbar: {type(exc).__name__})"
+    return f"{n} Spielberichte geschrieben, {e} Embeddings"
+
+
 def _run_venues() -> str:
     from fussballdb.ingest import venues
 
@@ -454,6 +479,7 @@ STEPS = [
     Step("cl_ausfaelle", "CL-Ausfälle", _need_cl_absences, _run_cl_absences, timedelta(hours=6)),
     Step("tv", "TV-Sender (DE, AT)", _need_tv, _run_tv, timedelta(hours=6)),
     Step("kicktipp", "Reihenfolge wie bei Kicktipp", _need_kicktipp_order, _run_kicktipp_order, timedelta(hours=12)),
+    Step("spielberichte", "Spielberichte für die Suche", _need_reports, _run_reports, timedelta(hours=6)),
     Step("stadien", "Spielorte (Stadion, Kapazität)", _need_venues, _run_venues, timedelta(hours=6)),
     Step("wetter", "Wetter zur Spielzeit", _need_weather, _run_weather, timedelta(hours=3)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,

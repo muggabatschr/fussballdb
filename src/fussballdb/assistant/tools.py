@@ -303,10 +303,17 @@ class Toolbox:
         q = query.strip().rstrip(";")
         if not q.lower().startswith(("select", "with")) or ";" in q:
             raise ValueError("Nur eine einzelne SELECT/WITH-Abfrage erlaubt.")
+        from sqlalchemy.exc import DBAPIError
+
         with engine.connect() as conn:
             conn.execute(text("SET TRANSACTION READ ONLY"))
             conn.execute(text("SET LOCAL statement_timeout = '10s'"))
-            result = conn.execute(text(q))
+            try:
+                result = conn.execute(text(q))
+            except DBAPIError as exc:
+                # als lesbare Meldung zurück, damit das Sprachmodell die Abfrage korrigieren kann (z. B. falsche Spalte)
+                msg = str(getattr(exc, "orig", exc)).strip().splitlines()[0]
+                raise ValueError(f"SQL-Fehler: {msg}. Tabellen und Spalten stehen in der Werkzeugbeschreibung.") from None
             rows = [dict(r._mapping) for r in result.fetchmany(200)]
             conn.rollback()
         return rows

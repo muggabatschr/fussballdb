@@ -399,6 +399,7 @@ export type MatchDetail = {
   statistik?: Sides<MatchStats> | null;
   quoten?: { bookmaker: string; is_closing: boolean; p_home: number; p_draw: number; p_away: number }[];
   kaderwert?: Sides<number | null>;
+  bericht?: string | null; // Spielbericht aus den Daten (Bundesliga, gespielt)
 };
 
 export const getMatchDetail = (id: number, runde?: string) => api<MatchDetail>(`/match/${id}?${q({ runde })}`);
@@ -426,6 +427,19 @@ export type BonusQuestion = {
   stichtag: string | null;
   hinweis: string | null;
 };
+
+export type ReportHit = {
+  match_id: number;
+  datum: string;
+  saison: number;
+  spieltag: number;
+  bericht: string;
+  relevanz: number;
+  suche: string;
+  link: string;
+};
+export const searchReports = (query: string, team?: string, saison?: number, limit = 8, neueste = false) =>
+  api<ReportHit[]>(`/reports/search?${q({ q: query, team, saison, limit, neueste: neueste ? "true" : undefined })}`);
 
 export const getTipRounds = () => api<TipRound[]>("/tipprunden");
 export const getTipBonus = (slug: string) =>

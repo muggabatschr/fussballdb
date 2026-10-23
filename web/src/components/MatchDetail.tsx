@@ -512,6 +512,21 @@ export function MatchDetailView({
         </Section>
       )}
 
+      {d.bericht && (
+        <Section title="Spielbericht">
+          <Card className="space-y-1 text-sm">
+            {d.bericht
+              .split("\n")
+              .slice(1)
+              .map((l) => (
+                <p key={l} className={l.startsWith("Stichworte") ? "text-xs text-muted" : ""}>
+                  {l}
+                </p>
+              ))}
+          </Card>
+        </Section>
+      )}
+
       {d.statistik && <StatsBlock s={d.statistik} />}
 
       {d.quoten && d.quoten.length > 0 && (

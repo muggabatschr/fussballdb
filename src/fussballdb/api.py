@@ -542,8 +542,15 @@ def match_detail(match_id: int, runde: str | None = None):
                                                  "away": toolbox.get_absences(g["away"])},
         "aufstellung": None if g["finished"] else {"home": _lineup(h), "away": _lineup(a)},
         "statistik": {"home": stats[0], "away": stats[1]} if len(stats) == 2 else None,
+        "bericht": _report(match_id) if g["finished"] else None,
         "quoten": odds,
     }
+
+
+def _report(match_id: int) -> str | None:
+    from fussballdb import reports
+
+    return reports.report(match_id)
 
 
 def _eu_form(team_id: int, before) -> list[dict]:
@@ -699,6 +706,17 @@ def tip_round_bonus(slug: str):
     data = {"tipprunde": _round_info(rnd), "fragen": forecasts(bonus_questions(slug), CURRENT_SEASON)}
     _BONUS_CACHE[slug] = (time.time(), data)
     return data
+
+
+@app.get("/reports/search")
+def search_reports(q: str = "", team: str | None = None, saison: int | None = None,
+                   limit: Annotated[int, Query(ge=1, le=20)] = 8, neueste: bool = False):
+    """Spielberichte (Bundesliga ab 2014/15) zur Frage, kombiniert aus Vektor- und Volltextsuche; optional nach
+    Team (auch umgangssprachlich) und Saison gefiltert. Ohne Frage die jüngsten Berichte des Filters."""
+    from fussballdb import reports
+
+    team_id = toolbox._team(team) if team else None
+    return reports.search(q, team_id, saison, limit, neueste)
 
 
 @app.get("/kickbase/projections")

@@ -25,6 +25,9 @@ services:
       # beim Start prüfen, ob Daten fehlen oder veraltet sind, und im Hintergrund aktualisieren
       AUTO_UPDATE: "1"
       TIPP_PUNKTE: ${TIPP_PUNKTE:-2,3,4,3}
+      # LM Studio auf dem Mac: Embeddings für die Suche in den Spielberichten. Eigene Variable, weil localhost
+      # im Container der Container selbst ist (LOCAL_LLM_URL aus .env gilt für die Befehle auf dem Mac)
+      LOCAL_LLM_URL: ${DOCKER_LLM_URL:-http://host.docker.internal:1234/v1}
     volumes:
       - apicache:/app/.cache
     ports:

@@ -25,6 +25,7 @@ Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistis
 - Teamnamen dürfen umgangssprachlich sein (BVB, Gladbach, Bayern).
 - Tipps hängen von der Punkteregel der Kicktipp-Tipprunde ab: `tipprunden` listet die Runden, `spieltag` mit
   `tipprunde` liefert Tipps und Punkte nach ihrer Regel; ohne Angabe gilt die Standardrunde.
+- Spielverläufe und Zusammenfassungen: Werkzeug `spielberichte` (Bundesliga ab 2014/15).
 - Anreise zum Spiel: Werkzeug `anreise` (Google-Maps-Link mit Bus und Bahn, Ankunft eine Stunde vor dem
   Anpfiff); den Ort des Nutzers als `start` mitgeben, wenn er ihn nennt.
 - Vor 2014/15 gibt es nur Ergebnisse, Statistik (Schüsse ab 2000/01, Karten, Ecken) und Quoten, kein xG und
@@ -207,6 +208,23 @@ def tabelle_2_liga(saison: int | None = None) -> str:
         return json.dumps(comp_table("D2", saison or comp_rounds("D2")[0]["season"]), default=str, ensure_ascii=False)
     except (ValueError, IndexError) as exc:
         raise ToolError(str(exc) or "Keine Daten.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
+def spielberichte(frage: str = "", team: str | None = None, saison: int | None = None, anzahl: int = 8,
+                  neueste_zuerst: bool = False) -> str:
+    """Spielberichte der Bundesliga ab 2014/15 durchsuchen (Tore mit Minute, Schütze, Vorlage und Art, Statistik,
+    Einordnung, Stichworte wie Comeback, spätes Siegtor, Platzverweis, Überraschung). Kombinierte Suche nach
+    Bedeutung und Wörtern; team (auch umgangssprachlich) und saison (Startjahr) filtern, ohne frage die jüngsten
+    Spiele. Für Fragen zu Spielverläufen und für Zusammenfassungen; die Berichte enthalten nur Fakten aus den
+    Daten, nichts darüber hinaus erfinden. Für Zählfragen ("wie oft") ist `sql` genauer. Bei "wann zuletzt …"
+    neueste_zuerst=true (die jüngsten Treffer statt der relevantesten)."""
+    from fussballdb.api import search_reports
+
+    try:
+        return _json(search_reports(frage, team, saison, max(1, min(anzahl, 20)), neueste_zuerst))
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
 
 
 @mcp.tool(annotations=READ_ONLY)

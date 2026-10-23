@@ -13,6 +13,7 @@ Was es alles gibt:
   Kicktipp-Runde, für kommende Spiele und im Rückblick mit dem damaligen Datenstand
 - **Champions League, 2. Bundesliga, DFB-Pokal**: Prognosen und Tipps aus einem Modell über alle Ligen
 - **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
+- **Spielberichte** zu allen Bundesliga-Spielen ab 2014/15, durchsuchbar im Chat und per MCP
 - **Mehrere Kicktipp-Tipprunden**: Tipps und Punkte je Runde nach ihrer Punkteregel, Prognosen für Extratipps
 - **Torschützen-Prognose** je Spiel
 - **Spiel-Detailseite** mit Form, Direktvergleich, Tabelle, Ausfällen, Aufstellung und Quoten
@@ -340,6 +341,23 @@ streut die Torrate um rund ±35 % (Verletzung, Form, Rotation). Zum Tippschluss 
 erwartete Tore, Bayern 37 %. Grenze: Zum Tippschluss kennt das Modell keine Neuzugänge, die noch nicht in der
 Bundesliga gespielt hatten, und ordnet Wechsel innerhalb der Liga dem alten Verein zu.
 
+**Spielberichte** (`reports.py`, Tabelle `match_report`): Zu jedem Bundesliga-Spiel ab 2014/15 gibt es einen
+kurzen Bericht, gebaut aus unseren Daten statt von einem Sprachmodell geschrieben (schnell, rückwirkend für
+alle 3.726 Spiele in Sekunden, ohne erfundene Details): Ergebnis und Halbzeit, jedes Tor mit Minute, Schütze,
+Vorlage, Art (Elfmeter, Kopfball, nach Ecke …), Joker-Tore und xG, Platzverweise, Statistik, Einordnung nach
+Chancen und nach der Prognose vor dem Spiel, Ausfälle, ab 2026/27 Stadion und Wetter. Dazu eine Zeile
+**Stichworte** zum Verlauf, je Team zugeordnet („Comeback von Gladbach“, „spätes Siegtor von HSV“,
+„glücklicher Sieg von …“, Platzverweis, Elfmeter, Eigentor, Überraschung …). Die Berichte stehen auf der
+Detailseite gespielter Spiele.
+Suche (`/reports/search`, im Chat `search_reports`, im MCP `spielberichte`): Volltextsuche auf Deutsch
+(Postgres) und Vektorsuche (pgvector, Embeddings von `nomic-embed-text` aus LM Studio), die Ränge werden mit
+Reciprocal Rank Fusion kombiniert; die Vektorsuche zählt halb, weil die gleich aufgebauten Berichte ihr wenig
+Unterschied bieten. Mit Teamfilter gewinnen Berichte, deren Stichworte das gesuchte Ereignis diesem Team
+zuschreiben. „neueste zuerst“ liefert für Fragen wie „wann zuletzt …“ die jüngsten Treffer. Ohne LM Studio
+läuft die Volltextsuche allein. Das Sprachmodell im Chat fasst die gefundenen Berichte zusammen; für Zählfragen
+ist das SQL-Werkzeug genauer. Der API-Container erreicht LM Studio über `DOCKER_LLM_URL` (Standard
+`http://host.docker.internal:1234/v1`), weil `localhost` im Container der Container selbst ist.
+
 **Reihenfolge wie bei Kicktipp:** Spieltag, Tipp-Zettel, Chat und Erinnerung zeigen die Bundesliga-Spiele in
 der Reihenfolge von Kicktipp (innerhalb einer Anstoßzeit folgt sie keiner erkennbaren Regel). Das Update liest
 sie vom öffentlichen Spielplan einer Tipprunde (`kicktipp.de/<runde>/tippspielplan?spieltagIndex=<nr>`,
@@ -591,7 +609,7 @@ Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl
 
 `fussballdb-mcp` ist ein MCP-Server mit den Werkzeugen `naechste_spiele`, `spieltag`, `prognose`,
 `team_form`, `direkte_duelle`, `ausfaelle`, `tabelle`, `kickbase`, `champions_league`, `wettbewerb`,
-`tabelle_2_liga`, `cl_tabelle`, `anreise`, `tipprunden`, `sql` und `datenstand`. Damit beantwortet
+`tabelle_2_liga`, `cl_tabelle`, `anreise`, `tipprunden`, `spielberichte`, `sql` und `datenstand`. Damit beantwortet
 Claude Fragen direkt auf den eigenen Daten. Es braucht keinen API-Schlüssel: Claude ruft den Server
 auf, abgerechnet wird über das Claude-Abo. Die Datenbank muss laufen (`docker compose up -d`).
 
@@ -622,6 +640,7 @@ nach einem Neustart von Claude Desktop.
 |---|---|
 | `naechste_spiele` | kommende Spiele mit Prognose und Tipp |
 | `spieltag` | ganzer Spieltag (Saison = Startjahr) mit Tipps, Punkten und Bilanz; `tipprunde` = Tipps und Punkte nach der Regel dieser Kicktipp-Runde |
+| `spielberichte` | Spielberichte durchsuchen (Frage, Team, Saison, `neueste_zuerst`) für Verläufe und Zusammenfassungen |
 | `tipprunden` | hinterlegte Kicktipp-Runden mit Punkteregel; mit `runde` die Extratipps mit Prognose |
 | `prognose` | Wahrscheinlichkeiten, erwartete Tore, wahrscheinlichste Ergebnisse, Tipp, Begründung, Ausfälle |
 | `team_form` | letzte Spiele mit xG |
@@ -718,6 +737,7 @@ Geprüft werden:
 | Live-Prognosen | offene Spiele ohne Prognose, neue Daten oder älter als 24 Std. | 1 Std. |
 | CL-Ausfälle | CL-Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
 | TV-Sender (DE, AT) | Spiele in den nächsten 7 Tagen und letzter Abruf älter als 20 Std. | 6 Std. |
+| Spielberichte für die Suche | gespielte Spiele ohne Bericht oder Embedding, Berichte der letzten 14 Tage älter als 20 Std. | 6 Std. |
 | Reihenfolge wie bei Kicktipp | Spiele der Saison ohne Position oder letzter Abruf älter als 3 Tage | 12 Std. |
 | Spielorte (Stadion, Kapazität) | gespielte Spiele der Saison ohne eingefrorenen Ort oder offene der nächsten 14 Tage älter als 20 Std. | 6 Std. |
 | Wetter zur Spielzeit | Vorhersage älter als 6 Std. oder Spiel vorbei und noch nicht gemessen | 3 Std. |
@@ -859,6 +879,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `lineup_snapshot` | voraussichtliche und tatsächliche Aufstellungen (Ligainsider) |
 | `squad_value` | Kaderwerte je Team und Stichtag |
 | `prediction` | Prognosen (`basis` = live oder rueckblick), Tipp, Ausfälle, Begründung als JSON, Ergebnis-Wahrscheinlichkeiten 0:0 bis 9:9 (`score_probs`) |
+| `match_report` | Spielbericht je Bundesliga-Spiel mit Volltextindex (`tsv`, Deutsch) und Embedding (`embedding`, pgvector, 768 Dimensionen) |
 | `tip_round` | Kicktipp-Tipprunden mit Punkteregel, Tippschluss, Bonuspunkten und Standardrunde |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
 | `match_venue` | Spielort je Spiel (`competition` BL → `match`, sonst `eu_match`), nach dem Spiel eingefroren (`frozen`) |
@@ -947,6 +968,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
 29. **Mehrere Kicktipp-Tipprunden**: Regeln von der Kicktipp-Seite, Auswahlfeld für Tipps und Punkte je
     Runde, Prognosen für Extratipps (Meister, Herbstmeister, Plätze 16–18).
 
+30. **Spielberichte** zu allen Bundesliga-Spielen ab 2014/15 aus den Daten, Suche mit Volltext und pgvector im
+    Chat, im MCP und auf der Detailseite; SQL-Fehler gehen als lesbare Meldung ans Sprachmodell.
 Offen:
 
 - **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**

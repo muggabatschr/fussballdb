@@ -423,6 +423,17 @@ class KbSession(Base):
 
 # Spalten, die nach dem ersten Anlegen dazugekommen sind (create_all ergänzt keine Spalten)
 MIGRATIONS = [
+    # Spielberichte (reports.py): Text, Volltextindex (Deutsch) und Embedding für die Suche
+    "CREATE EXTENSION IF NOT EXISTS vector",
+    """CREATE TABLE IF NOT EXISTS match_report (
+        match_id integer PRIMARY KEY REFERENCES match(id) ON DELETE CASCADE,
+        season integer NOT NULL, matchday integer NOT NULL, kickoff timestamptz NOT NULL,
+        home_id integer NOT NULL, away_id integer NOT NULL, text text NOT NULL,
+        tsv tsvector GENERATED ALWAYS AS (to_tsvector('german', text)) STORED,
+        embedding vector(768), embed_model varchar(80), updated_at timestamptz NOT NULL DEFAULT now())""",
+    "CREATE INDEX IF NOT EXISTS match_report_tsv ON match_report USING gin (tsv)",
+    "CREATE INDEX IF NOT EXISTS match_report_emb ON match_report USING hnsw (embedding vector_cosine_ops)",
+    "CREATE INDEX IF NOT EXISTS match_report_teams ON match_report (home_id, away_id, season)",
     "ALTER TABLE match ADD COLUMN IF NOT EXISTS kicktipp_pos integer",
     "ALTER TABLE prediction ADD COLUMN IF NOT EXISTS score_probs text",
     "ALTER TABLE eu_match ADD COLUMN IF NOT EXISTS home_xg double precision",
