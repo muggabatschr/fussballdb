@@ -1,10 +1,11 @@
-"""Spielberichte: kurzer deutscher Text je Bundesliga-Spiel (ab 2014/15), aus unseren Daten gebaut, nicht von
+"""Spielberichte: deutscher Text je Bundesliga-Spiel (ab 2014/15), aus unseren Daten gebaut, nicht von
 einem Sprachmodell geschrieben (schnell, rückwirkend für alle Spiele und ohne erfundene Details).
 
-Im Stil einer Sportzeitung: Schlagzeile, Einstieg mit Ort und Ergebnis, Spielverlauf in Sätzen (jedes Tor mit
-Minute, Schütze, Vorlage und Art aus den Understat-Schüssen, Pausenstand, Joker, Eigentor, Platzverweis),
-Einordnung (verdient oder glücklich nach den Chancen, Überraschung, Dominanz), Ausfälle, Stadion und Wetter
-(ab 2026/27), dazu eine Zeile mit den Zahlen und Stichworte für die Suche.
+Im Stil einer Sportzeitung: Schlagzeile, Ortszeile, Einstieg im Perfekt (Derby, Spitzenspiel, Comeback, spätes
+Siegtor), Spielverlauf je Halbzeit (Tore mit Minute, Schütze, Vorlage und Art, Pfosten, verschossene Elfmeter,
+vergebene Großchancen, wer die Halbzeit bestimmte, Doppelpack und Saisontore), Einordnung (verdient oder glücklich
+nach den Chancen, Überraschung), Folgen für Tabelle und Serien, Ausfälle, Stadion und Wetter (ab 2026/27), dazu
+eine Zeile mit den Zahlen und Stichworte für die Suche.
 
 Gespeichert in match_report mit Volltextindex (Postgres, Deutsch) und Embedding (pgvector, Modell aus LM Studio)
 für die Suche in Chat und MCP (search)."""
@@ -53,117 +54,420 @@ def _venue(stadium: str | None) -> str:
 
 
 METHOD = {"Penalty": " per Elfmeter", "DirectFreekick": " mit einem direkten Freistoß", "FromCorner": " nach einer Ecke"}
+ORD = ["", "erste", "zweite", "dritte", "vierte", "fünfte", "sechste", "siebte", "achte", "neunte", "zehnte", "elfte",
+       "zwölfte", "dreizehnte", "vierzehnte", "fünfzehnte", "sechzehnte", "siebzehnte", "achtzehnte", "neunzehnte",
+       "zwanzigste"]
+NUM = ["null", "einem", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf"]
+# Derbys und Klassiker: (Dativ für den Einstieg, Akkusativ für die Schlagzeile)
+DERBYS = {
+    frozenset({"Dortmund", "Schalke"}): ("im Revierderby", "das Revierderby"),
+    frozenset({"Bochum", "Schalke"}): ("im Revierderby", "das Revierderby"),
+    frozenset({"Bochum", "Dortmund"}): ("im Revierderby", "das Revierderby"),
+    frozenset({"HSV", "Bremen"}): ("im Nordderby", "das Nordderby"),
+    frozenset({"Hannover", "Bremen"}): ("im Nordderby", "das Nordderby"),
+    frozenset({"Hannover", "HSV"}): ("im Nordderby", "das Nordderby"),
+    frozenset({"Hannover", "Wolfsburg"}): ("im Niedersachsenderby", "das Niedersachsenderby"),
+    frozenset({"HSV", "St. Pauli"}): ("im Hamburger Stadtderby", "das Stadtderby"),
+    frozenset({"Köln", "Gladbach"}): ("im rheinischen Derby", "das rheinische Derby"),
+    frozenset({"Köln", "Leverkusen"}): ("im rheinischen Derby", "das rheinische Derby"),
+    frozenset({"Köln", "Düsseldorf"}): ("im rheinischen Derby", "das rheinische Derby"),
+    frozenset({"Gladbach", "Düsseldorf"}): ("im rheinischen Derby", "das rheinische Derby"),
+    frozenset({"Gladbach", "Leverkusen"}): ("im rheinischen Derby", "das rheinische Derby"),
+    frozenset({"Frankfurt", "Mainz"}): ("im Rhein-Main-Derby", "das Rhein-Main-Derby"),
+    frozenset({"Frankfurt", "Darmstadt"}): ("im Hessenderby", "das Hessenderby"),
+    frozenset({"Hertha", "Union"}): ("im Berliner Stadtderby", "das Stadtderby"),
+    frozenset({"Nürnberg", "Fürth"}): ("im Frankenderby", "das Frankenderby"),
+    frozenset({"Bayern", "Dortmund"}): ("im Klassiker", "den Klassiker"),
+    frozenset({"Stuttgart", "Freiburg"}): ("im baden-württembergischen Duell", "das Landesduell"),
+}
+
+
+def _ord(n: int) -> str:
+    return ORD[n] if n < len(ORD) else f"{n}."
+
+
+def _num(n: int) -> str:
+    return NUM[n] if n < len(NUM) else str(n)
 
 
 def _pick(rnd: random.Random, *options: str) -> str:
     return rnd.choice(options)
 
 
-def _goal_story(m: dict, goals: list[dict], starters: set[str], rnd: random.Random) -> list[str]:
-    """Spielverlauf in ganzen Sätzen: Führung, Ausgleich, Anschluss, Ausbau, Pausenstand, Joker, Eigentor."""
-    hg, ag = m["home_goals"], m["away_goals"]
+def _vary(rnd: random.Random, key: str, *options: str) -> str:
+    """Wie _pick, aber nicht dieselbe Satzform wie beim letzten Mal unter diesem Schlüssel (zwei Tore hintereinander
+    sollen nicht beide "legte … nach" heißen)."""
+    last = getattr(rnd, "last", None)
+    if last is None:
+        last = rnd.last = {}
+    choices = [i for i in range(len(options)) if i != last.get(key)] or [0]
+    i = rnd.choice(choices)
+    last[key] = i
+    return options[i]
+
+
+def _cap(s: str) -> str:
+    return s[0].upper() + s[1:] if s else s
+
+
+def _join(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " und " + names[-1]
+
+
+def _for_home(m: dict, s: dict) -> bool:
+    """Zählt der Schuss (auch ein Eigentor) für die Heimmannschaft?"""
+    return (s["team_id"] == m["home_id"]) != (s["result"] == "OwnGoal")
+
+
+def _when(kick) -> str:
+    """ "am Samstagnachmittag", "am Freitagabend" (Anstoß in Berliner Zeit)."""
+    part = "abend" if kick.hour >= 18 else "nachmittag" if kick.hour >= 14 else "mittag" if kick.hour >= 12 else ""
+    return f"am {WEEKDAYS[kick.weekday()]}{part}"
+
+
+def _goal_sentence(m: dict, g: dict, before: tuple[int, int], after: tuple[int, int], starters: set[str],
+                   winning: dict | None, rnd: random.Random) -> str:
+    """Ein Tor als Satz: Führung, Ausgleich, Anschluss, Ausbau, späte Entscheidung, Eigentor."""
     names = {True: _prose(m["home_short"]), False: _prose(m["away_short"])}
+    for_home = _for_home(m, g)
+    team = names[for_home]
+    h, a = after
+    mine, theirs = (h, a) if for_home else (a, h)
+    score, minute = f"{h}:{a}", g["minute"]
+    if g["result"] == "OwnGoal":
+        return _vary(rnd, "own", f"Ein Eigentor von {_short(g['player'])} in der {minute}. Minute bedeutete das {score}.",
+                     f"In der {minute}. Minute half {_short(g['player'])} unfreiwillig mit: Eigentor zum {score}.",
+                     f"Zum {score} traf in der {minute}. Minute ausgerechnet ein Gegenspieler, {_short(g['player'])} lenkte den Ball ins eigene Tor.")
+    joker = bool(starters) and g["player"] not in starters
+    who = _short(g["player"])
+    scorer = f"der eingewechselte {who}" if joker else who
+    scorer_dat = f"dem eingewechselten {who}" if joker else who
+    Scorer = _cap(scorer)
+    how = METHOD.get(g["situation"], "") or (" per Kopf" if g["shot_type"] == "Head" else "")
+    assist = (f" nach Vorlage von {_short(g['player_assisted'])}"
+              if g["player_assisted"] and g["situation"] != "Penalty" else "")
+    if g["situation"] == "FromCorner" and assist:
+        how, assist = f" nach einer Ecke von {_short(g['player_assisted'])}", ""
+    if g.get("rebound"):  # Elfmeter gehalten, Nachschuss drin
+        how, assist = " im Nachschuss, nachdem er zuvor mit einem Elfmeter gescheitert war", ""
+    if g is winning and minute >= 85 and before[0] == before[1]:
+        return _vary(rnd, "late_level", f"In der {minute}. Minute erlöste {scorer} {team}{how}{assist} mit dem {score}.",
+                     f"Die Entscheidung fiel spät: {Scorer} traf in der {minute}. Minute{how}{assist} zum {score}.",
+                     f"Als sich alle schon mit dem Remis abgefunden hatten, schlug {scorer} in der {minute}. Minute{how}{assist} zu: {score}.")
+    if g is winning and minute >= 85:
+        return _vary(rnd, "late", f"Die Entscheidung fiel spät: {Scorer} traf in der {minute}. Minute{how}{assist} zum {score}.",
+                     f"In der {minute}. Minute sorgte {scorer}{how}{assist} mit dem {score} für die Entscheidung.")
+    if before == (0, 0):
+        early = minute <= 10
+        return _pick(rnd,
+                     f"{Scorer} brachte {team} in der {minute}. Minute{how}{assist} in Führung.",
+                     f"{'Schon' if early else 'In'} der {minute}. Minute traf {scorer}{how}{assist} zum {score}.",
+                     f"Den ersten Treffer erzielte {scorer} für {team} in der {minute}. Minute{how}{assist}.",
+                     f"{'Früh' if early else 'In der ' + str(minute) + '. Minute'} jubelte {team}: {Scorer} traf{how}{assist} zum {score}"
+                     + (f" ({minute}.)." if early else "."))
+    if mine == theirs:
+        return _vary(rnd, "first", f"{Scorer} glich in der {minute}. Minute{how}{assist} zum {score} aus.",
+                     f"In der {minute}. Minute gelang {scorer_dat}{how}{assist} der Ausgleich zum {score}.",
+                     f"Die Antwort kam in der {minute}. Minute: {Scorer} traf{how}{assist} zum {score}.")
+    if mine < theirs:
+        return _vary(rnd, "level", f"{Scorer} verkürzte in der {minute}. Minute{how}{assist} auf {score}.",
+                     f"Der Anschluss zum {score} gelang {scorer_dat} in der {minute}. Minute{how}{assist}.",
+                     f"{team} gab sich nicht auf, {scorer} verkürzte in der {minute}. Minute{how}{assist} auf {score}.")
+    if mine - theirs == 1 and before[0] == before[1]:
+        return _vary(rnd, "short", f"{Scorer} brachte {team} in der {minute}. Minute{how}{assist} erneut in Führung.",
+                     f"In der {minute}. Minute traf {scorer}{how}{assist} zum {score}.",
+                     f"Doch {team} schlug zurück: {Scorer} markierte in der {minute}. Minute{how}{assist} das {score}.")
+    if mine - theirs >= 3:
+        return _vary(rnd, "again", f"{Scorer} schraubte das Ergebnis in der {minute}. Minute{how}{assist} auf {score}.",
+                     f"In der {minute}. Minute legte {scorer}{how}{assist} zum {score} nach.",
+                     f"Das {score} besorgte {scorer} in der {minute}. Minute{how}{assist}.")
+    return _vary(rnd, "big", f"{Scorer} erhöhte in der {minute}. Minute{how}{assist} auf {score}.",
+                 f"In der {minute}. Minute legte {scorer}{how}{assist} zum {score} nach.",
+                 f"{Scorer} baute die Führung in der {minute}. Minute{how}{assist} auf {score} aus.")
+
+
+def _misses(m: dict, shots: list[dict], rnd: random.Random) -> list[tuple[int, str]]:
+    """Szenen ohne Tor: verschossene Elfmeter, Pfosten und Latte, die größte vergebene Chance je Team.
+    Rückgabe (Minute, Satz), höchstens drei, für die Einordnung in den Verlauf."""
+    names = {True: _prose(m["home_short"]), False: _prose(m["away_short"])}
+    out: list[tuple[int, int, str]] = []  # (Rang, Minute, Satz)
+    for s in shots:
+        if s["result"] in ("Goal", "OwnGoal") or s.get("rebound_of"):
+            continue
+        who, minute = _short(s["player"]), s["minute"]
+        if s["situation"] == "Penalty":
+            out.append((0, minute, f"{who} scheiterte in der {minute}. Minute vom Elfmeterpunkt am Torhüter."
+                        if s["result"] == "SavedShot" else
+                        _pick(rnd, f"In der {minute}. Minute vergab {who} einen Elfmeter.",
+                              f"{who} verschoss in der {minute}. Minute einen Strafstoß.")))
+        elif s["result"] == "ShotOnPost":
+            out.append((1, minute, _pick(rnd, f"In der {minute}. Minute traf {who} nur das Aluminium.",
+                                         f"Pech hatte {who}, dessen Schuss in der {minute}. Minute am Pfosten landete.",
+                                         f"{who} scheiterte in der {minute}. Minute am Aluminium.")))
+    for home in (True, False):
+        best = max((s for s in shots if _for_home(m, s) == home and s["result"] not in ("Goal", "OwnGoal", "ShotOnPost")
+                    and s["situation"] != "Penalty"), key=lambda s: s["xg"], default=None)
+        if best and best["xg"] >= 0.45:
+            who, minute = _short(best["player"]), best["minute"]
+            how = "per Kopf " if best["shot_type"] == "Head" else ""
+            out.append((2, minute, _pick(rnd, f"Die größte Chance für {names[home]} vergab {who} in der {minute}. Minute {how}aus kurzer Distanz.",
+                                         f"In der {minute}. Minute ließ {who} {how}eine Riesenchance für {names[home]} liegen.",
+                                         f"{who} hatte in der {minute}. Minute {how}die große Möglichkeit, scheiterte aber.")))
+    out.sort()
+    return sorted(((minute, text) for _, minute, text in out[:3]))
+
+
+def _half_flow(m: dict, shots: list[dict], first: bool) -> tuple[str | None, float, float]:
+    """Wer bestimmte die Halbzeit? Das klar stärkere Team nach xG der Halbzeit ("die Gastgeber"/"die Gäste"),
+    dazu die xG-Summen."""
+    part = [s for s in shots if (s["minute"] <= 45) == first and s["result"] != "OwnGoal"]
+    hx = sum(s["xg"] for s in part if s["team_id"] == m["home_id"])
+    ax = sum(s["xg"] for s in part if s["team_id"] == m["away_id"])
+    if max(hx, ax) >= 0.9 and max(hx, ax) >= 2.2 * min(hx, ax):
+        return ("Die Gastgeber" if hx > ax else "Die Gäste"), hx, ax
+    return None, hx, ax
+
+
+def _story(m: dict, shots: list[dict], starters: set[str], season_goals: dict,
+           rnd: random.Random) -> tuple[list[str], list[str], list[str]]:
+    """Spielverlauf als zwei Absätze (erste und zweite Halbzeit): Tore, Pfosten, Elfmeter, vergebene Chancen,
+    wer die Halbzeit bestimmte, Pausenstand; dazu ein Satz zu Doppelpack und Saisontoren für die Einordnung."""
+    goals = [s for s in shots if s["result"] in ("Goal", "OwnGoal")]
+    for s in shots:  # gehaltener Elfmeter, derselbe Spieler trifft im Nachschuss
+        if s["situation"] == "Penalty" and s["result"] != "Goal":
+            follow = next((g for g in goals if g["player"] == s["player"] and 0 <= g["minute"] - s["minute"] <= 1
+                           and g["situation"] != "Penalty"), None)
+            if follow:
+                s["rebound_of"], follow["rebound"] = True, True
+    winning = _winning_goal(m, goals)
+    misses = _misses(m, shots, rnd)
+    events = sorted([(g["minute"], 0, i, g) for i, g in enumerate(goals)] + [(mi, 1, i, t) for i, (mi, t) in enumerate(misses)],
+                    key=lambda e: (e[0], e[1], e[2]))
+    halves: tuple[list[str], list[str]] = ([], [])
     h = a = 0
-    out: list[str] = []
-    halftime_told = False
+    for first in (True, False):
+        out = halves[0 if first else 1]
+        boss, hx, ax = _half_flow(m, shots, first)
+        part = [e for e in events if (e[0] <= 45) == first]
+        has_goal = any(e[1] == 0 for e in part)
+        if first:
+            if boss and has_goal:
+                out.append(_pick(rnd, f"{boss} bestimmten die erste Halbzeit.", f"{boss} erwischten den besseren Start.",
+                                 f"{boss} übernahmen von Beginn an die Initiative."))
+            elif boss:
+                out.append(_pick(rnd, f"{boss} waren vor der Pause die bessere Mannschaft, ließen die Chancen aber ungenutzt.",
+                                 f"{boss} drängten in der ersten Halbzeit, ein Tor wollte aber nicht fallen."))
+            elif not has_goal:
+                out.append(_pick(rnd, "In einer zähen ersten Halbzeit passierte wenig.", "Die erste Halbzeit blieb ohne Treffer.",
+                                 "Beide Teams tasteten sich in der ersten Halbzeit ab, Tore fielen keine.")
+                           if hx + ax < 1.2 else
+                           _pick(rnd, "Vor der Pause gab es Chancen auf beiden Seiten, Tore aber nicht.",
+                                 "Die erste Halbzeit blieb trotz guter Gelegenheiten torlos."))
+        else:
+            low = boss[0].lower() + boss[1:] if boss else ""
+            if boss and has_goal:
+                out.append(_pick(rnd, f"Nach dem Seitenwechsel übernahmen {low} das Kommando.",
+                                 f"Nach der Pause drehten {low} auf.", f"In der zweiten Halbzeit gaben {low} den Ton an."))
+            elif boss:
+                out.append(_pick(rnd, f"Nach der Pause drängten {low}, doch es fielen keine Tore mehr.",
+                                 f"{boss} warfen in der zweiten Halbzeit alles nach vorn, ohne Erfolg."))
+            elif not has_goal and goals:
+                out.append(_pick(rnd, "Nach der Pause fielen keine Tore mehr.", "Die zweite Halbzeit blieb ohne Treffer.",
+                                 "Im zweiten Durchgang änderte sich am Spielstand nichts mehr."))
+            elif not has_goal:
+                out.append(_pick(rnd, "Auch nach der Pause blieb es beim torlosen Stand.", "Daran änderte sich auch nach dem Seitenwechsel nichts."))
+        for minute, kind, _, ev in part:
+            if kind == 1:
+                out.append(ev)
+                continue
+            before = (h, a)
+            h, a = (h + 1, a) if _for_home(m, ev) else (h, a + 1)
+            out.append(_goal_sentence(m, ev, before, (h, a), starters, winning, rnd))
+        if first and has_goal and (m["ht_home"] is None or (h, a) == (m["ht_home"], m["ht_away"])):
+            # nur wenn die Torminuten zum offiziellen Pausenstand passen, sonst widerspräche sich der Text
+            out.append(_pick(rnd, f"Mit {h}:{a} ging es in die Kabinen.", f"Zur Pause stand es {h}:{a}.",
+                             f"Mit dem {h}:{a} ging es in die Pause."))
+    # Doppelpack und Saisontore: ein Satz für den auffälligsten Torschützen
+    star_line: list[str] = []
     tally: dict[str, int] = {}
     for g in goals:
-        if not halftime_told and g["minute"] > 45 and m["ht_home"] is not None:
-            ht = (m["ht_home"], m["ht_away"])  # offizieller Pausenstand (Torminuten bei Understat weichen selten ab)
-            out.append("Die erste Halbzeit blieb torlos." if ht == (0, 0)
-                       else _pick(rnd, f"Zur Pause stand es {ht[0]}:{ht[1]}.", f"Mit {ht[0]}:{ht[1]} ging es in die Kabinen."))
-            halftime_told = True
-        own = g["result"] == "OwnGoal"
-        for_home = (g["team_id"] == m["home_id"]) != own
-        team = names[for_home]
-        before = (h, a)
-        h, a = (h + 1, a) if for_home else (h, a + 1)
-        mine, theirs = (h, a) if for_home else (a, h)
-        score = f"{h}:{a}"
-        minute = g["minute"]
-        if own:
-            out.append(_pick(rnd, f"Ein Eigentor von {_short(g['player'])} ({minute}.) bedeutete das {score}.",
-                             f"In der {minute}. Minute half {_short(g['player'])} mit einem Eigentor zum {score} nach."))
-            continue
-        tally[g["player"]] = tally.get(g["player"], 0) + 1
-        joker = g["player"] not in starters and starters
-        scorer = f"der eingewechselte {_short(g['player'])}" if joker else _short(g["player"])
-        scorer_dat = f"dem eingewechselten {_short(g['player'])}" if joker else _short(g["player"])  # "gelang dem …"
-        Scorer = scorer[0].upper() + scorer[1:]
-        how = METHOD.get(g["situation"], "") or (" per Kopf" if g["shot_type"] == "Head" else "")
-        assist = f" auf Vorlage von {_short(g['player_assisted'])}" if g["player_assisted"] and not how.startswith(" per Elf") else ""
-        if before == (0, 0):
-            out.append(_pick(rnd, f"{Scorer} brachte {team} in der {minute}. Minute{how}{assist} in Führung.",
-                             f"Den ersten Treffer erzielte {scorer} für {team} in der {minute}. Minute{how}{assist}.",
-                             f"In der {minute}. Minute traf {scorer}{how}{assist} zum {score} für {team}."))
-        elif mine == theirs:
-            out.append(_pick(rnd, f"{Scorer} glich in der {minute}. Minute{how}{assist} zum {score} aus.",
-                             f"In der {minute}. Minute gelang {scorer_dat}{how}{assist} der Ausgleich zum {score}."))
-        elif mine < theirs:
-            out.append(_pick(rnd, f"{Scorer} verkürzte in der {minute}. Minute{how}{assist} auf {score}.",
-                             f"Der Anschluss zum {score} gelang {scorer_dat} in der {minute}. Minute{how}{assist}."))
-        elif mine - theirs == 1 and before[0] == before[1]:  # erneute Führung
-            if g is _winning_goal(m, goals) and minute >= 85:
-                out.append(_pick(rnd, f"In der {minute}. Minute erlöste {scorer} {team}{how}{assist} mit dem {score}.",
-                                 f"Die Entscheidung fiel spät: {Scorer} traf in der {minute}. Minute{how}{assist} zum {score}."))
-            else:
-                out.append(_pick(rnd, f"{Scorer} brachte {team} in der {minute}. Minute{how}{assist} erneut in Führung.",
-                                 f"In der {minute}. Minute traf {scorer}{how}{assist} zum {score}."))
-        else:
-            out.append(_pick(rnd, f"{Scorer} erhöhte in der {minute}. Minute{how}{assist} auf {score}.",
-                             f"In der {minute}. Minute legte {scorer}{how}{assist} zum {score} nach.",
-                             f"{Scorer} baute die Führung in der {minute}. Minute{how}{assist} auf {score} aus."))
-    if not halftime_told and m["ht_home"] is not None and goals and goals[-1]["minute"] <= 45:
-        out.append(_pick(rnd, "Nach der Pause fielen keine Tore mehr.", "Die zweite Halbzeit blieb ohne Treffer."))
-    for player, n in tally.items():
-        if n >= 2:
-            out.append(f"{_short(player)} traf {'dreimal' if n == 3 else f'{n}-mal' if n > 3 else 'doppelt'}.")
-    return out
+        if g["result"] == "Goal":
+            tally[g["player"]] = tally.get(g["player"], 0) + 1
+    if tally:
+        star = max(tally, key=lambda p: (tally[p], season_goals.get(p, 0)))
+        n, total = tally[star], season_goals.get(star, 0)
+        pack = {2: "einen Doppelpack", 3: "einen Dreierpack"}.get(n, f"{_num(n)} Tore" if n > 3 else "")
+        who = _short(star)
+        if pack and total > n:
+            star_line.append(f"{who} schnürte {pack} und steht nun bei {_num(total)} Saisontoren.")
+        elif pack:
+            star_line.append(_pick(rnd, f"{who} schnürte {pack}.", f"Mann des Tages war {who} mit {pack}."))
+        elif total >= 5:
+            star_line.append(_pick(rnd, f"Für {who} war es bereits das {_ord(total)} Saisontor.",
+                                   f"{who} hält nun bei {_num(total)} Saisontoren."))
+    return halves[0], halves[1], star_line
+
+
+def _lead(m: dict, goals: list[dict], keywords: list[str], kick, rnd: random.Random) -> str:
+    """Einstieg im Perfekt wie in der Zeitung: wer, wann, wie, mit Derby oder Spitzenspiel."""
+    hg, ag = m["home_goals"], m["away_goals"]
+    home, away = _prose(m["home_short"]), _prose(m["away_short"])
+    when = _when(kick)
+    kw = " ".join(keywords)
+    tag = (m["ctx"].get("tag") or "")
+    def subj(who: str, verb: str = "hat") -> str:  # "Im Nordderby hat Hamburg" / "Hamburg hat"
+        return f"{_cap(tag)} {verb} {who}" if tag else f"{who} {verb}"
+    if hg == ag:
+        both = f"{home} und {away}"
+        if hg == 0:
+            return _pick(rnd, f"{subj(both, 'sind')} {when} nicht über ein torloses Remis hinausgekommen.",
+                         f"{subj(both, 'haben')} sich {when} 0:0 getrennt.")
+        deficit, leader = 0, None
+        h = a = 0
+        for g in goals:
+            h, a = (h + 1, a) if _for_home(m, g) else (h, a + 1)
+            if abs(h - a) > deficit:
+                deficit, leader = abs(h - a), home if h > a else away
+        if deficit >= 2:
+            chaser = away if leader == home else home
+            return f"{subj(chaser)} {when} einen Zwei-Tore-Rückstand gegen {leader} aufgeholt und {hg}:{ag} gespielt."
+        if "später Ausgleich" in kw:
+            last = goals[-1]
+            return f"{subj(both, 'haben')} sich {when} {hg}:{ag} getrennt, der Ausgleich fiel erst in der {last['minute']}. Minute."
+        return _pick(rnd, f"{subj(both, 'haben')} sich {when} {hg}:{ag} unentschieden getrennt.",
+                     f"{subj(both, 'haben')} sich {when} beim {hg}:{ag} die Punkte geteilt.")
+    winner, loser = (home, away) if hg > ag else (away, home)
+    ws = f"{max(hg, ag)}:{min(hg, ag)}"
+    at = "bei" if ag > hg else "gegen"
+    if "Comeback" in kw:
+        return f"{subj(winner)} {when} einen Rückstand gegen {loser} gedreht und {ws} gewonnen."
+    if "spätes Siegtor" in kw:
+        win = _winning_goal(m, goals)
+        if win and win["result"] == "Goal":
+            return f"{subj(winner)} {when} dank eines späten Treffers von {_short(win['player'])} {ws} {at} {loser} gewonnen."
+    if abs(hg - ag) >= 3:
+        return _pick(rnd, f"{subj(winner)} {loser} {when} mit {ws} deklassiert.",
+                     f"{subj(winner)} {when} {at} {loser} ein Schützenfest gefeiert und {ws} gewonnen."
+                     if hg + ag >= 5 else f"{subj(winner)} {loser} {when} beim {ws} keine Chance gelassen.")
+    if "Überraschung" in kw:
+        return f"{subj(winner)} {when} für eine Überraschung gesorgt und {loser} mit {ws} geschlagen."
+    if "glücklicher Sieg" in kw:
+        return f"{subj(winner)} {when} einen glücklichen {ws}-Sieg {at} {loser} eingefahren."
+    return _pick(rnd, f"{subj(winner)} {when} {ws} {at} {loser} gewonnen.",
+                 f"{subj(winner)} {when} einen {ws}-Erfolg {at} {loser} gefeiert.",
+                 f"{subj(winner)} {when} {at} {loser} mit {ws} die Oberhand behalten.")
 
 
 def _assessment(m: dict, stats: dict, rnd: random.Random) -> list[str]:
-    """Einordnung wie in der Zeitung: verdient oder glücklich (nach Chancen), Überraschung, Dominanz."""
+    """Einordnung: verdient oder glücklich (nach Chancen), Dominanz, Überraschung."""
     out = []
     hg, ag, hx, ax = m["home_goals"], m["away_goals"], m["home_xg"], m["away_xg"]
     home, away = _prose(m["home_short"]), _prose(m["away_short"])
     winner, loser = (home, away) if hg > ag else (away, home) if ag > hg else (None, None)
     hs, as_ = stats.get("home") or {}, stats.get("away") or {}
-    big = (f", Großchancen {hs['big_chances']}:{as_['big_chances']}"
-           if hs.get("big_chances") is not None and as_.get("big_chances") is not None else "")
     if hx is not None and ax is not None:
-        chances = f"(erwartete Tore {de(hx)} zu {de(ax)}{big})"
-        diff = (hx - ax) * (1 if hg > ag else -1 if ag > hg else 1)
+        wx, lx = (hx, ax) if hg >= ag else (ax, hx)
         if winner:
+            diff = wx - lx
             if diff <= -0.5:
-                out.append(_pick(rnd, f"Der Sieg war glücklich, {loser} hatte die besseren Chancen {chances}.",
-                                 f"Nach Chancen hätte {loser} mehr verdient gehabt {chances}."))
+                out.append(_pick(rnd, f"Der Sieg war glücklich: {loser} kam auf {de(lx)} erwartete Tore, {winner} nur auf {de(wx)}.",
+                                 f"Nach den Chancen hätte {loser} mehr verdient gehabt, {de(lx)} zu {de(wx)} lautete die Bilanz der erwarteten Tore."))
             elif diff >= 0.5:
-                out.append(_pick(rnd, f"Ein verdienter Erfolg, {winner} war das gefährlichere Team {chances}.",
-                                 f"Der Sieg geht in Ordnung, {winner} hatte die klar besseren Chancen {chances}."))
+                out.append(_pick(rnd, f"Der Sieg ging in Ordnung, {winner} erspielte sich Chancen für {de(wx)} Tore, {loser} nur für {de(lx)}.",
+                                 f"Ein verdienter Erfolg: {winner} war das gefährlichere Team ({de(wx)} zu {de(lx)} erwartete Tore)."))
             else:
-                out.append(_pick(rnd, f"Ein enges Spiel, die Chancen waren fast ausgeglichen {chances}.",
-                                 f"Viel trennte die Teams nicht {chances}."))
+                out.append(_pick(rnd, f"Viel trennte die beiden Teams nicht, die erwarteten Tore lagen bei {de(hx)} zu {de(ax)}.",
+                                 f"Es war ein enges Spiel, in dem die Chancen fast gleich verteilt waren ({de(hx)} zu {de(ax)} erwartete Tore)."))
         else:
-            better = home if hx > ax else away
-            out.append(f"{better} hätte nach den Chancen gewinnen müssen {chances}." if abs(hx - ax) >= 0.8
-                       else _pick(rnd, f"Das Remis geht nach den Chancen in Ordnung {chances}.",
-                                  f"Eine gerechte Punkteteilung {chances}."))
+            better, bx, ox = (home, hx, ax) if hx > ax else (away, ax, hx)
+            out.append(f"{better} hätte nach den Chancen gewinnen müssen ({de(bx)} zu {de(ox)} erwartete Tore)." if abs(hx - ax) >= 0.8
+                       else _pick(rnd, f"Das Remis ging nach den Chancen in Ordnung ({de(hx)} zu {de(ax)} erwartete Tore).",
+                                  f"Eine gerechte Punkteteilung, auch die erwarteten Tore lagen mit {de(hx)} zu {de(ax)} nah beieinander."))
     if hs.get("shots") and as_.get("shots") and max(hs["shots"], as_["shots"]) >= 2 * min(hs["shots"], as_["shots"]) >= 8:
         dom, other = (home, away) if hs["shots"] > as_["shots"] else (away, home)
         many, few = max(hs["shots"], as_["shots"]), min(hs["shots"], as_["shots"])
-        out.append(f"{dom} gab {many} Schüsse ab, {other} nur {few}.")
+        out.append(_pick(rnd, f"{dom} gab {many} Schüsse ab, {other} nur {few}.",
+                         f"Die Schussbilanz sprach mit {many}:{few} deutlich für {dom}."))
     if m["p_home"] is not None:
         if winner:
             p_win = m["p_home"] if hg > ag else m["p_away"]
             p_lose = m["p_away"] if hg > ag else m["p_home"]
             if p_win < 0.25 and p_lose > 0.5:
-                out.append(_pick(rnd, f"Eine Überraschung, {loser} war vor dem Spiel klarer Favorit.",
+                out.append(_pick(rnd, f"Mit diesem Ergebnis hatte kaum jemand gerechnet, {loser} ging als klarer Favorit ins Spiel.",
                                  f"Damit gelang {winner} als Außenseiter ein Coup."))
         else:
             fav, p_fav = (home, m["p_home"]) if m["p_home"] > m["p_away"] else (away, m["p_away"])
             if p_fav > 0.65:
-                out.append(f"Favorit {fav} kam nicht über ein Unentschieden hinaus.")
+                out.append(f"Für Favorit {fav} war das zu wenig.")
     return out
+
+
+def _standing(m: dict, rnd: random.Random) -> list[str]:
+    """Folgen für Tabelle und Serien: Tabellenführung, Abstiegsplätze, Siegesserien, Durststrecken."""
+    out = []
+    hg, ag = m["home_goals"], m["away_goals"]
+    later = " vorerst" if m["ctx"].get("later") else ""
+    for side, gf, ga in (("home", hg, ag), ("away", ag, hg)):
+        c = m["ctx"].get(side)
+        if not c:
+            continue
+        team = _prose(m[f"{side}_short"])
+        res = "S" if gf > ga else "N" if gf < ga else "U"
+        form = c["form"]  # Ergebnisse vor dem Spiel, ältestes zuerst
+
+        def run(pred) -> int:
+            n = 0
+            for r in reversed(form):
+                if not pred(r):
+                    break
+                n += 1
+            return n
+        if res == "S":
+            wins = run(lambda r: r == "S") + 1
+            dry = run(lambda r: r != "S")
+            if wins >= 3:
+                out.append(_pick(rnd, f"Für {team} war es der {_ord(wins)} Sieg in Folge.",
+                                 f"{team} bleibt in der Spur, es war der {_ord(wins)} Sieg nacheinander."))
+            elif dry >= 4:
+                out.append(_pick(rnd, f"Für {team} endete damit eine Durststrecke von {_num(dry)} Spielen ohne Sieg.",
+                                 f"Nach {_num(dry)} sieglosen Spielen durfte {team} endlich wieder jubeln."))
+        elif res == "N":
+            losses = run(lambda r: r == "N") + 1
+            unbeaten = run(lambda r: r != "N")
+            winless = run(lambda r: r != "S") + 1
+            if unbeaten >= 6:
+                out.append(f"Für {team} riss eine Serie von {_num(unbeaten)} Spielen ohne Niederlage.")
+            elif losses >= 3:
+                out.append(_pick(rnd, f"Für {team} war es bereits die {_ord(losses)} Niederlage in Folge.",
+                                 f"{team} steckt in der Krise, es war die {_ord(losses)} Pleite nacheinander."))
+            elif winless >= 5:
+                out.append(f"{team} ist nach {_num(winless)} Spielen weiter ohne Saisonsieg." if winless > len(form)
+                           else f"{team} wartet nun seit {_num(winless)} Spielen auf einen Sieg.")
+        else:
+            winless = run(lambda r: r != "S") + 1
+            if winless >= 5:
+                out.append(f"{team} ist nach {_num(winless)} Spielen weiter ohne Saisonsieg." if winless > len(form)
+                           else f"{team} wartet weiter auf einen Sieg, seit {_num(winless)} Spielen klappt es nicht mehr.")
+        before, after = c["pos_before"], c["pos_after"]
+        if c["played"] < 3:
+            continue
+        if after == 1 and before != 1:
+            out.append(_pick(rnd, f"{team} übernahm damit{later} die Tabellenführung.", f"{team} grüßt nun{later} von der Tabellenspitze."))
+        elif after == 1 and res == "S":
+            out.append(f"{team} bleibt Tabellenführer.")
+        elif before == 1 and after != 1:
+            out.append(f"{team} ist{later} die Tabellenführung los.")
+        elif after == 18 and before != 18:
+            out.append(f"{team} rutschte{later} ans Tabellenende.")
+        elif after >= 16 and before < 16:
+            out.append(f"{team} fiel{later} auf {'den Relegationsrang' if after == 16 else 'einen Abstiegsplatz'} zurück.")
+        elif before >= 16 and after < 16:
+            out.append(f"{team} verließ{later} die Abstiegszone und steht nun auf Platz {after}.")
+        elif res == "S" and before - after >= 3:
+            out.append(_pick(rnd, f"{team} kletterte{later} auf Platz {after}.", f"In der Tabelle sprang {team}{later} auf Rang {after}."))
+        elif res == "N" and after - before >= 3:
+            out.append(f"{team} rutschte{later} auf Platz {after} ab.")
+    return out[:3]
 
 
 def _numbers_line(s: dict) -> str | None:
@@ -182,11 +486,16 @@ def _headline(m: dict, goals: list[dict], keywords: list[str], rnd: random.Rando
     winner, loser = (home, away) if hg > ag else (away, home) if ag > hg else (None, None)
     kw = " ".join(keywords)
     score = f"{hg}:{ag}"
+    derby = m["ctx"].get("derby")
+    wside = "home" if hg > ag else "away"
     if not winner:
         if hg == 0:
-            return _pick(rnd, f"Nullnummer zwischen {home} und {away}", f"Keine Tore bei {home} gegen {away}")
+            return _pick(rnd, f"Nullnummer zwischen {home} und {away}", f"Keine Tore bei {home} gegen {away}",
+                         f"{home} und {away} bleiben ohne Treffer")
         if "später Ausgleich" in kw:
-            return f"Später Ausgleich: {home} und {away} trennen sich {score}"
+            return _pick(rnd, f"Später Ausgleich: {home} und {away} trennen sich {score}", f"Spätes {score} zwischen {home} und {away}")
+        if "Aufholjagd" in kw:
+            return f"Aufholjagd beim {score} zwischen {home} und {away}"
         return _pick(rnd, f"{home} und {away} trennen sich {score}", f"Punkteteilung beim {score} zwischen {home} und {away}")
     if "Comeback" in kw:
         return _pick(rnd, f"{winner} dreht das Spiel gegen {loser}", f"{winner} gewinnt nach Rückstand {score}")
@@ -195,16 +504,22 @@ def _headline(m: dict, goals: list[dict], keywords: list[str], rnd: random.Rando
         if win and win["result"] == "Goal":
             return _pick(rnd, f"{_short(win['player'])} erlöst {winner} spät", f"Später Jubel für {winner} beim {score}")
         return f"Später Jubel für {winner} beim {score}"
+    if derby:
+        return f"{winner} gewinnt {derby[1]}"
+    c = m["ctx"].get(wside) or {}
+    if c.get("pos_after") == 1 and c.get("pos_before") != 1 and c.get("played", 0) >= 3:
+        return f"{winner} erobert die Tabellenspitze"
     if abs(hg - ag) >= 3:
-        return _pick(rnd, f"{winner} überrollt {loser} mit {score}", f"Deutlicher {score}-Erfolg für {winner}")
+        return _pick(rnd, f"{winner} überrollt {loser} mit {score}", f"Deutlicher {score}-Erfolg für {winner}",
+                     f"{winner} feiert Kantersieg gegen {loser}")
     if "Überraschung" in kw:
         return f"Überraschung: {winner} schlägt {loser} {score}"
     if "glücklicher Sieg" in kw:
         return _pick(rnd, f"{winner} siegt glücklich gegen {loser}", f"Glücklicher {score}-Sieg für {winner}")
     if ag > hg:
-        return _pick(rnd, f"{away} gewinnt {score} in {m['city'] or home}" if m.get("city") else f"Auswärtssieg für {away} bei {home}",
-                     f"{away} entführt drei Punkte bei {home}")
-    return _pick(rnd, f"{home} schlägt {away} {score}", f"Heimsieg für {home} gegen {away}")
+        return _pick(rnd, f"{away} gewinnt {ag}:{hg} in {m['city']}" if m.get("city") else f"Auswärtssieg für {away} bei {home}",
+                     f"{away} entführt drei Punkte aus {m['city']}" if m.get("city") else f"{away} entführt drei Punkte bei {home}")
+    return _pick(rnd, f"{home} schlägt {away} {score}", f"Heimsieg für {home} gegen {away}", f"{home} bezwingt {away}")
 
 
 def _winning_goal(m: dict, goals: list[dict]) -> dict | None:
@@ -281,11 +596,13 @@ def _keywords(m: dict, goals: list[dict], starters: set[str], reds: list[dict]) 
     return words
 
 
-def build(m: dict, goals: list[dict], starters: set[str], reds: list[dict], stats: dict) -> str:
-    """Bericht eines Spiels im Stil einer Sportzeitung: Schlagzeile, Einstieg, Spielverlauf, Einordnung, Zahlen
-    und Stichworte (für die Suche). Formulierungen wechseln je Spiel (fester Zufall nach Spiel-ID)."""
+def build(m: dict, shots: list[dict], starters: set[str], reds: list[dict], stats: dict) -> str:
+    """Bericht eines Spiels im Stil einer Sportzeitung: Schlagzeile, Ortszeile, Einstieg und erste Halbzeit,
+    zweite Halbzeit, Einordnung mit Tabelle und Serien, Zahlen und Stichworte (für die Suche). Formulierungen
+    wechseln je Spiel (fester Zufall nach Spiel-ID)."""
     rnd = random.Random(m["id"])
     kick = m["kickoff"].astimezone(BERLIN)
+    goals = [s for s in shots if s["result"] in ("Goal", "OwnGoal")]
     keywords = _keywords(m, goals, starters, reds)
     ht = f" ({m['ht_home']}:{m['ht_away']})" if m["ht_home"] is not None else ""
     w = m.get("weather") or {}
@@ -297,24 +614,75 @@ def build(m: dict, goals: list[dict], starters: set[str], reds: list[dict], stat
             weather = f" bei {de(w['temp_c'], 0)} Grad"
         elif w["temp_c"] >= 27:
             weather = f" bei sommerlichen {de(w['temp_c'], 0)} Grad"
-    venue = _venue(m.get("stadium"))
     lines = [_headline(m, goals, keywords, rnd),
              f"{WEEKDAYS[kick.weekday()]}, {kick:%d.%m.%Y}, {m['matchday']}. Spieltag der Bundesliga {m['season_label']}"
-             f"{venue}{weather}: {m['home']} – {m['away']} {m['home_goals']}:{m['away_goals']}{ht}."]
-    story = _goal_story(m, goals, starters, rnd)
-    if m["home_goals"] == m["away_goals"] == 0:
-        story = [_pick(rnd, "Tore fielen keine.", "Beide Abwehrreihen hielten dicht.")]
+             f"{_venue(m.get('stadium'))}{weather}: {m['home']} – {m['away']} {m['home_goals']}:{m['away_goals']}{ht}."]
+    first, second, star = _story(m, shots, starters, m.get("season_goals") or {}, rnd)
     for r in reds:
-        story.append(f"{r['team']} musste nach einer Roten Karte für {_short(r['player'])} in Unterzahl auskommen.")
-    body = " ".join(story + _assessment(m, stats, rnd))
-    for side, team in (("missing_home", m["home_short"]), ("missing_away", m["away_short"])):
-        if m.get(side):
-            body += f" {team} musste auf {m[side]} verzichten."
-    lines.append(body.strip())
+        second.append(_pick(rnd, f"{_prose(r['team'])} musste nach einer Roten Karte für {_short(r['player'])} in Unterzahl auskommen.",
+                            f"{_short(r['player'])} sah die Rote Karte, {_prose(r['team'])} spielte fortan mit einem Mann weniger."))
+    lines.append(" ".join([_lead(m, goals, keywords, kick, rnd)] + first))
+    if second:
+        lines.append(" ".join(second))
+    close = star + _assessment(m, stats, rnd) + _standing(m, rnd)
+    for side in ("home", "away"):
+        if m.get(f"missing_{side}"):
+            played = m.get("players") or set()
+            missing = [_short(n.strip()) for n in m[f"missing_{side}"].split(",")
+                       if n.strip() and n.split("(")[0].strip() not in played]
+            if missing:
+                close.append(f"Bei {_prose(m[f'{side}_short'])} {'fehlte' if len(missing) == 1 else 'fehlten'} {_join(missing)}.")
+    if close:
+        lines.append(" ".join(close))
     if (nums := _numbers_line(stats)):
         lines.append(nums)
     lines.append("Stichworte: " + "; ".join(keywords) + ".")
     return "\n".join(lines)
+
+
+def _season_context(conn, seasons: list[int]) -> tuple[dict, dict]:
+    """Tabellenplatz vor und nach jedem Spiel, Ergebnisse davor (Serien) und Saisontore der Schützen bis
+    einschließlich des Spiels. Tabelle nach Punkten, Tordifferenz, Toren."""
+    rows = conn.execute(text("""
+        SELECT m.id, s.start_year AS season, m.matchday, m.kickoff, m.finished, m.home_team_id AS h, m.away_team_id AS a,
+               m.home_goals AS hg, m.away_goals AS ag
+        FROM match m JOIN season s ON s.id = m.season_id WHERE s.start_year = ANY(:s) ORDER BY m.kickoff, m.id"""),
+        {"s": seasons}).all()
+    ctx: dict[int, dict] = {}
+    last_kick: dict[tuple, object] = {}
+    for r in rows:
+        key = (r.season, r.matchday)
+        last_kick[key] = max(last_kick.get(key, r.kickoff), r.kickoff)
+    for season in seasons:
+        games = [r for r in rows if r.season == season]
+        teams = {r.h for r in games} | {r.a for r in games}
+        table = {t: [0, 0, 0] for t in teams}  # Punkte, Tordifferenz, Tore
+        form = {t: [] for t in teams}
+        pos = lambda: {t: i + 1 for i, t in enumerate(sorted(teams, key=lambda t: [-x for x in table[t]]))}  # noqa: E731
+        for r in games:
+            if not r.finished or r.hg is None:
+                continue
+            before = pos()
+            c = {"home": {"pos_before": before[r.h], "form": list(form[r.h]), "played": len(form[r.h])},
+                 "away": {"pos_before": before[r.a], "form": list(form[r.a]), "played": len(form[r.a])},
+                 "later": last_kick[(r.season, r.matchday)] > r.kickoff}
+            for t, gf, ga in ((r.h, r.hg, r.ag), (r.a, r.ag, r.hg)):
+                table[t][0] += 3 if gf > ga else 1 if gf == ga else 0
+                table[t][1] += gf - ga
+                table[t][2] += gf
+                form[t].append("S" if gf > ga else "N" if gf < ga else "U")
+            after = pos()
+            c["home"]["pos_after"], c["away"]["pos_after"] = after[r.h], after[r.a]
+            ctx[r.id] = c
+    goals: dict[int, dict] = {}
+    tally: dict[tuple, int] = {}
+    for g in conn.execute(text("""
+            SELECT sh.match_id, sh.player, s.start_year AS season FROM shot sh JOIN match m ON m.id = sh.match_id
+            JOIN season s ON s.id = m.season_id WHERE s.start_year = ANY(:s) AND sh.result = 'Goal'
+            ORDER BY m.kickoff, sh.match_id, sh.minute, sh.id"""), {"s": seasons}):
+        tally[(g.season, g.player)] = tally.get((g.season, g.player), 0) + 1
+        goals.setdefault(g.match_id, {})[g.player] = tally[(g.season, g.player)]
+    return ctx, goals
 
 
 def _load(where: str, params: dict) -> list[tuple[int, str]]:
@@ -342,14 +710,15 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
         if not matches:
             return []
         ids = [m["id"] for m in matches]
-        goals, starters, reds, stats = {}, {}, {}, {}
+        shots, starters, reds, stats = {}, {}, {}, {}
         for r in conn.execute(text("""SELECT match_id, minute, player, player_assisted, situation, shot_type, xg, result, team_id
-                                       FROM shot WHERE match_id = ANY(:ids) AND result IN ('Goal', 'OwnGoal')
-                                       ORDER BY match_id, minute, id"""), {"ids": ids}):
-            goals.setdefault(r.match_id, []).append(dict(r._mapping))
+                                       FROM shot WHERE match_id = ANY(:ids) ORDER BY match_id, minute, id"""), {"ids": ids}):
+            shots.setdefault(r.match_id, []).append(dict(r._mapping))
+        players: dict[int, set[str]] = {}
         for r in conn.execute(text("""SELECT pm.match_id, p.name, pm.started, pm.red_cards, t.name AS team
                                        FROM player_match pm JOIN player p ON p.id = pm.player_id JOIN team t ON t.id = pm.team_id
                                        WHERE pm.match_id = ANY(:ids)"""), {"ids": ids}):
+            players.setdefault(r.match_id, set()).add(r.name)
             if r.started:
                 starters.setdefault(r.match_id, set()).add(r.name)
             if r.red_cards:
@@ -357,11 +726,21 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
         for r in conn.execute(text("""SELECT x.match_id, x.is_home, x.xg, x.shots, x.shots_on_target, x.big_chances, x.corners, x.ppda
                                        FROM match_team_stats x WHERE x.match_id = ANY(:ids)"""), {"ids": ids}):
             stats.setdefault(r.match_id, {})["home" if r.is_home else "away"] = dict(r._mapping)
+        ctx, season_goals = _season_context(conn, sorted({m["season"] for m in matches}))
     out = []
     for m in matches:
         m["home_short"], m["away_short"] = short(m["home"]), short(m["away"])
         m["weather"] = {"temp_c": m.pop("temp_c"), "precip_mm": m.pop("precip_mm"), "wind_kmh": m.pop("wind_kmh")}
-        out.append((m["id"], m, build(m, goals.get(m["id"], []), starters.get(m["id"], set()),
+        c = m["ctx"] = ctx.get(m["id"], {})
+        m["season_goals"] = season_goals.get(m["id"], {})
+        m["players"] = players.get(m["id"], set())
+        derby = DERBYS.get(frozenset({m["home_short"], m["away_short"]}))
+        hc, ac = c.get("home") or {}, c.get("away") or {}
+        c["derby"] = derby
+        c["tag"] = (derby[0] if derby else
+                    "im Spitzenspiel" if hc.get("played", 0) >= 4 and max(hc["pos_before"], ac["pos_before"]) <= 3 else
+                    "im Kellerduell" if hc.get("played", 0) >= 4 and min(hc["pos_before"], ac["pos_before"]) >= 15 else None)
+        out.append((m["id"], m, build(m, shots.get(m["id"], []), starters.get(m["id"], set()),
                                       reds.get(m["id"], []), stats.get(m["id"], {}))))
     return out
 

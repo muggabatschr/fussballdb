@@ -118,6 +118,7 @@ def test_match_reports():
     g = next(x for x in md["games"] if x["home_goals"] + x["away_goals"] > 0)
     lines = client.get(f"/match/{g['id']}").json()["bericht"].splitlines()
     assert f"{g['home']} – {g['away']} {g['home_goals']}:{g['away_goals']} (" in lines[1]
-    assert "Minute" in lines[2] and "Modell" not in "\n".join(lines)
+    assert " hat " in lines[2] or " haben " in lines[2] or " sind " in lines[2]  # Einstieg im Perfekt
+    assert "Minute" in " ".join(lines[2:]) and "Modell" not in "\n".join(lines)
     hits = client.get("/reports/search", params={"q": "Comeback", "team": "Gladbach", "limit": 3}).json()
     assert hits and all("Mönchengladbach" in h["bericht"].splitlines()[1] for h in hits)

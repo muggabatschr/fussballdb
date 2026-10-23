@@ -213,8 +213,8 @@ def tabelle_2_liga(saison: int | None = None) -> str:
 @mcp.tool(annotations=READ_ONLY)
 def spielberichte(frage: str = "", team: str | None = None, saison: int | None = None, anzahl: int = 8,
                   neueste_zuerst: bool = False) -> str:
-    """Spielberichte der Bundesliga ab 2014/15 durchsuchen (Tore mit Minute, Schütze, Vorlage und Art, Statistik,
-    Einordnung, Stichworte wie Comeback, spätes Siegtor, Platzverweis, Überraschung). Kombinierte Suche nach
+    """Spielberichte der Bundesliga ab 2014/15 im Zeitungsstil durchsuchen (Tore mit Minute, Schütze, Vorlage und
+    Art, Pfosten und vergebene Chancen, Tabelle und Serien, Statistik, Einordnung, Stichworte wie Comeback, spätes Siegtor, Platzverweis, Überraschung). Kombinierte Suche nach
     Bedeutung und Wörtern; team (auch umgangssprachlich) und saison (Startjahr) filtern, ohne frage die jüngsten
     Spiele. Für Fragen zu Spielverläufen und für Zusammenfassungen; die Berichte enthalten nur Fakten aus den
     Daten, nichts darüber hinaus erfinden. Für Zählfragen ("wie oft") ist `sql` genauer. Bei "wann zuletzt …"

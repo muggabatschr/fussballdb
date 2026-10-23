@@ -124,7 +124,8 @@ export const tools = {
   }),
   search_reports: tool({
     description:
-      "Spielberichte der Bundesliga ab 2014/15 durchsuchen (Tore mit Minute, Schütze, Vorlage, Art; Statistik; " +
+      "Spielberichte der Bundesliga ab 2014/15 im Zeitungsstil durchsuchen (Tore mit Minute, Schütze, Vorlage, Art; " +
+      "Pfosten und vergebene Chancen; Tabelle und Serien; Statistik; " +
       "Einordnung; Stichworte wie Comeback, spätes Siegtor, Platzverweis, Überraschung). Für Fragen zu " +
       "Spielverläufen und Zusammenfassungen. Ohne frage die jüngsten Spiele des Teams/der Saison.",
     inputSchema: z.object({

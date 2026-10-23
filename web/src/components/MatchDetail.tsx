@@ -514,7 +514,7 @@ export function MatchDetailView({
 
       {d.bericht && (
         <Section title="Spielbericht">
-          <Card className="space-y-1 text-sm">
+          <Card className="space-y-2.5 text-sm leading-relaxed">
             {d.bericht.split("\n").map((l, i) => (
               <p
                 key={l}
