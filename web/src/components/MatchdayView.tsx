@@ -158,6 +158,7 @@ function groupChannels(names: string[]): { name: string; suffixes?: string[] }[]
     const l = tvLogo(name);
     const prev = out.find((o) => l?.suffix && o.src === l.src);
     if (prev && l?.suffix) prev.suffixes!.push(l.suffix);
+    else if (l && !l.suffix && out.some((o) => o.src === l.src)) continue; // ZDF und ZDF Livestream: ein Logo
     else out.push({ name, src: l?.src, suffixes: l?.suffix ? [l.suffix] : undefined });
   }
   return out;
@@ -212,11 +213,14 @@ export function TvLine({ tv }: { tv?: MatchdayGame["tv"] }) {
   return (
     <div className="space-y-1 text-xs text-muted">
       {rows.map(([label, names]) => (
-        <div key={label} className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap" title={`TV ${label}: ${names.join(", ")}`}>
-          <span className="w-10 shrink-0 font-medium text-foreground/80">{label}</span>
-          {groupChannels(names).map((c) => (
-            <TvChannel key={c.name} name={c.name} suffixes={c.suffixes} />
-          ))}
+        <div key={label} className="flex items-start gap-1.5" title={`TV ${label}: ${names.join(", ")}`}>
+          <span className="w-10 shrink-0 pt-[3px] font-medium text-foreground/80">{label}</span>
+          {/* viele Sender (Pokal: Sky, RTL+, OneFootball, WOW): in die nächste Zeile umbrechen statt abschneiden */}
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5 whitespace-nowrap">
+            {groupChannels(names).map((c) => (
+              <TvChannel key={c.name} name={c.name} suffixes={c.suffixes} />
+            ))}
+          </span>
         </div>
       ))}
     </div>

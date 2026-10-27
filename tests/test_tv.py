@@ -26,3 +26,30 @@ def test_align_sky_numbers():
     # ohne nummerierte Kanäle bleibt alles, wie es ist
     assert align_sky_numbers({"DE": ["DAZN"], "AT": ["DAZN"]}) == {"DE": ["DAZN"], "AT": ["DAZN"]}
     assert align_sky_numbers({"DE": ["Sky Bundesliga 1"]}) == {"DE": ["Sky Bundesliga 1"]}
+
+
+def test_conference_marked_when_on_every_game_of_a_slot():
+    from datetime import datetime, timezone
+
+    from fussballdb.ingest.tv import channels, mark_conference
+
+    k = datetime(2026, 10, 27, 17, tzinfo=timezone.utc)
+    games = [{"competition": "DFB", "kickoff": k, "channels": ["Sky Sport 1", f"Sky Sport {n}", "WOW"]} for n in (2, 3, 4)]
+    games.append({"competition": "DFB", "kickoff": k.replace(hour=19), "channels": ["Sky Sport 1", "WOW"]})
+    out = mark_conference(games)
+    assert out[0]["channels"][0] == "Sky Sport 1 (Konferenz)" and out[3]["channels"][0] == "Sky Sport 1"
+    assert channels(out[0]["channels"]) == ["Sky Sport 1 (Konferenz)", "Sky Sport 2", "WOW"]
+
+
+def test_conference_copied_to_germany():
+    import json
+
+    from fussballdb.ingest.tv import conference_to_de
+
+    rows = [{"competition": "DFB", "match_id": 1, "country": "AT", "channels": json.dumps(["Sky Sport 1 (Konferenz)", "Sky Sport 4"])},
+            {"competition": "DFB", "match_id": 1, "country": "DE", "channels": json.dumps(["Sky Sport 4", "RTL+"])},
+            {"competition": "DFB", "match_id": 2, "country": "AT", "channels": json.dumps(["Sky Sport 1 (Konferenz)"])},
+            {"competition": "DFB", "match_id": 2, "country": "DE", "channels": json.dumps(["ZDF"])}]
+    out = conference_to_de(rows)
+    assert json.loads(out[1]["channels"]) == ["Sky Sport 1 (Konferenz)", "Sky Sport 4", "RTL+"]
+    assert json.loads(out[3]["channels"]) == ["ZDF"]  # ohne Sky in Deutschland keine Konferenz

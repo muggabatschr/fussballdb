@@ -237,7 +237,7 @@ def _need_cl_absences() -> str | None:
 def _need_tv() -> str | None:
     """TV-Sender: täglich neu laden, solange Spiele in den nächsten 7 Tagen anstehen."""
     upcoming = _scalar("""SELECT (SELECT count(*) FROM match WHERE NOT finished AND kickoff BETWEEN now() AND now() + interval '7 days')
-                         + (SELECT count(*) FROM eu_match WHERE competition = 'CL' AND NOT finished
+                         + (SELECT count(*) FROM eu_match WHERE competition IN ('CL', 'D2', 'DFB') AND NOT finished
                             AND kickoff BETWEEN now() AND now() + interval '7 days')""")
     if not upcoming:
         return None

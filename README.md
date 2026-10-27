@@ -74,7 +74,7 @@ lassen sich im Backtest prüfen.
 | football-data.co.uk, 18 Ligen | Ligaergebnisse aus England, Spanien, Italien, Deutschland, Frankreich, Niederlande, Portugal, Belgien, Türkei, Schottland, Griechenland, Österreich, Schweiz, Dänemark, Norwegen, Schweden, Polen, Rumänien (für die Europa-Elo) |
 | [Understat](https://understat.com) | xG, npxG, xPts, PPDA, Deep, jeder Schuss mit xG, Kader je Spiel mit Minuten/xG/xA |
 | [Transfermarkt](https://www.transfermarkt.de) | aktuelle Verletzte und Kranke, Verletzungshistorie je Spieler, Kaderwerte zum 1. jedes Monats |
-| [FotMob](https://www.fotmob.com/de/tv-guide/de) | TV-Sender je Bundesliga- und CL-Spiel in Deutschland und Österreich (nächste 7 Tage), xG der Champions-League-Spiele |
+| [FotMob](https://www.fotmob.com/de/tv-guide/de) | TV-Sender je Spiel von Bundesliga, 2. Bundesliga, DFB-Pokal und CL in Deutschland und Österreich (nächste 7 Tage), xG der Champions-League-Spiele |
 | [LiveOnSat](https://liveonsat.com) | Sky-Bundesliga-Kanalnummer je Bundesliga-Spiel (zweite Quelle zu FotMob, gilt für DE und AT) |
 | FotMob, Spielseiten | Spielort je Spiel (Stadion, Stadt, Kapazität, Koordinaten) für Bundesliga, 2. Liga, Pokal und CL ab 2026/27 |
 | [Open-Meteo](https://open-meteo.com) | Wetter am Stadion zur Spielzeit: Vorhersage bis 16 Tage vorher, danach gemessen (Archiv ERA5) |
@@ -460,8 +460,8 @@ Stadion und Wetter gibt es ab 2026/27; ältere Spiele haben keinen Spielort, wei
 Sponsorennamen der Stadien nicht mit Zeitraum führen (Wikidata kennt z. B. nur „Signal Iduna Park“).
 
 **TV-Sender in der Kachel:** Bei offenen Spielen steht unten je eine Zeile für Deutschland und Österreich
-mit den Logos der genauen Kanäle, z. B. Sky Sport Bundesliga 5 und WOW, in der CL DAZN oder Prime Video
-und in Österreich Sky Sport Austria mit Kanalnummer. Laufen in beiden Ländern dieselben Kanäle (Sky Bundesliga 1 in DE
+mit den Logos der genauen Kanäle, z. B. Sky Sport Bundesliga 5 und WOW, in der CL DAZN oder Prime Video,
+in 2. Liga und Pokal auch OneFootball und RTL+, und in Österreich Sky Sport Austria mit Kanalnummer. Laufen in beiden Ländern dieselben Kanäle (Sky Bundesliga 1 in DE
 und Sky Sport Bundesliga 1 in AT gelten als gleich), steht nur eine Zeile „DE/AT“ da. Quelle ist das TV-Programm von FotMob für beide
 Länder (`ingest/tv.py`), täglich geladen und über Anstoßzeit und Teamnamen zugeordnet. Weggelassen werden
 Zugänge und Kopien (Sky Go, Sky Stream, Sky X, UHD, Showcase) und, sobald ein nummerierter Kanal da ist,
@@ -475,9 +475,19 @@ FotMob allein weiter. Steht ein Sender noch nicht fest, heißt es „noch
 offen“. FotMob kennt die Kanäle etwa eine Woche im Voraus; bei gespielten Spielen wird die Zeile
 ausgeblendet.
 
-Die Logos liegen unter `web/public/tv/` (Sky-Kanäle von sky.de, DAZN von FotMob, WOW von wowtv.de, Prime
-Video von Wikimedia Commons); die Zuordnung Kanalname → Logo steht in `web/src/lib/tv.ts`. Sender ohne
-Logo (z. B. RTL, Sat.1, ServusTV) erscheinen als kurzer Text. Die Sky-Logos sind für hellen Hintergrund
+Die Logos liegen unter `web/public/tv/` (Sky-Kanäle von sky.de, DAZN von FotMob, WOW von wowtv.de; Prime
+Video, RTL+, RTL, OneFootball, ZDF, Das Erste und ServusTV von Wikimedia Commons, ServusTV unter CC BY-SA 4.0,
+die übrigen gemeinfrei). „Sky Sport 1–10“ (Pokal, 2. Liga) sind die Sky-Bundesliga-Logos ohne das
+Bundesliga-Wappen. Livestreams und Mediatheken zeigen das Logo ihres Senders und erscheinen nur einmal
+(ZDF und ZDF Livestream). Die Zuordnung Kanalname → Logo steht in `web/src/lib/tv.ts`. Sender ohne Logo
+(z. B. Sat.1) erscheinen als kurzer Text. Viele Sender brechen in eine zweite Zeile um.
+
+**Konferenz:** Steht ein nummerierter Sky-Kanal bei *allen* Spielen eines Wettbewerbs zur selben Anstoßzeit (ab
+3 Spielen), ist das die Konferenz und wird so markiert („Sky Sport 1 Konferenz“, `mark_conference` in
+`ingest/tv.py`). Im Pokal ist das Sky Sport 1. FotMob nennt die Konferenz nur für Österreich; weil Sky
+Deutschland sie auf demselben Kanal zeigt (Pokal 2026/27 laut Eintracht Frankfurt und t-online) und die
+Einzelspiel-Kanäle in beiden Ländern gleich sind, wird sie für Spiele, die in Deutschland bei Sky laufen,
+übernommen (`conference_to_de`). Die Sky-Logos sind für hellen Hintergrund
 gemacht und stehen deshalb auf einem weißen Schild. Ausgeliefert werden sie unverändert in
 Originalgröße (`unoptimized`), sonst verkleinert Next.js sie und sie wirken unscharf.
 
@@ -742,7 +752,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb belastung-test` | Europapokal-Belastung im Rückblick-Test (`--tage`) |
 | `fussballdb cl-xg-test` | CL: europaweites xG-Modell gegen die Elo im Rückblick-Test |
 | `fussballdb elo-historie-test` | Elo mit Vorgeschichte ab 1993/94 gegen Elo ab 2014/15 (verworfen) |
-| `fussballdb startelf-test` | Startelf-Korrektur (Kickbase-Punkte, FotMob-Noten, xG+xA) im Rückblick, auch zusammen mit den verworfenen Erweiterungen (noch nicht übernommen) |
+| `fussballdb startelf-test` | Startelf-Korrektur (Kickbase-Punkte, FotMob-Noten, xG+xA) im Rückblick, auch zusammen mit den verworfenen Erweiterungen (verworfen) |
 | `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test (`--kombi`: zusammen mit den verworfenen Erweiterungen) |
 | `fussballdb kombi-test` | alle Erweiterungen zusammen, jeweils eine weggelassen |
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
@@ -905,8 +915,8 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Europapokal-Belastung mit 3 statt 4 Tagen | −0,0019 | schwächer (62 Spiele, 81 %); 4 Tage erfassen auch Dienstag → Samstag |
 | Spielerwert über On/Off (xG für/gegen mit und ohne Spieler auf dem Platz) statt xG+xA | 2023–26: +0,0010 | verworfen; zu verrauscht, weil Stammspieler selten fehlen (`features/onoff.py`) |
 | Echte Aufstellung (Obergrenze, Wissen aus der Zukunft) | −0,0006 | nur zur Einordnung: Ausfälle sind kaum noch ein Hebel |
-| Startelf-Korrektur: Stärke der aufgebotenen gegen die übliche Elf (Startelf steht 1 Std. vor dem Anpfiff fest), Spielerstärke aus FotMob-Noten, Kickbase-Punkten, xG+xA oder gemischt, k 0,1–0,4, zusätzlich zu den Ausfällen oder statt ihrer (`fussballdb startelf-test`, Einstellen 2024/25, Test ab 2025/26) | allein: Noten/Mischung −0,0002 bis −0,0003 (60–69 %), Kickbase +0,0004 bis +0,0014, xG+xA ±0 | nicht übernommen; zu wenig Daten, Kickbase fehlen ehemalige Spieler (2024/25 nur die Hälfte abgedeckt). Kicktipp-Punkte im Test +0,02 bis +0,03 je Spiel, aber im Einstellzeitraum nicht besser. Ende 2026/27 erneut testen |
-| Startelf-Korrektur zusammen mit den verworfenen Erweiterungen (Heimvorteil je Team, Duelle, Remis-Kalibrierung, Halbwertszeit 3 Mon., Tor-Skalierung, alle zusammen) | bestes Paar Duelle + Mischung k 0,1: −0,0010 (90 %), Duelle allein −0,0008 (88 %) | nicht übernommen; der Gewinn kommt fast ganz von den Duellen, die im Einstellzeitraum 2024/25 schlechter waren (+0,0004). Duelle sollten mit der Historie ab 1993/94 neu getestet werden |
+| Startelf-Korrektur: Stärke der aufgebotenen gegen die übliche Elf (die Startelf steht 1 Std. vor dem Anpfiff fest), Spielerstärke aus FotMob-Noten, Kickbase-Punkten, xG+xA oder gemischt, k 0,1–0,4, zusätzlich zu den Ausfällen oder statt ihrer (`fussballdb startelf-test`, Einstellen 2016–20, Test 2021–26) | beste: FotMob-Note k 0,1 −0,0001 (62 %); „statt Ausfälle“ +0,0008 bis +0,0019; Kickbase +0,0002 bis +0,0019 | verworfen; mit 11 Saisons nicht von Zufall zu unterscheiden. Ein erster Test nur mit 2024–26 sah besser aus (−0,0003), das war Zufall. Kickbase deckt nur 20 % ab (ehemalige Spieler fehlen) |
+| Startelf-Korrektur zusammen mit den verworfenen Erweiterungen (Heimvorteil je Team, Duelle, Remis-Kalibrierung, Halbwertszeit 3 Mon., Tor-Skalierung, alle zusammen) | bestes Paar Tor-Skalierung + Note k 0,1: −0,0005 (91 %), Tor-Skalierung allein ebenso −0,0005 (90 %) | verworfen; der Gewinn kommt allein von der Tor-Skalierung (besser in 5–6 von 11 Saisons, siehe oben), die Note fügt nichts hinzu. Direkte Duelle über 2016–26 ±0 |
 | Elo mit Vorgeschichte ab 1993/94 statt ab 2014/15 (nur die Elo, `fussballdb elo-historie-test`) | Einstellen 2015–19: −0,0003, Test 2020–26: +0,0005 | verworfen; im Test in keiner der 7 Saisons besser, 9 % der Ziehungen. Die alten Ergebnisse bleiben reine Anzeige |
 
 ## Datenbank
@@ -929,7 +939,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `match_venue` | Spielort je Spiel (`competition` BL → `match`, sonst `eu_match`), nach dem Spiel eingefroren (`frozen`) |
 | `match_page` | Aufstellung (JSON mit Formation, Positionen, Noten, Ereignissen), Momentum, Tore/Platzverweise und Teamfarben je Spiel laut FotMob, nach dem Spiel eingefroren |
 | `match_weather` | Wetter je Spiel zur Spielzeit (`kind` vorhersage oder gemessen) |
-| `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |
+| `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL, D2, DFB → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |
 | `kb_session` | Kickbase-Anmeldung: Token, Ablauf, Ligen, gewählte Liga (nie das Passwort) |
 | `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der aktiven Liga |
 | `eu_team`, `eu_team_alias` | Champions League: Vereine aus ganz Europa (Transfermarkt-ID bei Europapokal-Teilnehmern), Namen je Quelle |
@@ -1032,9 +1042,6 @@ Was in welcher Reihenfolge entstanden ist und warum.
 32. **Aufstellung auf dem Spielfeld und Momentum** (FotMob) auf der Detailseite, Diagramme in Teamfarben.
 Offen:
 
-- **Startelf-Korrektur Ende 2026/27 erneut testen** (`fussballdb startelf-test`, mit `tune=(2024, 2025)`), wenn
-  eine Saison mehr FotMob-Noten und vollständige Kickbase-Daten da sind; dazu die direkten Duelle mit der
-  Historie ab 1993/94
 - **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**
   (`fussballdb cl-xg-test`); hält es nicht, `ACTIVE_XG` in `model/europe.py` auf `None` setzen
 - Verletzte der CL-Teams ins Modell nehmen, sobald genug Spieltage zum Testen gesammelt sind

@@ -361,7 +361,7 @@ def elo_historie_test() -> None:
 @app.command("startelf-test")
 def startelf_test() -> None:
     """Startelf-Korrektur (Stärke der aufgebotenen gegen die übliche Elf aus Kickbase-Punkten, FotMob-Noten,
-    xG+xA) im Rückblick, je Modellvariante samt der verworfenen Erweiterungen (Einstellen 2024/25, Test ab 2025/26)."""
+    xG+xA) im Rückblick, je Modellvariante samt der verworfenen Erweiterungen (Einstellen 2016–20, Test 2021–26)."""
     from fussballdb.model.evaluate import compare_lineup_strength
 
     res = compare_lineup_strength(progress=lambda s, md: console.print(f"  {s}/{md}", end="\r"))

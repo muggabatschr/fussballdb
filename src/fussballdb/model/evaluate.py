@@ -627,8 +627,8 @@ def compare_elo_history(first_long: int = 1993, tune=tuple(range(2015, 2020)), t
 LINEUP_KS = (0.1, 0.2, 0.4)
 
 
-def compare_lineup_strength(fit_configs: dict[str, dict] | None = None, tune=(2024,), test=(2025, 2026),
-                            seed: int = 0, progress=None) -> pd.DataFrame:
+def compare_lineup_strength(fit_configs: dict[str, dict] | None = None, tune=tuple(range(2016, 2021)),
+                            test=tuple(range(2021, 2027)), seed: int = 0, progress=None) -> pd.DataFrame:
     """Startelf-Korrektur (features/lineup_strength.py) im Rückblick: Stärke der aufgebotenen gegen die übliche
     Elf, Spielerstärke aus Kickbase-Punkten, FotMob-Noten, xG+xA oder gemischt, je mit k aus LINEUP_KS.
     Modus "+": zusätzlich zu den Ausfällen (Verletzte, Sperren); "statt": nur die Startelf (die Ausfälle stecken

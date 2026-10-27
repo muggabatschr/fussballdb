@@ -1,4 +1,5 @@
-"""TV-Sender der Bundesliga- und Champions-League-Spiele in Deutschland und Österreich.
+"""TV-Sender der Spiele von Bundesliga, 2. Bundesliga, DFB-Pokal und Champions League in Deutschland und
+Österreich.
 
 Quelle ist das TV-Programm von FotMob (je Land eine Seite, die nächsten 7 Tage). Die Spiele werden über
 Anstoßzeit und Teamnamen unseren Spielen zugeordnet. Einträge bleiben nach dem Spiel gespeichert.
@@ -25,7 +26,7 @@ from fussballdb.ingest.upsert import upsert
 
 URL = "https://www.fotmob.com/de/tv-guide/{country}"
 COUNTRIES = ("de", "at")
-LEAGUES = {54: "BL", 42: "CL"}  # FotMob-Wettbewerb -> unsere Kennung
+LEAGUES = {54: "BL", 42: "CL", 146: "D2", 209: "DFB"}  # FotMob-Wettbewerb -> unsere Kennung
 LIVEONSAT_URL = "https://liveonsat.com/europe-germany-bundesliga1.php"
 # Kanäle bei LiveOnSat, die für Deutschland und Österreich zählen (die Seite listet Sender aus aller Welt)
 LIVEONSAT_KEEP = re.compile(r"^(Sky Sport Bundesliga|Sky Sport Top Event|DAZN Deutsch|WOW)")
@@ -33,7 +34,7 @@ LIVEONSAT_KEEP = re.compile(r"^(Sky Sport Bundesliga|Sky Sport Top Event|DAZN De
 # Kanäle, die nur Zugänge oder Kopien sind (Streaming-Zugänge, UHD, Showcase) und "noch offen"
 SKIP = re.compile(r"^Sky Go$|^Sky Stream$|^Sky X$|Showcase|UHD|zu bestätigen|^TBC", re.I)
 RENAME = [(r"^DAZN.*", "DAZN"), (r"^(Amazon )?Prime Video.*", "Prime Video"), (r"^Canal\+.*", "Canal+")]
-NUMBERED_SKY = re.compile(r"^Sky .*\d+$")  # Sky Bundesliga 3, Sky Sport Austria 1 …
+NUMBERED_SKY = re.compile(r"^Sky .*\d+( \(Konferenz\))?$")  # Sky Bundesliga 3, Sky Sport Austria 1, Sky Sport 1 (Konferenz)
 
 
 def channels(raw: list[str]) -> list[str]:
@@ -145,14 +146,51 @@ def _candidates(session: Session) -> dict[str, list[tuple]]:
         LEFT JOIN team_alias ha ON ha.team_id = ht.id LEFT JOIN team_alias aa ON aa.team_id = at.id
         WHERE m.kickoff BETWEEN now() - interval '2 days' AND now() + interval '10 days'
         GROUP BY m.id, m.kickoff, ht.name, at.name""")).all()
-    cl = session.execute(text("""
-        SELECT m.id, m.kickoff,
-               string_agg(DISTINCT ha.alias, '|') || '|' || ht.name, string_agg(DISTINCT aa.alias, '|') || '|' || at.name
-        FROM eu_match m JOIN eu_team ht ON ht.id = m.home_id JOIN eu_team at ON at.id = m.away_id
-        LEFT JOIN eu_team_alias ha ON ha.team_id = ht.id LEFT JOIN eu_team_alias aa ON aa.team_id = at.id
-        WHERE m.competition = 'CL' AND m.kickoff BETWEEN now() - interval '2 days' AND now() + interval '10 days'
-        GROUP BY m.id, m.kickoff, ht.name, at.name""")).all()
-    return {"BL": bl, "CL": cl}
+    out = {"BL": bl}
+    for comp in ("CL", "D2", "DFB"):
+        out[comp] = session.execute(text("""
+            SELECT m.id, m.kickoff,
+                   string_agg(DISTINCT ha.alias, '|') || '|' || ht.name, string_agg(DISTINCT aa.alias, '|') || '|' || at.name
+            FROM eu_match m JOIN eu_team ht ON ht.id = m.home_id JOIN eu_team at ON at.id = m.away_id
+            LEFT JOIN eu_team_alias ha ON ha.team_id = ht.id LEFT JOIN eu_team_alias aa ON aa.team_id = at.id
+            WHERE m.competition = :c AND m.kickoff BETWEEN now() - interval '2 days' AND now() + interval '10 days'
+            GROUP BY m.id, m.kickoff, ht.name, at.name"""), {"c": comp}).all()
+    return out
+
+
+CONFERENCE_MIN = 3  # ab so vielen Spielen zur selben Zeit kann ein gemeinsamer Kanal eine Konferenz sein
+SKY_NUMBERED = re.compile(r"^Sky Sport \d+$")
+
+
+def mark_conference(items: list[dict]) -> list[dict]:
+    """Ein nummerierter Sky-Kanal, der bei allen Spielen eines Wettbewerbs zur selben Anstoßzeit steht, ist die
+    Konferenz (Pokal: in Österreich Sky Sport 1 bei jedem Spiel) und heißt dann "Sky Sport 1 (Konferenz)"."""
+    slots: dict[tuple, list[dict]] = {}
+    for it in items:
+        slots.setdefault((it["competition"], it["kickoff"]), []).append(it)
+    for games in slots.values():
+        if len(games) < CONFERENCE_MIN:
+            continue
+        common = set.intersection(*(set(g["channels"]) for g in games))
+        for ch in (c for c in common if SKY_NUMBERED.match(c)):
+            for g in games:
+                g["channels"] = [f"{c} (Konferenz)" if c == ch else c for c in g["channels"]]
+    return items
+
+
+def conference_to_de(rows: list[dict]) -> list[dict]:
+    """FotMob nennt die Sky-Konferenz nur für Österreich. Sky Deutschland zeigt sie auf demselben Kanal (Pokal
+    2026/27: Sky Sport 1, laut Sky und den Vereinen), die Einzelspiel-Kanäle sind ohnehin gleich. Läuft das Spiel
+    in Deutschland bei Sky, kommt die österreichische Konferenz deshalb auch in die deutsche Liste."""
+    at = {(r["competition"], r["match_id"]): json.loads(r["channels"]) for r in rows if r["country"] == "AT"}
+    for r in rows:
+        if r["country"] != "DE":
+            continue
+        de = json.loads(r["channels"])
+        conf = [c for c in at.get((r["competition"], r["match_id"]), []) if c.endswith("(Konferenz)")]
+        if conf and any(c.startswith("Sky Sport") for c in de) and not any(c.endswith("(Konferenz)") for c in de):
+            r["channels"] = json.dumps(conf + de, ensure_ascii=False)
+    return rows
 
 
 def _similarity(name: str, aliases: str) -> float:
@@ -173,7 +211,7 @@ def ingest(session: Session) -> dict:
                 raise
             unmatched.append(f"LiveOnSat nicht erreichbar: {exc}")
             continue
-        for item in items:
+        for item in mark_conference(items):
             same_time = [c for c in candidates[item["competition"]] if c[1] == item["kickoff"]]
             if not same_time and country == "LS":
                 continue  # LiveOnSat listet auch Spieltage weiter in der Zukunft
@@ -184,5 +222,5 @@ def ingest(session: Session) -> dict:
                 continue
             rows.append({"competition": item["competition"], "match_id": best[1][0], "country": country,
                          "channels": json.dumps(item["channels"], ensure_ascii=False), "fetched_at": datetime.now().astimezone()})
-    upsert(session, TvListing, rows, ["competition", "match_id", "country"])
+    upsert(session, TvListing, conference_to_de(rows), ["competition", "match_id", "country"])
     return {"zugeordnet": len(rows), "nicht_zugeordnet": sorted(set(unmatched))}
