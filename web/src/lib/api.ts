@@ -405,6 +405,7 @@ export type MatchDetail = {
   bericht?: string | null; // Spielbericht aus den Daten (Bundesliga, gespielt)
   spielfeld?: MatchPage | null; // Aufstellung und Momentum laut FotMob
   farben?: Sides<TeamColor | null> | null; // Teamfarben laut FotMob
+  presse?: Sides<NewsItem[]> | null; // Bundesliga: Meldungen der letzten 7 Tage vor dem Anpfiff
 };
 
 export type TeamColor = { hell: string; dunkel: string; schrift_hell?: string | null; schrift_dunkel?: string | null };
@@ -491,6 +492,9 @@ export type ReportHit = {
   suche: string;
   link: string;
 };
+export type NewsItem = { titel: string; quelle: string | null; art: "lokal" | "verein" | null; datum: string; verein?: string; link: string | null };
+export const searchNews = (query: string, team?: string, tage = 7, lokal = false, limit = 15) =>
+  api<NewsItem[]>(`/news?${q({ q: query, team, tage, lokal: lokal ? "true" : undefined, limit })}`);
 export const searchReports = (query: string, team?: string, saison?: number, limit = 8, neueste = false) =>
   api<ReportHit[]>(`/reports/search?${q({ q: query, team, saison, limit, neueste: neueste ? "true" : undefined })}`);
 

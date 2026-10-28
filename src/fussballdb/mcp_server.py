@@ -26,6 +26,8 @@ Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistis
 - Tipps hängen von der Punkteregel der Kicktipp-Tipprunde ab: `tipprunden` listet die Runden, `spieltag` mit
   `tipprunde` liefert Tipps und Punkte nach ihrer Regel; ohne Angabe gilt die Standardrunde.
 - Spielverläufe und Zusammenfassungen: Werkzeug `spielberichte` (Bundesliga ab 2014/15).
+- Was die Presse und die Lokalzeitungen aktuell über einen Verein schreiben: Werkzeug `nachrichten` (nur
+  Überschriften mit Link, nichts dazuerfinden).
 - Anreise zum Spiel: Werkzeug `anreise` (Google-Maps-Link mit Bus und Bahn, Ankunft eine Stunde vor dem
   Anpfiff); den Ort des Nutzers als `start` mitgeben, wenn er ihn nennt.
 - Vor 2014/15 gibt es nur Ergebnisse, Statistik (Schüsse ab 2000/01, Karten, Ecken) und Quoten, kein xG und
@@ -211,6 +213,21 @@ def tabelle_2_liga(saison: int | None = None) -> str:
         return json.dumps(comp_table("D2", saison or comp_rounds("D2")[0]["season"]), default=str, ensure_ascii=False)
     except (ValueError, IndexError) as exc:
         raise ToolError(str(exc) or "Keine Daten.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
+def nachrichten(frage: str = "", team: str | None = None, tage: int = 7, nur_lokal: bool = False, anzahl: int = 15) -> str:
+    """Aktuelle Meldungen über Bundesliga-Vereine aus der Presse (Google News, letzte Tage): Überschrift, Quelle,
+    Datum, Link und art (lokal = Zeitung oder Sender der Region, verein = Vereinsseite). Für Fragen wie "was schreibt
+    die Lokalpresse über …", Stimmung, Trainerstimmen, Verletzungsgerüchte vor offizieller Meldung. Es gibt nur die
+    Überschriften, keine Artikeltexte: nichts darüber hinaus erfinden, im Zweifel den Link nennen. team auch
+    umgangssprachlich; ohne frage die neuesten."""
+    from fussballdb.api import news_search
+
+    try:
+        return json.dumps(news_search(frage, team, tage, nur_lokal, anzahl), default=str, ensure_ascii=False)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
 
 
 @mcp.tool(annotations=READ_ONLY)

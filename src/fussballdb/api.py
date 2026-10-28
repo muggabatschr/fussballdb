@@ -14,7 +14,7 @@ from sqlalchemy import text
 from fussballdb.assistant.tools import Toolbox, _rows
 from fussballdb.config import TIPP_PUNKTE
 from fussballdb.ingest.tv import for_matches as tv_for
-from fussballdb.ingest import matchpage
+from fussballdb.ingest import matchpage, news
 from fussballdb.model import knockout
 from fussballdb.ingest.venues import for_matches as venues_for
 from fussballdb.model.tips import apply_rule
@@ -563,6 +563,9 @@ def match_detail(match_id: int, runde: str | None = None):
         "statistik": {"home": stats[0], "away": stats[1]} if len(stats) == 2 else None,
         "bericht": _report(match_id) if g["finished"] else None,
         "spielfeld": matchpage.for_match("BL", match_id),
+        # Presse: die neuesten Meldungen der letzten 7 Tage vor dem Anpfiff (offen: bis jetzt), Lokalzeitungen zuerst
+        "presse": {"home": news.for_team(h, g["kickoff"] if g["finished"] else None),
+                   "away": news.for_team(a, g["kickoff"] if g["finished"] else None)},
         "farben": matchpage.colors_for("BL", match_id, g["home"], g["away"]),
         "quoten": odds,
     }
@@ -740,6 +743,17 @@ def search_reports(q: str = "", team: str | None = None, saison: int | None = No
 
     team_id = toolbox._team(team) if team else None
     return reports.search(q, team_id, saison, limit, neueste)
+
+
+@app.get("/news")
+def news_search(q: str = "", team: str | None = None, tage: Annotated[int, Query(ge=1, le=60)] = 7,
+                lokal: bool = False, limit: Annotated[int, Query(ge=1, le=50)] = 20):
+    """Meldungen über Bundesliga-Vereine (Google News, nur Überschrift, Quelle, Datum, Link) zur Frage, kombiniert
+    aus Volltext- und Vektorsuche; ohne Frage die neuesten. art: lokal (Zeitung der Region), verein oder leer."""
+    from fussballdb.ingest import news
+
+    team_id = toolbox._team(team) if team else None
+    return news.search(q, team_id, tage, lokal, limit)
 
 
 @app.get("/kickbase/projections")

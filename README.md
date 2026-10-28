@@ -13,6 +13,8 @@ Was es alles gibt:
   Kicktipp-Runde, für kommende Spiele und im Rückblick mit dem damaligen Datenstand
 - **Champions League, 2. Bundesliga, DFB-Pokal**: Prognosen und Tipps aus einem Modell über alle Ligen
 - **Brasilianische Série A**: Prognosen, Tipps und Tabelle aus einem eigenen Modell (Elo seit 2012, xG ab 2023)
+- **Presse je Verein**: aktuelle Überschriften aus Google News mit markierten Lokalzeitungen, auf der
+  Detailseite und durchsuchbar im Chat und per MCP
 - **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
 - **Spielberichte** zu allen Bundesliga-Spielen ab 2014/15, durchsuchbar im Chat und per MCP
 - **Mehrere Kicktipp-Tipprunden**: Tipps und Punkte je Runde nach ihrer Punkteregel, Prognosen für Extratipps
@@ -665,6 +667,27 @@ Seiten: `/2bl` (Spieltage), `/2bl/tabelle` (Tabelle mit Modell-Platz und Hochrec
 Relegation, Abstieg), `/pokal` (Runden). MCP: `wettbewerb` (D2, DFB oder CL) und `tabelle_2_liga`.
 Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl-prognosen`.
 
+## Presse je Verein
+
+`ingest/news.py`, Tabelle `news_item`: Je Bundesliga-Verein holt das Update alle 6 Stunden die Meldungen der
+letzten 3 Tage aus Google News (RSS, deutsch, höchstens 100 je Suche). Gespeichert werden nur Überschrift,
+Quelle, Datum und Link, keine Artikeltexte (viele stehen hinter einer Bezahlschranke). `kind` markiert
+Lokalzeitungen und Sender der Region (`lokal`, Liste `LOCAL` je Verein, z. B. Stuttgarter Nachrichten,
+Zeitungsverlag Waiblingen und SWR beim VfB, Hamburger Abendblatt und Mopo beim HSV) und Vereinsseiten
+(`verein`). Aussortiert werden andere Sportarten und Teams (Handball, Frauen, U19 …) sowie Spam für illegale
+Livestreams, der Vereinsnamen in Überschriften packt (erkennbar an unsichtbaren Zeichen und `$ @ ~ > [ ]`).
+
+- **Detailseite** (Bundesliga): „Aus der Presse“ mit den letzten Meldungen beider Vereine aus den 7 Tagen vor
+  dem Anpfiff, Lokalzeitungen und Vereinsseiten zuerst
+- **Suche**: `/news` (Frage, Verein, Tage, nur lokal), im Chat `search_news`, im MCP `nachrichten`; Volltext und
+  Bedeutung (Embedding der Überschrift, LM Studio) wie bei den Spielberichten
+- **Nicht im Modell**: Die Meldungen fließen nicht in die Prognosen ein. Fakten wie „Spieler X fällt aus“ aus
+  Überschriften zu lesen wäre zu unsicher, und für einen Rückblick-Test fehlt die Vorgeschichte (Google News
+  liefert nur die letzten Tage). Ausfälle kommen weiter von Transfermarkt und Kickbase.
+
+Google erlaubt den Feed nur für den persönlichen, nicht kommerziellen Gebrauch in einem Feedreader. Für eine
+öffentliche App bräuchte es direkte RSS-Feeds der Zeitungen.
+
 ## Brasilianische Série A
 
 Seiten `/brasilien` (Spieltage), `/brasilien/tabelle`, `/brasilien/tipps`, Detailseiten unter
@@ -717,7 +740,7 @@ Heimvorteil je Team nicht, obwohl Höhenlage und Reisen ihn nahelegen.
 
 `fussballdb-mcp` ist ein MCP-Server mit den Werkzeugen `naechste_spiele`, `spieltag`, `prognose`,
 `team_form`, `direkte_duelle`, `ausfaelle`, `tabelle`, `kickbase`, `champions_league`, `wettbewerb`,
-`tabelle_2_liga`, `tabelle_brasilien`, `cl_tabelle`, `anreise`, `tipprunden`, `spielberichte`, `sql` und `datenstand`. Damit beantwortet
+`tabelle_2_liga`, `tabelle_brasilien`, `cl_tabelle`, `anreise`, `tipprunden`, `spielberichte`, `nachrichten`, `sql` und `datenstand`. Damit beantwortet
 Claude Fragen direkt auf den eigenen Daten. Es braucht keinen API-Schlüssel: Claude ruft den Server
 auf, abgerechnet wird über das Claude-Abo. Die Datenbank muss laufen (`docker compose up -d`).
 
@@ -759,6 +782,7 @@ nach einem Neustart von Claude Desktop.
 | `champions_league` | eine CL-Runde mit Prognosen, Tipps, Elo, Kaderwerten und Bilanz; ohne Angaben die aktuelle, mit `saison` allein die Rundenliste |
 | `wettbewerb` | Runde der 2. Bundesliga (`D2`), des DFB-Pokals (`DFB`), der CL oder der brasilianischen Série A (`BRA`) mit Prognosen und Tipps |
 | `tabelle_brasilien` | Tabelle der Série A mit Modell-Platz und Hochrechnung (Libertadores, Sudamericana, Abstieg) |
+| `nachrichten` | Aktuelle Presse-Überschriften je Verein (Frage, Team, Tage, nur Lokalzeitungen), mit Quelle und Link |
 | `tabelle_2_liga` | Tabelle der 2. Bundesliga mit Modell-Platz und Hochrechnung (Aufstieg, Relegation, Abstieg) |
 | `cl_tabelle` | Tabelle der CL-Ligaphase mit Modell-Platz und Hochrechnung (Achtelfinale, Play-offs, Aus) |
 | `anreise` | nächstes Spiel eines Teams mit Stadion, Ankunftszeit (1 Std. vor Anpfiff) und Google-Maps-Link für Bus und Bahn; `start` = wo man gerade ist |
@@ -852,6 +876,7 @@ Geprüft werden:
 | Spielorte (Stadion, Kapazität) | gespielte Spiele der Saison ohne eingefrorenen Ort oder offene der nächsten 14 Tage älter als 20 Std. | 6 Std. |
 | Wetter zur Spielzeit | Vorhersage älter als 6 Std. oder Spiel vorbei und noch nicht gemessen | 3 Std. |
 | Aufstellung und Momentum (FotMob) | gespielte Spiele mit FotMob-ID ohne eingefrorene Seite, offene der nächsten 2 Tage älter als 1 Std. | 1 Std. |
+| Presse je Verein (Google News) | letzter Abruf älter als 5 Std. | 6 Std. |
 | Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |
 | Verletzungshistorie (langsam) | noch nie vollständig geladen | 7 Tage |
 | Kickbase-Punkte (langsam) | neuer Spieltag ohne Punkte oder Spieler älter als 8 Tage | 12 Std. |
@@ -998,6 +1023,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `tip_round` | Kicktipp-Tipprunden mit Punkteregel, Tippschluss, Bonuspunkten und Standardrunde |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
 | `match_venue` | Spielort je Spiel (`competition` BL → `match`, sonst `eu_match`), nach dem Spiel eingefroren (`frozen`) |
+| `news_item` | Presse-Meldungen je Verein (Überschrift, Quelle, Link, `kind` lokal/verein) mit Volltextindex und Embedding |
 | `match_page` | Aufstellung (JSON mit Formation, Positionen, Noten, Ereignissen), Momentum, Tore/Platzverweise und Teamfarben je Spiel laut FotMob, nach dem Spiel eingefroren |
 | `match_weather` | Wetter je Spiel zur Spielzeit (`kind` vorhersage oder gemessen) |
 | `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL, D2, DFB → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |

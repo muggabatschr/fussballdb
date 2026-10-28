@@ -485,6 +485,28 @@ def _run_lineups() -> str:
         return f"Aufstellung und Momentum für {matchpage.ingest(s, log=lambda m: None)} Spiele"
 
 
+def _need_news() -> str | None:
+    """Presse-Meldungen je Verein (Google News): alle 6 Stunden die letzten 3 Tage."""
+    last = _scalar("SELECT max(fetched_at) FROM news_item")
+    if last is None:
+        return "noch keine Meldungen"
+    return "Meldungen älter als 5 Stunden" if last < datetime.now(timezone.utc) - timedelta(hours=5) else None
+
+
+def _run_news() -> str:
+    import httpx
+
+    from fussballdb.ingest import news
+
+    with session_scope() as s:
+        res = news.ingest(s, days=3, log=lambda m: None)
+    try:
+        emb = f", {news.embed_missing()} Embeddings"
+    except httpx.HTTPError:
+        emb = ", Embeddings später (LM Studio nicht erreichbar, Volltextsuche geht)"
+    return f"{res['neu']} neue Meldungen{emb}"
+
+
 def _run_weather() -> str:
     from fussballdb.ingest import weather
 
@@ -519,6 +541,7 @@ STEPS = [
     Step("stadien", "Spielorte (Stadion, Kapazität)", _need_venues, _run_venues, timedelta(hours=6)),
     Step("wetter", "Wetter zur Spielzeit", _need_weather, _run_weather, timedelta(hours=3)),
     Step("aufstellungen", "Aufstellung und Momentum (FotMob)", _need_lineups, _run_lineups, timedelta(hours=1)),
+    Step("nachrichten", "Presse je Verein (Google News)", _need_news, _run_news, timedelta(hours=6)),
     Step("spielberichte", "Spielberichte für die Suche", _need_reports, _run_reports, timedelta(hours=6)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,
          timedelta(days=7), slow=True),

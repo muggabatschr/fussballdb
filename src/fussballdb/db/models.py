@@ -434,6 +434,15 @@ MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS match_report_tsv ON match_report USING gin (tsv)",
     "CREATE INDEX IF NOT EXISTS match_report_emb ON match_report USING hnsw (embedding vector_cosine_ops)",
     "CREATE INDEX IF NOT EXISTS match_report_teams ON match_report (home_id, away_id, season)",
+    # Nachrichten je Verein (ingest/news.py): nur Überschrift, Quelle, Datum, Link; Volltext und Embedding
+    """CREATE TABLE IF NOT EXISTS news_item (
+        id serial PRIMARY KEY, team_id integer NOT NULL REFERENCES team(id) ON DELETE CASCADE,
+        title text NOT NULL, link text, source varchar(120), source_url varchar(200), kind varchar(10),
+        published_at timestamptz NOT NULL, fetched_at timestamptz NOT NULL DEFAULT now(),
+        tsv tsvector GENERATED ALWAYS AS (to_tsvector('german', title)) STORED,
+        embedding vector(768), embed_model varchar(80), UNIQUE (team_id, title))""",
+    "CREATE INDEX IF NOT EXISTS news_item_tsv ON news_item USING gin (tsv)",
+    "CREATE INDEX IF NOT EXISTS news_item_team ON news_item (team_id, published_at DESC)",
     "ALTER TABLE match ADD COLUMN IF NOT EXISTS kicktipp_pos integer",
     "ALTER TABLE match_page ADD COLUMN IF NOT EXISTS colors text",
     "ALTER TABLE prediction ADD COLUMN IF NOT EXISTS score_probs text",

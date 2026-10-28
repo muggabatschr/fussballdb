@@ -13,6 +13,7 @@ import {
   getTable,
   getUpcoming,
   runSql,
+  searchNews,
   searchReports,
 } from "@/lib/api";
 import { COMPETITIONS } from "@/lib/competitions";
@@ -138,10 +139,24 @@ export const tools = {
     execute: ({ frage, team, saison, anzahl, neueste_zuerst }) =>
       searchReports(frage ?? "", team, saison, anzahl ?? 6, neueste_zuerst ?? false),
   }),
+  search_news: tool({
+    description:
+      "Aktuelle Meldungen über Bundesliga-Vereine aus der Presse (letzte Tage): Überschrift, Quelle, Datum, Link, " +
+      "art = lokal (Zeitung der Region) oder verein. Für Fragen wie 'was schreibt die Lokalpresse über …', Stimmung, " +
+      "Trainerstimmen, Verletzungsgerüchte. Nur Überschriften, keine Artikeltexte: nichts dazuerfinden, Links nennen.",
+    inputSchema: z.object({
+      frage: z.string().optional().describe("Wonach gesucht wird, z. B. 'Verletzung' oder 'Trainer'"),
+      team: team.optional(),
+      tage: z.number().int().min(1).max(60).optional().describe("Zeitraum in Tagen, Standard 7"),
+      nur_lokal: z.boolean().optional().describe("true = nur Lokalzeitungen und Vereinsseiten"),
+    }),
+    execute: ({ frage, team, tage, nur_lokal }) => searchNews(frage ?? "", team, tage ?? 7, nur_lokal ?? false),
+  }),
   run_sql: tool({
     description:
       "Lesende SQL-Abfrage (nur SELECT/WITH, max. 200 Zeilen) für Fragen, die die anderen Werkzeuge nicht abdecken. " +
-      "Tabellen: match, match_team_stats, shot, odds, player, player_match, player_absence, elo_rating, prediction, team, season.",
+      "Tabellen: match, match_team_stats, shot, odds, player, player_match, player_absence, elo_rating, prediction, team, season, " +
+      "news_item (Meldungen: team_id, title, source, kind, published_at, link).",
     inputSchema: z.object({ query: z.string() }),
     execute: ({ query }) => runSql(query),
   }),

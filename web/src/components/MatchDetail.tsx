@@ -7,6 +7,7 @@ import { Card } from "./Card";
 import { Legend, TERMS } from "./Legend";
 import { lastName, TvLine } from "./MatchdayView";
 import { Momentum } from "./Momentum";
+import { NewsList } from "./NewsList";
 import { Pitch } from "./Pitch";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamColors } from "./TeamColors";
@@ -542,6 +543,16 @@ export function MatchDetailView({
       {d.ausfaelle && (
         <Section title="Ausfälle">
           <Sides home={g.home} away={g.away} data={d.ausfaelle} render={(rows) => <AbsenceBlock rows={rows} />} />
+        </Section>
+      )}
+
+      {d.presse && (d.presse.home.length > 0 || d.presse.away.length > 0) && (
+        <Section title={g.finished ? "Aus der Presse vor dem Spiel" : "Aus der Presse"}>
+          <Sides home={g.home} away={g.away} data={d.presse} render={(items) => <NewsList items={items} />} />
+          <p className="mt-2 text-xs text-muted">
+            Überschriften aus Google News der letzten 7 Tage, Lokalzeitungen und Vereinsseiten zuerst. Die Artikel
+            selbst liegen bei den Zeitungen, teils hinter einer Bezahlschranke.
+          </p>
         </Section>
       )}
 
