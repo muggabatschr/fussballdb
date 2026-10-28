@@ -167,6 +167,8 @@ export type Season = { start_year: number; label: string; matchdays: number; cur
 
 export type MatchdayGame = {
   id: number;
+  // Pokal: Chance aufs Weiterkommen (mit Verlängerung und Elfmeterschießen) und Anteile der Wege dorthin
+  weiter?: { home: number; away: number; verlaengerung: number; elfmeterschiessen: number };
   season?: number; // Startjahr (Bundesliga-Spieltag und Europa-Modell)
   kickoff: string;
   wochentag: string;

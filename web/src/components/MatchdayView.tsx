@@ -7,6 +7,7 @@ import { tvLogo } from "@/lib/tv";
 import { Card } from "./Card";
 import { CompetitionTabs } from "./CompetitionTabs";
 import { MatchdayNav } from "./MatchdayNav";
+import { AdvanceLine } from "./AdvanceLine";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { TeamName } from "./TeamName";
 import { TipRoundSelect } from "./TipRoundSelect";
@@ -117,6 +118,7 @@ export function Game({ g, regel, href }: { g: MatchdayGame; regel: Punkteregel; 
               </span>
             )}
           </p>
+          <AdvanceLine g={g} />
           <div className="relative space-y-3 empty:hidden">
             {g.tip_home != null && <WhyTip tip={`${g.tip_home}:${g.tip_away}`} lines={g.explanation} />}
             {!g.finished && <Scorers s={g.torschuetzen} home={g.home} away={g.away} />}

@@ -182,7 +182,9 @@ def wettbewerb(wettbewerb: str = "D2", saison: int | None = None, runde: int | N
     """Runde der 2. Bundesliga (wettbewerb="D2"), des DFB-Pokals ("DFB") oder der Champions League ("CL") mit
     Wahrscheinlichkeiten, erwarteten Toren, Tipp und Begründung. Ohne saison/runde die aktuelle Runde; mit saison
     allein die Rundenliste. Grundlage: Elo und Dixon-Coles über alle Ligen, Kaderwert als Startwert. Ab 2026
-    je Spiel `ort` mit Stadion, Kapazität und Wetter wie bei `spieltag`."""
+    je Spiel `ort` mit Stadion, Kapazität und Wetter wie bei `spieltag`. Im Pokal gelten Wahrscheinlichkeiten und
+    Tipp für die 90 Minuten; `weiter` enthält die Chance aufs Weiterkommen (home/away, mit Verlängerung und
+    Elfmeterschießen) und wie oft es in die Verlängerung bzw. ins Elfmeterschießen geht."""
     from fussballdb.api import comp_round, comp_rounds
 
     try:

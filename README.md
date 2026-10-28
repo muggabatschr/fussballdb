@@ -649,6 +649,17 @@ Rückblick-Test (`fussballdb cl-xg-test` mit `competition`, eingestellt an 2024/
 | 2. Bundesliga (1.296 Spiele) | 0,2234 | 0,2235 | 0,2231 | Elo: im Einstelljahr am besten, Mischungen danach kaum besser (87 %) |
 | DFB-Pokal (158 Spiele) | 0,1708 | **0,1420** | 0,1483 | Dixon-Coles allein: in allen Saisons besser, 99 % der Ziehungen |
 
+**Pokal: 90 Minuten und Weiterkommen.** OpenLigaDB speichert im DFB-Pokal als „Endergebnis“ den Stand nach
+90 Minuten, Verlängerung und Elfmeterschießen stehen getrennt (Halle – Schalke 2026/27: 2:2, nach Verlängerung
+2:5). Prognose, Tipp und Tipp-Punkte gelten deshalb für die 90 Minuten, Remis eingeschlossen; das passt zu den
+üblichen Tippspiel-Regeln. Dazu zeigen Kachel und Detailseite „Weiter: Augsburg 95 %“ (`model/knockout.py`):
+Sieg nach 90 Minuten plus bei Remis die Verlängerung (30 Minuten, ein Drittel der Torerwartung, Poisson) und
+das Elfmeterschießen (50:50). Geprüft an 164 Pokalspielen seit 2024/25 mit bekanntem Sieger: Brier 0,1376
+statt 0,1397 für „Remis halbieren“; ein Viertel oder 40 % der Torerwartung für die Verlängerung ändern kaum
+etwas (0,1379 bzw. 0,1374), im Elfmeterschießen gewann der Favorit 6 von 12. Auffällig: Bei knappen Spielen
+(40–60 %) kam der Gastgeber nur in 23 % weiter (26 Spiele, vermutlich Zufall). In der Champions League ist
+das „Endergebnis“ dagegen der Stand nach Verlängerung (Inter – Barcelona 2025: 4:3, nach 90 Minuten 3:3).
+
 Seiten: `/2bl` (Spieltage), `/2bl/tabelle` (Tabelle mit Modell-Platz und Hochrechnung: Aufstieg,
 Relegation, Abstieg), `/pokal` (Runden). MCP: `wettbewerb` (D2, DFB oder CL) und `tabelle_2_liga`.
 Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl-prognosen`.

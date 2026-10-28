@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { DetailAbsence, DetailFormGame, DetailH2H, MatchDetail, MatchStats, Scorer, TipRound } from "@/lib/api";
 import { kickoff, num, pct } from "@/lib/format";
 import { shortName } from "@/lib/teams";
+import { AdvanceLine } from "./AdvanceLine";
 import { Card } from "./Card";
 import { Legend, TERMS } from "./Legend";
 import { lastName, TvLine } from "./MatchdayView";
@@ -419,6 +420,7 @@ function Header({ d, meta }: { d: MatchDetail; meta: string }) {
               </span>
             )}
           </div>
+          <AdvanceLine g={g} />
           {(g.elo_home != null || d.kaderwert) && (
             <p className="text-xs text-muted tabular">
               {g.elo_home != null && (

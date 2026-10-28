@@ -39,6 +39,7 @@ export const COMPETITIONS: Record<CompCode, Competition> = {
     table: null,
     note:
       "Grundlage: Elo und Dixon-Coles über Bundesliga, 2. und 3. Liga, Kaderwert als Startwert. Amateurteams ohne " +
-      "Liga- und Kaderdaten starten deutlich schwächer. Gewertet wird das Endergebnis inklusive Verlängerung.",
+      "Liga- und Kaderdaten starten deutlich schwächer. Prognose, Tipp und Punkte gelten für das Ergebnis nach 90 " +
+      "Minuten; „Weiter“ ist die Chance aufs Weiterkommen mit Verlängerung und Elfmeterschießen.",
   },
 };

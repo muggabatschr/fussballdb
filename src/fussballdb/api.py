@@ -15,6 +15,7 @@ from fussballdb.assistant.tools import Toolbox, _rows
 from fussballdb.config import TIPP_PUNKTE
 from fussballdb.ingest.tv import for_matches as tv_for
 from fussballdb.ingest import matchpage
+from fussballdb.model import knockout
 from fussballdb.ingest.venues import for_matches as venues_for
 from fussballdb.model.tips import apply_rule
 from fussballdb.model.tips import summary as tip_summary
@@ -395,7 +396,8 @@ def _eu_games(where: str, **params) -> list[dict]:
 
 
 def _decorate_eu(comp: str, games: list[dict]) -> None:
-    """Begründung als Liste, TV-Sender und (CL, offene Spiele) die aktuellen Ausfälle als Begründungszeile."""
+    """Begründung als Liste, TV-Sender, Spielort, im Pokal die Chance aufs Weiterkommen (weiter) und (CL, offene
+    Spiele) die aktuellen Ausfälle als Begründungszeile."""
     tv = tv_for(comp, [g["id"] for g in games])
     places = venues_for(comp, [g["id"] for g in games])
     missing = _cl_absences([g["id"] for g in games if not g["finished"]]) if comp == "CL" else {}
@@ -403,6 +405,11 @@ def _decorate_eu(comp: str, games: list[dict]) -> None:
         g["explanation"] = json.loads(g["explanation"]) if g["explanation"] else []
         g["tv"] = tv.get(g["id"], {})
         g["ort"] = places.get(g["id"])
+        if comp == "DFB" and g["p_home"] is not None and g["exp_home_goals"] is not None:
+            # K.-o.-Spiel: Chance aufs Weiterkommen mit Verlängerung und Elfmeterschießen (Tipp bleibt 90 Minuten)
+            adv = knockout.advance(float(g["p_home"]), float(g["p_draw"]), float(g["p_away"]),
+                                   float(g["exp_home_goals"]), float(g["exp_away_goals"]))
+            g["weiter"] = {k: round(v, 3) for k, v in adv.items()}
         for team in (g["home"], g["away"]):
             if (g["id"], team) in missing:
                 g["explanation"].append(missing[(g["id"], team)])
