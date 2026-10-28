@@ -563,7 +563,13 @@ export function MatchDetailView({
               <p
                 key={l}
                 className={
-                  i === 0 ? "text-base font-semibold" : l.startsWith("Stichworte") ? "text-xs text-muted" : ""
+                  i === 0
+                    ? "text-base font-semibold"
+                    : l.startsWith("Stichworte")
+                      ? "text-xs text-muted"
+                      : l.startsWith("Pressestimmen")
+                        ? "text-muted"
+                        : ""
                 }
               >
                 {l}

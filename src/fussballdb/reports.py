@@ -11,7 +11,9 @@ Gespeichert in match_report mit Volltextindex (Postgres, Deutsch) und Embedding 
 für die Suche in Chat und MCP (search)."""
 
 import json
+import re
 import random
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -517,6 +519,32 @@ def _best_player(m: dict, rnd: random.Random, star: list[str]) -> list[str]:
     return []
 
 
+PRESS_AFTER = timedelta(hours=36)  # Meldungen bis so lange nach dem Anpfiff gelten als Stimmen zum Spiel
+PRESS_SKIP = re.compile(r"im TV|Live-?Ticker|\blive\b|Stream|Übertragung|Aufstellung|Vorbericht|Prognose|Tipp|Quote|"
+                        r"\b(Fotos?|Bilder|Fotostrecke|Galerie|Video|Ticker)\b|-Ticker|Highlights|Zusammenfassung|"
+                        r"Benoten Sie|Umfrage|\bArchiv(e)?\b", re.I)
+
+
+def _press_line(m: dict) -> str | None:
+    """ "Pressestimmen: „…“ (Zeitung) · …": je Verein bis zu zwei Überschriften aus den 36 Stunden nach dem Anpfiff:
+    zuerst die, die Gegner oder Ergebnis nennen (Lokalzeitung und Vereinsseite vor überregionalen), andere nur aus
+    der Lokalzeitung; ohne TV-Hinweise, Ticker, Vorberichte, Fotostrecken und Videos. Wörtlich zitiert mit
+    Quelle, nichts daraus abgeleitet (ingest/news.py)."""
+    picked = []
+    for side, other in (("home", "away"), ("away", "home")):
+        opp = [w.lower() for w in (m[f"{other}_short"], _prose(m[f"{other}_short"]), m[other].split()[-1]) if w]
+        about = lambda n: any(w in n["title"].lower() for w in opp) or re.search(r"\d:\d", n["title"])  # noqa: E731
+        # zum Spiel (Gegner oder Ergebnis genannt) aus jeder Quelle, sonst nur die Lokalzeitung
+        bare = lambda n: re.fullmatch(r"[^:]{3,40} (-|–|vs\.?|gegen) [^:]{3,40}", n["title"]) and len(n["title"].split()) <= 7  # noqa: E731
+        items = [n for n in m.get(f"press_{side}", [])
+                 if not PRESS_SKIP.search(n["title"]) and not bare(n) and (about(n) or n["kind"] == "lokal")]
+        items.sort(key=lambda n: (not about(n), n["kind"] is None, n["published_at"]))
+        picked += [n for n in items[:2] if n["title"] not in {x["title"] for x in picked}]
+    if not picked:
+        return None
+    return "Pressestimmen: " + " · ".join(f"„{n['title']}“ ({n['source']})" for n in picked) + "."
+
+
 def _numbers_line(s: dict) -> str | None:
     h, a = s.get("home") or {}, s.get("away") or {}
     parts = []
@@ -684,6 +712,8 @@ def build(m: dict, shots: list[dict], starters: set[str], reds: list[dict], stat
         lines.append(" ".join(close))
     if (nums := _numbers_line(stats)):
         lines.append(nums)
+    if (press := _press_line(m)):
+        lines.append(press)
     lines.append("Stichworte: " + "; ".join(keywords) + ".")
     return "\n".join(lines)
 
@@ -776,6 +806,11 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
                                        FROM match_team_stats x WHERE x.match_id = ANY(:ids)"""), {"ids": ids}):
             stats.setdefault(r.match_id, {})["home" if r.is_home else "away"] = dict(r._mapping)
         ctx, season_goals = _season_context(conn, sorted({m["season"] for m in matches}))
+        press: dict[tuple, list] = {}
+        first = min(m["kickoff"] for m in matches)
+        for r in conn.execute(text("""SELECT team_id, title, source, kind, published_at FROM news_item
+                                       WHERE published_at >= :f"""), {"f": first}):
+            press.setdefault(r.team_id, []).append(dict(r._mapping))
     out = []
     for m in matches:
         m["home_short"], m["away_short"] = short(m["home"]), short(m["away"])
@@ -783,6 +818,9 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
         c = m["ctx"] = ctx.get(m["id"], {})
         m["season_goals"] = season_goals.get(m["id"], {})
         m["players"] = players.get(m["id"], set())
+        for side in ("home", "away"):  # Presse in den 36 Stunden nach dem Anpfiff
+            m[f"press_{side}"] = [n for n in press.get(m[f"{side}_id"], [])
+                                  if m["kickoff"] <= n["published_at"] <= m["kickoff"] + PRESS_AFTER]
         derby = DERBYS.get(frozenset({m["home_short"], m["away_short"]}))
         hc, ac = c.get("home") or {}, c.get("away") or {}
         c["derby"] = derby

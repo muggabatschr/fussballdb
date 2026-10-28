@@ -27,3 +27,34 @@ def test_kind_by_domain():
     assert kind("Hamburger SV", "https://www.abendblatt.de") == "lokal"
     assert kind("SV Werder Bremen", "https://www.abendblatt.de") is None
     assert kind("Borussia Dortmund", "https://www.bvb.de") == "verein"
+
+
+def test_clean_title_removes_sections_and_paywall_marks():
+    from fussballdb.ingest.news import clean_title
+
+    assert clean_title("Fußball-Bundesliga - FC Bayern siegt in Freiburg - Bayern - SZ.de - SZ.de", "SZ.de") == "FC Bayern siegt in Freiburg"
+    assert clean_title("(S+) Spätes Tor sichert BVB-Heimsieg - Spiegel", "Spiegel") == "Spätes Tor sichert BVB-Heimsieg"
+    assert clean_title("Philippe trifft - HSV verliert in Paderborn - NDR.de", "NDR.de") == "Philippe trifft - HSV verliert in Paderborn"
+
+
+def test_press_line_prefers_match_headlines_and_skips_noise():
+    from datetime import datetime, timezone
+
+    from fussballdb.reports import _press_line
+
+    t = datetime(2026, 10, 25, 18, tzinfo=timezone.utc)
+    n = lambda title, kind="lokal": {"title": title, "source": "BZ", "kind": kind, "published_at": t}  # noqa: E731
+    m = {"home": "SC Freiburg", "away": "FC Bayern München", "home_short": "Freiburg", "away_short": "Bayern",
+         "press_home": [n("Die Bilder zum Heimspiel gegen Bayern"), n("SC Freiburg - FC Bayern"),
+                        n("Der SC schnuppert gegen die Bayern am Ausgleich"), n("Kurz gespielt KW44", "verein")],
+         "press_away": [n("Transfergerücht um Musiala", None)]}
+    assert _press_line(m) == "Pressestimmen: „Der SC schnuppert gegen die Bayern am Ausgleich“ (BZ)."
+
+
+def test_about_team_needs_club_or_player_not_city():
+    from fussballdb.ingest.news import NICK, about_team
+
+    words = set(NICK["VfB Stuttgart"]) | {"assignon"}
+    assert about_team("Alarmstimmung beim VfB", words)
+    assert about_team("Der Fehlstart des Lorenz Assignon", words)
+    assert not about_team("S-Bahnen in der Region Stuttgart: Baum umgestürzt", words)

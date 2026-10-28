@@ -1,6 +1,6 @@
 """Nachrichten je Bundesliga-Verein aus Google News (RSS), mit Lokalzeitungen markiert.
 
-Je Verein eine Suche der letzten Tage (deutsch); gespeichert werden nur Überschrift, Quelle, Datum und Link,
+Je Verein eine allgemeine Suche der letzten Tage (deutsch) und je Lokalzeitung eine gezielte (site:); gespeichert werden nur Überschrift, Quelle, Datum und Link,
 keine Artikeltexte (viele stehen hinter einer Bezahlschranke, fremde Texte werden nicht kopiert). Lokal sind
 Meldungen aus den Zeitungen und Sendern der Region (LOCAL), "Verein" die vom Verein selbst.
 
@@ -78,7 +78,59 @@ CLUB = {"FC Bayern München": "fcbayern.com", "Borussia Dortmund": "bvb.de", "Vf
 SPAM = re.compile(r"[\u200b-\u200f\u2060\ufeff]|[$@~>{}\[\]]")
 # andere Sportarten und Teams des Vereins, die mit der Bundesliga-Mannschaft nichts zu tun haben
 OFF_TOPIC = re.compile(r"\b(Handball|Basketball|Eishockey|Volleyball|Frauen|Juniorinnen|U\s?1[5-9]|U\s?2[0-3]|"
-                       r"Nachwuchs|E-?Sports?|Futsal|Damen)\b", re.I)
+                       r"Nachwuchs|E-?Sports?|Futsal|Damen|Fußballerinnen|Spielerinnen)\b|\bII\b", re.I)  # II = Reserve (Hoffenheim II)
+# Anhängsel, die manche Zeitungen an die Überschrift hängen ("… - Sport - SZ.de", "(S+) …" für Bezahlartikel)
+TITLE_TAIL = re.compile(r"(\s+-\s+(Sport|News|Fußball|Bundesliga|Nachrichten))+(\s+-\s+[^-]+)?$")
+TITLE_HEAD = re.compile(r"^\((S\+|F\+|Z\+|abo|Plus)\)\s*|^(Fußball-Bundesliga|Fußball|Bundesliga|DFB-Pokal)\s+-\s+", re.I)
+TITLE_SECTION = re.compile(r"\s+-\s+[\wÄÖÜäöüß.]+$")  # Rubrik am Ende ("… - Bayern"), nachdem die Quelle weg ist
+
+
+def clean_title(title: str, source: str | None) -> str:
+    title = title.strip()
+    stripped = False
+    while source and title.endswith(f" - {source}"):  # SZ hängt die Quelle doppelt an: "… - Bayern - SZ.de - SZ.de"
+        title, stripped = title[: -len(source) - 3].strip(), True
+    if stripped:
+        title = TITLE_SECTION.sub("", title)  # Rubrik davor: "… - Bayern"
+    return TITLE_HEAD.sub("", TITLE_TAIL.sub("", title)).strip()
+
+
+# Kürzel und Spitznamen, die in Überschriften für den Verein stehen (Städte allein zählen nicht: "S-Bahnen in der
+# Region Stuttgart" ist keine VfB-Meldung)
+NICK = {
+    "FC Bayern München": ("bayern", "fcb", "fc bayern"), "Borussia Dortmund": ("bvb", "borussia dortmund"),
+    "Bayer 04 Leverkusen": ("bayer", "werkself"), "RB Leipzig": ("rb leipzig", "rbl", "rasenball", "rb "),
+    "Eintracht Frankfurt": ("eintracht", "sge"), "VfB Stuttgart": ("vfb",), "SC Freiburg": ("sc freiburg", "sc-", "sportclub"),
+    "Borussia Mönchengladbach": ("gladbach", "borussia", "fohlen"), "1. FC Köln": ("fc köln", "effzeh", "fc-", "geißböcke"),
+    "1. FSV Mainz 05": ("mainz 05", "mainz-05", "05er", "fsv"), "SV Werder Bremen": ("werder",),
+    "1. FC Union Berlin": ("union", "eiserne"), "TSG Hoffenheim": ("hoffenheim", "tsg"), "FC Augsburg": ("fca", "fc augsburg"),
+    "Hamburger SV": ("hsv", "hamburger sv"), "FC Schalke 04": ("schalke", "s04", "königsblau"),
+    "SV 07 Elversberg": ("elversberg", "sve"), "SC Paderborn 07": ("paderborn", "scp"),
+}
+COMMON_NAMES = {"müller", "schmidt", "schneider", "fischer", "weber", "meyer", "wagner", "becker", "schulz", "hoffmann",
+                "koch", "richter", "klein", "wolf", "neumann", "schwarz", "braun", "zimmermann", "krüger", "hartmann",
+                "lange", "werner", "krause", "lehmann", "schmitz", "martin", "silva", "santos", "costa", "junior"}
+
+
+def team_words(session: Session) -> dict[str, set[str]]:
+    """Wörter, an denen eine Überschrift als Meldung über den Verein erkennbar ist: Vereinsnamen und Kürzel
+    (NICK, QUERY) und die Nachnamen der Spieler, die im letzten Jahr für den Verein gespielt haben."""
+    out: dict[str, set[str]] = {}
+    for name, words in NICK.items():
+        out[name] = set(words) | {q.strip('"').lower() for q in QUERY.get(name, [])}
+    for team, player in session.execute(text("""
+            SELECT DISTINCT t.name, p.name FROM player_match pm JOIN player p ON p.id = pm.player_id
+            JOIN team t ON t.id = pm.team_id JOIN match m ON m.id = pm.match_id
+            WHERE m.kickoff > now() - interval '365 days' AND pm.minutes > 0""")).all():
+        last = player.split()[-1].lower()
+        if len(last) >= 5 and last not in COMMON_NAMES:
+            out.setdefault(team, set()).add(last)
+    return out
+
+
+def about_team(title: str, words: set[str]) -> bool:
+    low = title.lower()
+    return any(w in low for w in words)
 
 
 def _domain(url: str | None) -> str:
@@ -100,12 +152,10 @@ def parse(xml: str, team: str) -> list[dict]:
     """Einträge eines Google-News-Feeds: Überschrift ohne angehängte Quelle, Link, Quelle, Datum, Art."""
     out = []
     for item in ET.fromstring(xml).iter("item"):
-        title = (item.findtext("title") or "").strip()
         src = item.find("source")
         source = (src.text or "").strip() if src is not None else ""
         source_url = src.get("url") if src is not None else None
-        if source and title.endswith(f" - {source}"):
-            title = title[: -len(source) - 3].strip()
+        title = clean_title(item.findtext("title") or "", source)
         if not title or OFF_TOPIC.search(title) or SPAM.search(title):
             continue
         try:
@@ -124,14 +174,23 @@ def ingest(session: Session, days: int = 3, log=print) -> dict:
         JOIN team t ON t.id IN (m.home_team_id, m.away_team_id)
         WHERE s.start_year = (SELECT max(start_year) FROM season)""")).all()
     now = datetime.now(timezone.utc)
+    words = team_words(session)
     n, per_team = 0, {}
     for team_id, name in teams:
         q = " OR ".join(QUERY.get(name, [f'"{name}"']))
-        try:
-            items = parse(get_text(FEED.format(q=quote(q), days=days), headers=BROWSER_HEADERS, delay=1.0), name)
-        except Exception as exc:  # ein Verein nicht erreichbar: die anderen trotzdem
-            log(f"  {name}: {exc}")
-            continue
+        # allgemeine Suche (höchstens 100 Treffer, Lokalzeitungen gehen darin oft unter) und je Lokalzeitung eine
+        # eigene Suche: die Stuttgarter Zeitung kam im Oktober 2026 allgemein gar nicht vor, gezielt mit 92 Artikeln
+        queries = [q] + [f"({q}) site:{d}" for d in LOCAL.get(name, ())]
+        items = []
+        for i, query in enumerate(queries):
+            try:
+                found = parse(get_text(FEED.format(q=quote(query), days=days), headers=BROWSER_HEADERS, delay=1.0), name)
+            except Exception as exc:  # eine Suche nicht erreichbar: die anderen trotzdem
+                log(f"  {name}: {exc}")
+                continue
+            if i > 0:  # gezielte Lokalsuche liefert auch Lokales ohne Fußball: nur mit Verein oder Spieler im Titel
+                found = [it for it in found if about_team(it["title"], words.get(name, set()))]
+            items += found
         for it in items:
             res = session.execute(text("""
                 INSERT INTO news_item (team_id, title, link, source, source_url, kind, published_at, fetched_at)

@@ -382,7 +382,12 @@ oder glücklich nach den Chancen, Überraschung, Folgen für die Tabelle (Tabell
 wenn der Spieltag noch läuft), Serien („der dritte Sieg in Folge“, „seit sieben Spielen ohne Sieg“) und Ausfälle.
 Derbys, Spitzenspiele (beide unter den ersten drei) und Kellerduelle (beide ab Platz 15) werden als solche
 benannt. Mit der FotMob-Aufstellung nennt der Bericht die Formationen (ab 2014/15) und den Spieler des Spiels
-mit Note (ab 2016/17). Danach folgt die Zeile „Zahlen zum Spiel“. Die Formulierungen wechseln von Spiel zu Spiel, bleiben für
+mit Note (ab 2016/17). Ab Oktober 2026 steht vor den Stichworten eine Zeile „Pressestimmen“: je Verein bis zu
+zwei Überschriften aus den 36 Stunden nach dem Anpfiff (`news_item`), wörtlich mit Zeitung. Zuerst die, die
+Gegner oder Ergebnis nennen (Lokalzeitung und Vereinsseite vor überregionalen), andere nur aus der
+Lokalzeitung; TV-Hinweise, Ticker, Vorberichte, Fotostrecken, Videos und reine Paarungen fallen weg. Aus den
+Überschriften wird nichts abgeleitet, der übrige Bericht bleibt reine Datenlage. Ältere Spiele haben keine
+Pressestimmen, weil Google News nur die letzten Tage liefert. Danach folgt die Zeile „Zahlen zum Spiel“. Die Formulierungen wechseln von Spiel zu Spiel, bleiben für
 ein Spiel aber gleich. Dazu eine Zeile
 **Stichworte** zum Verlauf, je Team zugeordnet („Comeback von Gladbach“, „spätes Siegtor von HSV“,
 „glücklicher Sieg von …“, Platzverweis, Elfmeter, Eigentor, Überraschung …). Die Berichte stehen auf der
@@ -670,7 +675,12 @@ Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl
 ## Presse je Verein
 
 `ingest/news.py`, Tabelle `news_item`: Je Bundesliga-Verein holt das Update alle 6 Stunden die Meldungen der
-letzten 3 Tage aus Google News (RSS, deutsch, höchstens 100 je Suche). Gespeichert werden nur Überschrift,
+letzten 3 Tage aus Google News (RSS, deutsch, höchstens 100 je Suche): eine allgemeine Suche und je
+Lokalzeitung eine gezielte (`site:`), weil Lokalzeitungen in der allgemeinen Suche untergehen (die Stuttgarter
+Zeitung kam dort gar nicht vor, gezielt mit 92 Artikeln in einer Woche). Die gezielte Suche bringt auch allgemeines
+Lokales („S-Bahnen in der Region Stuttgart“); von dort zählt deshalb nur, was in der Überschrift den Verein
+(Name, Kürzel wie VfB, BVB, Spitznamen wie Fohlen) oder einen Spieler aus dem letzten Jahr nennt. Der
+Stadtname allein reicht nicht. Gespeichert werden nur Überschrift,
 Quelle, Datum und Link, keine Artikeltexte (viele stehen hinter einer Bezahlschranke). `kind` markiert
 Lokalzeitungen und Sender der Region (`lokal`, Liste `LOCAL` je Verein, z. B. Stuttgarter Nachrichten,
 Zeitungsverlag Waiblingen und SWR beim VfB, Hamburger Abendblatt und Mopo beim HSV) und Vereinsseiten
