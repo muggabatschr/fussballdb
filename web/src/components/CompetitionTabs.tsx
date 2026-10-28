@@ -5,6 +5,7 @@ const TABS = [
   { key: "D2", href: "/2bl", label: "2. Liga" },
   { key: "DFB", href: "/pokal", label: "Pokal" },
   { key: "CL", href: "/cl", label: "CL" },
+  { key: "BRA", href: "/brasilien", label: "Brasilien" },
 ] as const;
 
 /** Umschalten zwischen den Wettbewerben über den Spieltags- und Rundenansichten. */

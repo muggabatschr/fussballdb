@@ -12,6 +12,7 @@ Was es alles gibt:
 - **Prognosemodell** mit Wahrscheinlichkeiten, erwarteten Toren und einem Tipp nach der Punkteregel der
   Kicktipp-Runde, für kommende Spiele und im Rückblick mit dem damaligen Datenstand
 - **Champions League, 2. Bundesliga, DFB-Pokal**: Prognosen und Tipps aus einem Modell über alle Ligen
+- **Brasilianische Série A**: Prognosen, Tipps und Tabelle aus einem eigenen Modell (Elo seit 2012, xG ab 2023)
 - **Tipp-Zettel** zum Kopieren oder als Bild, Erinnerung vor dem Tippschluss als Mac-Mitteilung
 - **Spielberichte** zu allen Bundesliga-Spielen ab 2014/15, durchsuchbar im Chat und per MCP
 - **Mehrere Kicktipp-Tipprunden**: Tipps und Punkte je Runde nach ihrer Punkteregel, Prognosen für Extratipps
@@ -476,7 +477,7 @@ offen“. FotMob kennt die Kanäle etwa eine Woche im Voraus; bei gespielten Spi
 ausgeblendet.
 
 Die Logos liegen unter `web/public/tv/` (Sky-Kanäle von sky.de, DAZN von FotMob, WOW von wowtv.de; Prime
-Video, RTL+, RTL, OneFootball, ZDF, Das Erste und ServusTV von Wikimedia Commons, ServusTV unter CC BY-SA 4.0,
+Video, RTL+, RTL, OneFootball, ZDF, Das Erste, ServusTV und Sportdigital Fußball von Wikimedia Commons, ServusTV unter CC BY-SA 4.0,
 die übrigen gemeinfrei). „Sky Sport 1–10“ (Pokal, 2. Liga) sind die Sky-Bundesliga-Logos ohne das
 Bundesliga-Wappen. Livestreams und Mediatheken zeigen das Logo ihres Senders und erscheinen nur einmal
 (ZDF und ZDF Livestream). Die Zuordnung Kanalname → Logo steht in `web/src/lib/tv.ts`. Sender ohne Logo
@@ -664,11 +665,59 @@ Seiten: `/2bl` (Spieltage), `/2bl/tabelle` (Tabelle mit Modell-Platz und Hochrec
 Relegation, Abstieg), `/pokal` (Runden). MCP: `wettbewerb` (D2, DFB oder CL) und `tabelle_2_liga`.
 Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl-prognosen`.
 
+## Brasilianische Série A
+
+Seiten `/brasilien` (Spieltage), `/brasilien/tabelle`, `/brasilien/tipps`, Detailseiten unter
+`/brasilien/spiel/<id>`; MCP `wettbewerb` mit `BRA` und `tabelle_brasilien`; im Chat-Tipp-Zettel `BRA`.
+
+**Daten** (`ingest/brazil.py`, Wettbewerb `BRA` in `eu_match`, Saison = Kalenderjahr):
+
+| Quelle | Inhalt | Zeitraum |
+|---|---|---|
+| football-data.co.uk (`new/BRA.csv`) | Ergebnisse, Schlussquoten (für den Marktvergleich) | 2012 bis heute |
+| FotMob (Liga 268) | Spielplan, Spieltage, Ergebnisse, xG, Aufstellung, Momentum, Stadion, TV | Spiele ab 2023, xG verlässlich ab 2023 |
+| Transfermarkt (`BRA1`) | Kaderwerte, Wappen | Kaderwerte ab 2022, nur für die Vereine der laufenden Saison |
+
+Bis 2022 kommen die Spiele von football-data (Vorgeschichte für die Elo), ab 2023 nur noch von FotMob, damit
+es keine doppelten Spiele gibt. Die Teams werden an den Spielen, die in beiden Quellen stehen, zugeordnet
+(gleiches Datum ±1 Tag, gleiches Ergebnis, ähnliche Namen); angezeigt werden die FotMob-Namen
+(„São Paulo“, „Vasco da Gama“). Transfermarkt hängt oft die Stadt an („Corinthians São Paulo“), die 20 Vereine
+sind deshalb fest zugeordnet (`TM_TO_FD`). Transfermarkt zeigt auch für vergangene Stichtage nur die Vereine
+der aktuellen Saison; Absteiger haben deshalb keinen Kaderwert und ihr Wappen kommt von FotMob.
+
+**Modell** (`model/europe.py`, `SEPARATE`): Brasilien spielt nie gegen europäische Teams und wird deshalb
+getrennt gerechnet, mit derselben Technik wie die CL: eigene Elo (Einschwingen ab 2014), eigenes Tormodell
+mit eigenem Heimvorteil, eigenes Dixon-Coles auf xG. Der Saisonwechsel richtet sich nach der Spalte `season`
+(2026 begann schon im Januar). Der Heimvorteil in der Elo (50 bis 130 getestet) ändert nichts, weil das
+Tormodell ihn selbst schätzt (RPS 0,2083–0,2084).
+
+**Tabelle:** Bei Punktgleichheit zählen zuerst die Siege, dann Tordifferenz und Tore. Zonen nach den Regeln
+2026: 1–4 Libertadores, 5 Libertadores-Qualifikation, 6–11 Copa Sudamericana, 17–20 Abstieg.
+
+**Wie gut?** Brasilien ist schwerer vorherzusagen als Bundesliga und CL: starker Heimvorteil (48 % Heimsiege),
+viele Remis (27 %), ausgeglichene Teams, Rotation wegen Copa Libertadores und Copa do Brasil. Der Wettmarkt
+liegt 2023–2026 bei RPS 0,2005 (Bundesliga 0,1936, unser CL-Modell 0,194).
+
+Rückblick-Test (`fussballdb brasilien-test`, eingestellt an 2023, Test 2024 bis heute, alle 1.459 Spiele mit Quoten):
+
+| Variante | RPS 2023 | RPS Test | besser als Elo | Saisons | Punkte je Spiel |
+|---|---|---|---|---|---|
+| Wettmarkt (Schlussquoten) | 0,2096 | 0,1972 | | | |
+| **xG/Elo 70/30 + Form** (übernommen, wie CL) | 0,2149 | **0,2041** | 98 % | 4/4 | 1,43 |
+| xG allein | 0,2154 | 0,2043 | 91 % | 3/4 | 1,42 |
+| Tore statt xG, 70/30 + Form | 0,2151 | 0,2049 | 91 % | 3/4 | 1,42 |
+| Elo allein | 0,2154 | 0,2059 | | | 1,41 |
+| + Heimvorteil je Team / Tor-Skalierung / Remis-Kalibrierung / Halbwertszeit 3 Mon. / alle | 0,2146–0,2154 | 0,2040–0,2043 | 94–98 % | 3–4/4 | 1,41–1,43 |
+
+Das xG-Modell ist klar besser als die Elo, bleibt aber 0,007 hinter dem Markt (in der Bundesliga liegt unser
+Modell näher am Markt). Die früher verworfenen Bausteine ändern auch hier nichts (±0,0001), auch der
+Heimvorteil je Team nicht, obwohl Höhenlage und Reisen ihn nahelegen.
+
 ## Zugriff aus Claude (MCP)
 
 `fussballdb-mcp` ist ein MCP-Server mit den Werkzeugen `naechste_spiele`, `spieltag`, `prognose`,
 `team_form`, `direkte_duelle`, `ausfaelle`, `tabelle`, `kickbase`, `champions_league`, `wettbewerb`,
-`tabelle_2_liga`, `cl_tabelle`, `anreise`, `tipprunden`, `spielberichte`, `sql` und `datenstand`. Damit beantwortet
+`tabelle_2_liga`, `tabelle_brasilien`, `cl_tabelle`, `anreise`, `tipprunden`, `spielberichte`, `sql` und `datenstand`. Damit beantwortet
 Claude Fragen direkt auf den eigenen Daten. Es braucht keinen API-Schlüssel: Claude ruft den Server
 auf, abgerechnet wird über das Claude-Abo. Die Datenbank muss laufen (`docker compose up -d`).
 
@@ -708,7 +757,8 @@ nach einem Neustart von Claude Desktop.
 | `tabelle` | Tabelle mit xG und xPts |
 | `kickbase` | erwartete Kickbase-Punkte, Marktwert, Trend, Punkte pro Million; `auswahl` = alle, markt oder kader |
 | `champions_league` | eine CL-Runde mit Prognosen, Tipps, Elo, Kaderwerten und Bilanz; ohne Angaben die aktuelle, mit `saison` allein die Rundenliste |
-| `wettbewerb` | Runde der 2. Bundesliga (`D2`), des DFB-Pokals (`DFB`) oder der CL mit Prognosen und Tipps |
+| `wettbewerb` | Runde der 2. Bundesliga (`D2`), des DFB-Pokals (`DFB`), der CL oder der brasilianischen Série A (`BRA`) mit Prognosen und Tipps |
+| `tabelle_brasilien` | Tabelle der Série A mit Modell-Platz und Hochrechnung (Libertadores, Sudamericana, Abstieg) |
 | `tabelle_2_liga` | Tabelle der 2. Bundesliga mit Modell-Platz und Hochrechnung (Aufstieg, Relegation, Abstieg) |
 | `cl_tabelle` | Tabelle der CL-Ligaphase mit Modell-Platz und Hochrechnung (Achtelfinale, Play-offs, Aus) |
 | `anreise` | nächstes Spiel eines Teams mit Stadion, Ankunftszeit (1 Std. vor Anpfiff) und Google-Maps-Link für Bus und Bahn; `start` = wo man gerade ist |

@@ -19,8 +19,8 @@ import { COMPETITIONS } from "@/lib/competitions";
 import type { TipSheetProps } from "@/components/TipSheet";
 import { selectedTipRound } from "@/lib/tipround";
 
-/** Tipp-Zettel wie auf /tipps: Bundesliga-Spieltag oder Runde von 2. Liga, CL, Pokal; ohne Angabe die aktuelle. */
-async function tipSheet(comp: "BL" | "D2" | "CL" | "DFB", season?: number, round?: number, tipRound?: string): Promise<TipSheetProps> {
+/** Tipp-Zettel wie auf /tipps: Bundesliga-Spieltag oder Runde von 2. Liga, CL, Pokal, Brasilien; ohne Angabe die aktuelle. */
+async function tipSheet(comp: "BL" | "D2" | "CL" | "DFB" | "BRA", season?: number, round?: number, tipRound?: string): Promise<TipSheetProps> {
   if (comp === "BL") {
     const seasons = await getSeasons();
     const s = seasons.find((x) => x.start_year === season) ?? seasons[0];
@@ -103,9 +103,9 @@ export const tools = {
       "als Box mit Wappen und kann ihn als Bild oder Text teilen.",
     inputSchema: z.object({
       wettbewerb: z
-        .enum(["BL", "D2", "CL", "DFB"])
+        .enum(["BL", "D2", "CL", "DFB", "BRA"])
         .optional()
-        .describe("BL = Bundesliga (Standard), D2 = 2. Bundesliga, CL = Champions League, DFB = DFB-Pokal"),
+        .describe("BL = Bundesliga (Standard), D2 = 2. Bundesliga, CL = Champions League, DFB = DFB-Pokal, BRA = brasilianische Série A"),
       saison: z.number().int().optional().describe("Startjahr, z. B. 2026; Standard aktuelle Saison"),
       spieltag: z.number().int().optional().describe("Spieltag bzw. Runde; Standard der nächste offene"),
       tipprunde: z

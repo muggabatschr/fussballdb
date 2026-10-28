@@ -43,6 +43,7 @@ TM_LEAGUE = {
     "NOR": "NO1", "SWE": "SE1", "POL": "PL1", "ROU": "RO1", "D2": "L2", "D3": "L3",
     "SRB": "SER1", "CZE": "TS1", "CRO": "KR1", "UKR": "UKR1", "SVK": "SLO1", "CYP": "ZYP1",
     "AZE": "AZ1", "KAZ": "KAS1", "BUL": "BU1", "HUN": "UNG1", "ISR": "ISR1", "LAT": "LET1",
+    "BRA": "BRA1",  # Brasilien (eigene Welt, ingest/brazil.py)
 }
 
 # Europapokal bei OpenLigaDB: (Wettbewerb, Kürzel, Saison). Das Kürzel wechselt je Saison;
@@ -177,6 +178,16 @@ OLDB_NAMES: dict[str, int] = {
 
 # Transfermarkt-Namen, die sich nicht automatisch einem football-data-Namen zuordnen lassen
 TM_TO_FD: dict[str, str] = {
+    # Brasilien: Transfermarkt hängt oft die Stadt an ("Corinthians São Paulo"), die Teilwort-Suche träfe dann
+    # den falschen Verein (São Paulo, Paraná statt Athletico). Deshalb alle 20 Vereine fest zugeordnet.
+    "Athletico Paranaense": "Athletico-PR", "Botafogo Rio de Janeiro": "Botafogo RJ", "Chapecoense": "Chapecoense-SC",
+    "Clube Atlético Mineiro": "Atletico-MG", "Clube do Remo (PA)": "Remo", "Corinthians São Paulo": "Corinthians",
+    "Coritiba FC": "Coritiba", "EC Bahia": "Bahia", "EC Cruzeiro Belo Horizonte": "Cruzeiro",
+    "Esporte Clube Vitória": "Vitoria", "FC Santos": "Santos", "FC São Paulo": "Sao Paulo",
+    "Flamengo Rio de Janeiro": "Flamengo RJ", "Fluminense Football Club": "Fluminense",
+    "Grêmio Porto Alegre": "Gremio", "Mirassol FC (SP)": "Mirassol", "Red Bull Bragantino": "Bragantino",
+    "SC Internacional": "Internacional", "SE Palmeiras São Paulo": "Palmeiras",
+    "Vasco da Gama Rio de Janeiro": "Vasco",
     "Nottingham Forest": "Nott'm Forest", "Wolverhampton Wanderers": "Wolves", "Rayo Vallecano": "Vallecano",
     "RCD Espanyol Barcelona": "Espanol", "Celta Vigo": "Celta", "Borussia Mönchengladbach": "M'gladbach",
     "1.FC Köln": "FC Koln", "Paris FC": "Paris FC", "Hellas Verona": "Verona",
@@ -284,6 +295,8 @@ class EuTeams:
         if ("tm", str(tm_id)) in self.by_alias:
             return self.by_alias[("tm", str(tm_id))]
         sources = {f"fd:{country}"} | ({"oldb-de", "fd:D1"} if country in ("D2", "D3") else set())
+        if country == "BRA":
+            sources.add("fm:BRA")  # FotMob-Namen ("Flamengo") passen besser zu Transfermarkt als "Flamengo RJ"
         candidates = {alias: tid for (src, alias), tid in self.by_alias.items() if src in sources}
         if not candidates:
             return None
@@ -413,7 +426,7 @@ def value_stichtage(start: date, end: date | None = None) -> list[date]:
 
 
 def ingest_values(session: Session, start: date = date(FIRST_SEASON, 7, 1), end: date | None = None,
-                  log=print) -> tuple[int, dict[str, list[str]]]:
+                  log=print, leagues: dict[str, str] | None = None) -> tuple[int, dict[str, list[str]]]:
     """Kaderwerte aller Vereine der Ligen in TM_LEAGUE zu den Stichtagen. Liefert (Anzahl, nicht
     zugeordnete Vereine je Liga). Nicht zugeordnet bleiben vor allem Vereine kleiner Länder, die nie im
     Europapokal waren; sie werden nicht gebraucht."""
@@ -422,7 +435,7 @@ def ingest_values(session: Session, start: date = date(FIRST_SEASON, 7, 1), end:
     days = value_stichtage(start, end)
     for d in days:
         historic = d < date.today().replace(day=1)
-        for country, liga in TM_LEAGUE.items():
+        for country, liga in (leagues or TM_LEAGUE).items():
             html = get_text(VALUE_URL.format(liga=liga, stichtag=d.isoformat()), headers=BROWSER_HEADERS,
                             cache=historic, delay=2.0)  # Pause nur nach echten Abrufen, nicht aus dem Cache
             table = BeautifulSoup(html, "html.parser").select("table.items")
@@ -517,6 +530,45 @@ def ingest_logos(session: Session, force: bool = False) -> dict:
                 pass
         if not path.exists():
             missing.append(team.name)
+        info[team.name] = {"logo": f"/logos/eu/{path.name}" if path.exists() else None,
+                           "short": SHORT.get(team.name, team.name)}
+    # Vereine ohne eigene Transfermarkt-ID, die über die Kaderwerte einem Transfermarkt-Verein zugeordnet sind
+    # (Brasilien): Wappen ebenfalls von Transfermarkt
+    for alias, team_id in session.execute(text("""SELECT a.alias, a.team_id FROM eu_team_alias a JOIN eu_team t
+                                                    ON t.id = a.team_id WHERE a.source = 'tm' AND t.country = 'BRA'""")).all():
+        team = session.get(EuTeam, team_id)
+        if team is None or team.tm_id is not None or team.name in info:
+            continue
+        path = logo_dir / f"{alias}.png"
+        if force or not path.exists():
+            try:
+                resp = _client.get(TM_URL.format(id=alias), headers=BROWSER_HEADERS)
+                resp.raise_for_status()
+                time.sleep(1.0)
+                if _image_ext(resp.content) == ".png":
+                    path.write_bytes(resp.content)
+                    loaded += 1
+            except Exception:
+                pass
+        info[team.name] = {"logo": f"/logos/eu/{path.name}" if path.exists() else None,
+                           "short": SHORT.get(team.name, team.name)}
+    # Brasilianische Absteiger stehen nicht mehr bei Transfermarkt in der Liga: Wappen von FotMob
+    for alias, team_id in session.execute(text("""SELECT a.alias, a.team_id FROM eu_team_alias a JOIN eu_team t
+                                                    ON t.id = a.team_id WHERE a.source = 'fmid:BRA'""")).all():
+        team = session.get(EuTeam, team_id)
+        if team is None or (info.get(team.name) or {}).get("logo"):
+            continue
+        path = logo_dir / f"fm-{alias}.png"
+        if force or not path.exists():
+            try:
+                resp = _client.get(f"https://images.fotmob.com/image_resources/logo/teamlogo/{alias}.png", headers=BROWSER_HEADERS)
+                resp.raise_for_status()
+                time.sleep(1.0)
+                if _image_ext(resp.content) == ".png":
+                    path.write_bytes(resp.content)
+                    loaded += 1
+            except Exception:
+                pass
         info[team.name] = {"logo": f"/logos/eu/{path.name}" if path.exists() else None,
                            "short": SHORT.get(team.name, team.name)}
     # Vereine der 2. Liga und des Pokals ohne Transfermarkt-ID: Wappen von OpenLigaDB

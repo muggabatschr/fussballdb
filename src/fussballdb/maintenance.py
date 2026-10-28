@@ -208,15 +208,15 @@ def _need_europe() -> str | None:
                        AND kickoff > now() - interval '14 days'""")
     if no_xg:
         return f"{no_xg} CL-Spiele ohne xG"
-    last_league = _scalar("SELECT max(kickoff) FROM eu_match WHERE competition NOT IN ('CL', 'EL')")
+    last_league = _scalar("SELECT max(kickoff) FROM eu_match WHERE competition NOT IN ('CL', 'EL', 'BRA')")
     if last_league and last_league < datetime.now(timezone.utc) - timedelta(days=4):
         return "Ligaspiele für die Europa-Elo älter als 4 Tage"
     missing = _scalar(
-        """SELECT count(*) FROM eu_match m WHERE m.competition IN ('CL', 'D2', 'DFB') AND NOT m.finished AND m.kickoff > now()
+        """SELECT count(*) FROM eu_match m WHERE m.competition IN ('CL', 'D2', 'DFB', 'BRA') AND NOT m.finished AND m.kickoff > now()
            AND NOT EXISTS (SELECT 1 FROM eu_prediction p WHERE p.match_id = m.id AND p.basis = 'live')"""
     )
     if missing:
-        return f"{missing} offene Spiele (CL, 2. Liga, Pokal) ohne Prognose"
+        return f"{missing} offene Spiele (CL, 2. Liga, Pokal, Brasilien) ohne Prognose"
     last_pred = _scalar("SELECT max(as_of) FROM eu_prediction WHERE basis = 'live'")
     if last_pred and last_pred < datetime.now(timezone.utc) - timedelta(hours=24):
         return "CL-Prognosen älter als 24 Stunden"
@@ -237,7 +237,7 @@ def _need_cl_absences() -> str | None:
 def _need_tv() -> str | None:
     """TV-Sender: täglich neu laden, solange Spiele in den nächsten 7 Tagen anstehen."""
     upcoming = _scalar("""SELECT (SELECT count(*) FROM match WHERE NOT finished AND kickoff BETWEEN now() AND now() + interval '7 days')
-                         + (SELECT count(*) FROM eu_match WHERE competition IN ('CL', 'D2', 'DFB') AND NOT finished
+                         + (SELECT count(*) FROM eu_match WHERE competition IN ('CL', 'D2', 'DFB', 'BRA') AND NOT finished
                             AND kickoff BETWEEN now() AND now() + interval '7 days')""")
     if not upcoming:
         return None
@@ -284,7 +284,10 @@ def _need_venues() -> str | None:
             SELECT 'BL' AS c, m.id, m.kickoff, m.finished FROM match m JOIN season s ON s.id = m.season_id
             WHERE s.start_year = :y
             UNION ALL
-            SELECT competition, id, kickoff, finished FROM eu_match WHERE season = :y AND competition IN ('CL', 'D2', 'DFB'))
+            SELECT competition, id, kickoff, finished FROM eu_match WHERE season = :y AND competition IN ('CL', 'D2', 'DFB')
+            UNION ALL  -- Brasilien: Saison = Kalenderjahr
+            SELECT competition, id, kickoff, finished FROM eu_match
+            WHERE competition = 'BRA' AND season = extract(year FROM now())::int)
         SELECT count(*) FROM games g
         WHERE (g.finished OR g.kickoff < now() + interval '14 days')
           AND NOT EXISTS (SELECT 1 FROM match_venue v WHERE v.competition = g.c AND v.match_id = g.id
@@ -396,12 +399,17 @@ def _run_europe() -> str:
                                                log=lambda m: None)
     with session_scope() as s:
         n_de = europe.ingest_germany(s, [CURRENT_SEASON], log=lambda m: None)
+    from fussballdb.ingest import brazil
+
+    with session_scope() as s:  # Série A: Saison = Kalenderjahr, Spielplan, Ergebnisse und xG von FotMob
+        res_bra = brazil.ingest(s, [date.today().year], log=lambda m: None)
     from fussballdb.model.europe import PREDICTED_COMPETITIONS
 
     back = sum(eu_backfill(c) for c in PREDICTED_COMPETITIONS)
     live = sum(eu_predict(c) for c in PREDICTED_COMPETITIONS)
-    return (f"Europapokal {n_eu}, 2./3. Liga und Pokal {n_de}, xG {n_xg}, Ligaspiele {n_league}, "
-            f"Kaderwerte {n_values}, Prognosen CL/2. Liga/Pokal: Rückblick {back}, Live {live}")
+    return (f"Europapokal {n_eu}, 2./3. Liga und Pokal {n_de}, Brasilien {res_bra['spiele']} (xG {res_bra['xg']}), "
+            f"xG {n_xg}, Ligaspiele {n_league}, Kaderwerte {n_values}, "
+            f"Prognosen CL/2. Liga/Pokal/Brasilien: Rückblick {back}, Live {live}")
 
 
 def _run_cl_absences() -> str:

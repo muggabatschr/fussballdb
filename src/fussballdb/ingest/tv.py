@@ -26,7 +26,7 @@ from fussballdb.ingest.upsert import upsert
 
 URL = "https://www.fotmob.com/de/tv-guide/{country}"
 COUNTRIES = ("de", "at")
-LEAGUES = {54: "BL", 42: "CL", 146: "D2", 209: "DFB"}  # FotMob-Wettbewerb -> unsere Kennung
+LEAGUES = {54: "BL", 42: "CL", 146: "D2", 209: "DFB", 268: "BRA"}  # FotMob-Wettbewerb -> unsere Kennung
 LIVEONSAT_URL = "https://liveonsat.com/europe-germany-bundesliga1.php"
 # Kanäle bei LiveOnSat, die für Deutschland und Österreich zählen (die Seite listet Sender aus aller Welt)
 LIVEONSAT_KEEP = re.compile(r"^(Sky Sport Bundesliga|Sky Sport Top Event|DAZN Deutsch|WOW)")
@@ -147,7 +147,7 @@ def _candidates(session: Session) -> dict[str, list[tuple]]:
         WHERE m.kickoff BETWEEN now() - interval '2 days' AND now() + interval '10 days'
         GROUP BY m.id, m.kickoff, ht.name, at.name""")).all()
     out = {"BL": bl}
-    for comp in ("CL", "D2", "DFB"):
+    for comp in ("CL", "D2", "DFB", "BRA"):
         out[comp] = session.execute(text("""
             SELECT m.id, m.kickoff,
                    string_agg(DISTINCT ha.alias, '|') || '|' || ht.name, string_agg(DISTINCT aa.alias, '|') || '|' || at.name

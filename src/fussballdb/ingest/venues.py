@@ -23,7 +23,8 @@ from fussballdb.ingest.upsert import upsert
 
 # unsere Kennung -> FotMob-Wettbewerb (ID und Pfad der Spielplan-Seite)
 LEAGUES = {"BL": (54, "bundesliga"), "D2": (146, "2-bundesliga"), "DFB": (209, "dfb-pokal"),
-           "CL": (42, "champions-league")}
+           "CL": (42, "champions-league"), "BRA": (268, "serie-a")}
+CALENDAR_YEAR = ("BRA",)  # Saison = Kalenderjahr (FotMob: season=2026 statt 2026-2027)
 FIXTURES = "https://www.fotmob.com/leagues/{id}/fixtures/{slug}?season={season}-{next}"
 AHEAD = timedelta(days=14)  # offene Spiele so weit im Voraus
 
@@ -40,7 +41,8 @@ COUNTRY_TZ = {"England": "Europe/London", "Scotland": "Europe/London", "Wales": 
               "Bulgaria": "Europe/Sofia", "Ukraine": "Europe/Kyiv", "Moldova": "Europe/Chisinau",
               "Finland": "Europe/Helsinki", "Israel": "Asia/Jerusalem", "Türkiye": "Europe/Istanbul",
               "Turkey": "Europe/Istanbul", "Azerbaijan": "Asia/Baku", "Kazakhstan": "Asia/Almaty",
-              "Russia": "Europe/Moscow", "Georgia": "Asia/Tbilisi", "Armenia": "Asia/Yerevan"}
+              "Russia": "Europe/Moscow", "Georgia": "Asia/Tbilisi", "Armenia": "Asia/Yerevan",
+              "Brazil": "America/Sao_Paulo"}  # Série A fast nur UTC−3 (Cuiabá UTC−4 bleibt eine Stunde daneben)
 
 
 def route(lat: float, lon: float, kickoff: datetime, country: str | None, start: str = "") -> dict:
@@ -82,7 +84,10 @@ def _candidates(session: Session, comp: str, season: int) -> list[tuple]:
 def pair(fx: dict, todo: list[tuple]) -> tuple | None | bool:
     """Unser Spiel (aus _candidates) zu einem FotMob-Spiel: gleicher Anstoß, oder gleicher Tag mit klar passenden
     Namen (Uhrzeit offen oder Anpfiff verschoben). None = kein Spiel an dem Tag, False = Namen passen nicht."""
-    near = [c for c in todo if c[1].date() == fx["kickoff"].date()]
+    # Datum beider Seiten in UTC (die Datenbank liefert Berliner Zeit; brasilianische Abendspiele um 23 Uhr UTC
+    # lägen sonst an verschiedenen Tagen)
+    day = fx["kickoff"].astimezone(timezone.utc).date()
+    near = [c for c in todo if c[1].astimezone(timezone.utc).date() == day]
     scored = [(_similarity(fx["home"], c[3]) + _similarity(fx["away"], c[4]), c) for c in near]
     best = max(scored, default=None, key=lambda x: x[0])
     if best is None:
@@ -92,7 +97,10 @@ def pair(fx: dict, todo: list[tuple]) -> tuple | None | bool:
 
 def _fixtures(comp: str, season: int) -> list[dict]:
     league_id, slug = LEAGUES[comp]
-    html = get_text(FIXTURES.format(id=league_id, slug=slug, season=season, next=season + 1), headers=BROWSER_HEADERS)
+    url = FIXTURES.format(id=league_id, slug=slug, season=season, next=season + 1)
+    if comp in CALENDAR_YEAR:
+        url = url.split("?season=")[0] + f"?season={season}"
+    html = get_text(url, headers=BROWSER_HEADERS)
     out = []
     for m in _next_data(html).get("fixtures", {}).get("allMatches", []):
         status = m.get("status", {})
@@ -115,11 +123,12 @@ def ingest(session: Session, season: int | None = None, log=print) -> dict:
     now = datetime.now(timezone.utc)
     rows, unmatched = [], []
     for comp in LEAGUES:
-        todo = [c for c in _candidates(session, comp, season) if c[2] or c[1] <= now + AHEAD]
+        comp_season = now.year if comp in CALENDAR_YEAR else season
+        todo = [c for c in _candidates(session, comp, comp_season) if c[2] or c[1] <= now + AHEAD]
         if not todo:
             continue
         done = set(session.scalars(text("SELECT fotmob_id FROM match_venue WHERE competition = :c AND frozen"), {"c": comp}))
-        for fx in _fixtures(comp, season):
+        for fx in _fixtures(comp, comp_season):
             if fx["id"] in done:
                 continue
             best = pair(fx, todo)

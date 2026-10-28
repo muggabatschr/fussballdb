@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getCompMatchDetail, getCompRound, getCompRounds, getCompTable, load } from "@/lib/api";
-import { COMPETITIONS, type CompCode } from "@/lib/competitions";
+import { COMPETITIONS, type CompCode, seasonLabel } from "@/lib/competitions";
 import { ErrorBox } from "./Card";
 import { ClLeagueTable, ClProjectionTable, ClTableSeasons } from "./ClTable";
 import { ClView } from "./ClView";
@@ -107,7 +107,7 @@ export async function CompMatchPage({ comp, id }: { comp: CompCode; id: number }
   if (!res.ok) return <ErrorBox message={res.error} />;
   const d = res.data;
   const g = d.game;
-  const label = `${g.season}/${String((g.season + 1) % 100).padStart(2, "0")}`;
+  const label = seasonLabel(comp, g.season);
   return (
     <MatchDetailView
       d={d}

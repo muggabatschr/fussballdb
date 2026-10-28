@@ -20,6 +20,7 @@ FORECAST = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 HOURLY = "temperature_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m"
 HORIZON = timedelta(days=16)  # so weit reicht die Vorhersage
+FORECAST_PAST = timedelta(days=80)  # ältere Spiele direkt aus dem Archiv (Vorhersage-API: höchstens ~92 Tage zurück)
 FREEZE_AFTER = timedelta(hours=3)
 
 _client = httpx.Client(headers={"User-Agent": "fussballdb/1.0 (https://github.com/muggabatschr/fussballdb)"}, timeout=30)
@@ -58,7 +59,9 @@ def ingest(session: Session, log=print) -> dict:
         stamp = hour.strftime("%Y-%m-%dT%H:00")
         measured = kickoff + FREEZE_AFTER < now
         h, i = {}, None
-        for archive in ((False, True) if measured else (False,)):
+        # Die Vorhersage-API kennt nur gut 90 Tage Vergangenheit und lehnt ältere Tage ab (400); dann gleich das Archiv
+        old = now - kickoff > FORECAST_PAST
+        for archive in ((True,) if old else (False, True) if measured else (False,)):
             key = (round(lat, 3), round(lon, 3), hour.date(), archive)
             if key not in cache:
                 cache[key] = _hourly(lat, lon, hour.date(), archive)

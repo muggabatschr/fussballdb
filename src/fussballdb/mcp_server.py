@@ -13,7 +13,7 @@ from fussballdb.assistant.tools import SCHEMA_HINT, Toolbox, _json
 
 INSTRUCTIONS = """Daten und Prognosen zur 1. Fußball-Bundesliga (Ergebnisse seit 1993/94, xG, Prognosen und
 Spielerdaten seit 2014/15), zur Champions League (ab 2024/25,
-Werkzeug `champions_league`), zur 2. Bundesliga und zum DFB-Pokal (Werkzeug `wettbewerb`) und zu Kickbase: Ergebnisse, xG, Schüsse,
+Werkzeug `champions_league`), zur 2. Bundesliga, zum DFB-Pokal und zur brasilianischen Série A (Werkzeug `wettbewerb`) und zu Kickbase: Ergebnisse, xG, Schüsse,
 Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistisches Prognosemodell
 (Dixon-Coles auf xG mit Formkomponente + Elo, Kaderwert als Startstärke, Verletzte eingerechnet).
 
@@ -179,7 +179,8 @@ def cl_tabelle(saison: int | None = None) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def wettbewerb(wettbewerb: str = "D2", saison: int | None = None, runde: int | None = None) -> str:
-    """Runde der 2. Bundesliga (wettbewerb="D2"), des DFB-Pokals ("DFB") oder der Champions League ("CL") mit
+    """Runde der 2. Bundesliga (wettbewerb="D2"), des DFB-Pokals ("DFB"), der Champions League ("CL") oder der
+    brasilianischen Série A ("BRA", Saison = Kalenderjahr, eigenes Modell nur aus brasilianischen Spielen) mit
     Wahrscheinlichkeiten, erwarteten Toren, Tipp und Begründung. Ohne saison/runde die aktuelle Runde; mit saison
     allein die Rundenliste. Grundlage: Elo und Dixon-Coles über alle Ligen, Kaderwert als Startwert. Ab 2026
     je Spiel `ort` mit Stadion, Kapazität und Wetter wie bei `spieltag`. Im Pokal gelten Wahrscheinlichkeiten und
@@ -208,6 +209,19 @@ def tabelle_2_liga(saison: int | None = None) -> str:
 
     try:
         return json.dumps(comp_table("D2", saison or comp_rounds("D2")[0]["season"]), default=str, ensure_ascii=False)
+    except (ValueError, IndexError) as exc:
+        raise ToolError(str(exc) or "Keine Daten.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
+def tabelle_brasilien(saison: int | None = None) -> str:
+    """Tabelle der brasilianischen Série A mit Modell-Platz und Hochrechnung (prognose_platz, erw_punkte,
+    p_libertadores = Platz 1–4, p_libertadores_quali = 5, p_sudamericana = 6–11, p_abstieg = 17–20, in %).
+    Bei Punktgleichheit zählen zuerst die Siege. saison = Kalenderjahr, Standard aktuelle Saison."""
+    from fussballdb.api import comp_rounds, comp_table
+
+    try:
+        return json.dumps(comp_table("BRA", saison or comp_rounds("BRA")[0]["season"]), default=str, ensure_ascii=False)
     except (ValueError, IndexError) as exc:
         raise ToolError(str(exc) or "Keine Daten.") from exc
 

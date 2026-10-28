@@ -256,7 +256,8 @@ def backtest(
 def europa(
     werte: Annotated[bool, typer.Option(help="Kaderwerte von Transfermarkt laden (beim ersten Mal ~25 Min.)")] = True,
 ) -> None:
-    """CL, 2. Liga, Pokal: Europapokal-, Liga- und Pokalspiele, xG (Understat, FotMob), Kaderwerte und Wappen laden."""
+    """CL, 2. Liga, Pokal, Brasilien: Europapokal-, Liga- und Pokalspiele, die brasilianische Série A (ab 2012,
+    xG ab 2023, beim ersten Mal ~1 Std.), xG (Understat, FotMob), Kaderwerte und Wappen laden."""
     from fussballdb.db.session import session_scope
     from fussballdb.ingest import europe
 
@@ -267,6 +268,11 @@ def europa(
     with session_scope() as s:
         n_de = europe.ingest_germany(s, list(range(europe.FIRST_SEASON, max(DEFAULT_SEASONS) + 1)))
     console.print(f"2. Liga, 3. Liga, DFB-Pokal: {n_de} Spiele")
+    from fussballdb.ingest import brazil
+
+    with session_scope() as s:
+        res_bra = brazil.ingest(s, log=console.print)
+    console.print(f"Brasilien: {res_bra['spiele']} Spiele, xG {res_bra['xg']}")
     if werte:
         with session_scope() as s:
             n, unknown = europe.ingest_values(s, log=console.print)
@@ -306,13 +312,24 @@ def cl_test() -> None:
 @app.command("cl-prognosen")
 def cl_prognosen(
     force: Annotated[bool, typer.Option(help="Rückblick-Prognosen neu berechnen")] = False,
-    wettbewerb: Annotated[str | None, typer.Option(help="CL, D2 (2. Bundesliga) oder DFB (Pokal); Standard: alle")] = None,
+    wettbewerb: Annotated[str | None, typer.Option(help="CL, D2 (2. Bundesliga), DFB (Pokal) oder BRA (Brasilien); Standard: alle")] = None,
 ) -> None:
-    """CL, 2. Bundesliga, DFB-Pokal: Rückblick-Prognosen für gespielte Runden, Live-Prognosen für offene Spiele."""
+    """CL, 2. Bundesliga, DFB-Pokal, Brasilien: Rückblick-Prognosen für gespielte Runden, Live-Prognosen für offene Spiele."""
     from fussballdb.model.europe import PREDICTED_COMPETITIONS, backfill, predict_upcoming
 
     for comp in [wettbewerb.upper()] if wettbewerb else PREDICTED_COMPETITIONS:
         console.print(f"{comp}: Rückblick {backfill(comp, force=force)}, Live {predict_upcoming(comp)} Prognosen")
+
+
+@app.command("brasilien-test")
+def brasilien_test() -> None:
+    """Série A im Rückblick: Elo und xG-Varianten gegen den Wettmarkt (Schlussquoten), eingestellt an 2023,
+    getestet 2024 bis heute (~10 Min.)."""
+    from fussballdb.model.europe import brazil_test
+
+    summary, _ = brazil_test(log=lambda m: None)
+    console.print(summary.round(4).to_string(index=False))
+    console.print("RPS kleiner = besser; test_besser_pct gegen die Elo.")
 
 
 @app.command("abschluss-test")

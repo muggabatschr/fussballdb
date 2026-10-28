@@ -1,5 +1,5 @@
 /** Wettbewerbe mit eigener Rundenansicht (Prognosen aus dem Europa-Modell). */
-export type CompCode = "CL" | "D2" | "DFB";
+export type CompCode = "CL" | "D2" | "DFB" | "BRA";
 
 export type Competition = {
   code: CompCode;
@@ -42,4 +42,19 @@ export const COMPETITIONS: Record<CompCode, Competition> = {
       "Liga- und Kaderdaten starten deutlich schwächer. Prognose, Tipp und Punkte gelten für das Ergebnis nach 90 " +
       "Minuten; „Weiter“ ist die Chance aufs Weiterkommen mit Verlängerung und Elfmeterschießen.",
   },
+  BRA: {
+    code: "BRA",
+    base: "/brasilien",
+    short: "Brasilien",
+    name: "Série A (Brasilien)",
+    table: "Tabelle",
+    note:
+      "Grundlage: eigenes Modell nur aus brasilianischen Spielen (Elo seit 2012, Dixon-Coles auf xG von FotMob ab " +
+      "2023, Kaderwert als Startwert), getrennt von Europa. Die Liga ist schwerer vorherzusagen als die " +
+      "Bundesliga: starker Heimvorteil, viele Remis, ausgeglichene Teams.",
+  },
 };
+
+/** Saisonbezeichnung: Brasilien spielt im Kalenderjahr ("2026"), sonst "2026/27". */
+export const seasonLabel = (code: CompCode, season: number) =>
+  code === "BRA" ? String(season) : `${season}/${String((season + 1) % 100).padStart(2, "0")}`;

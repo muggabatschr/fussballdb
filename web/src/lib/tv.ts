@@ -24,5 +24,6 @@ export function tvLogo(channel: string): TvLogo | null {
   if (/^ZDF/.test(channel)) return logo("zdf.png", 250, 150);
   if (/^(Das Erste|ARD-Mediathek|Sportschau\.de)$/.test(channel)) return logo("das-erste.png", 120, 105);
   if (/^Servus ?TV/.test(channel)) return logo("servustv.png", 250, 111);
+  if (/^Sportdigital (FUSSBALL|Fußball)$/i.test(channel)) return logo("sportdigital-fussball.png", 500, 126);
   return null;
 }

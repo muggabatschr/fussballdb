@@ -18,6 +18,10 @@ verschiedenen Ländern spielen selten gegeneinander. Deshalb:
 4. **Tipp** wie in der Bundesliga: das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel.
 
 Alle Prognosen im Rückblick nutzen nur Spiele und Kaderwerte vor dem ersten Anpfiff des Spieltags.
+
+**Eigene Welten** (SEPARATE): Die brasilianische Série A ("BRA") spielt nie gegen europäische Teams. Sie wird
+mit derselben Technik, aber getrennt gerechnet: eigene Elo (Einschwingen ab 2014, Ergebnisse seit 2012),
+eigenes Tor- und xG-Modell mit eigenem Heimvorteil. Die Saison ist dort das Kalenderjahr (Spalte season).
 """
 
 import bisect
@@ -57,7 +61,21 @@ class EloConfig:
     burn_in: str = "2023-07-01"  # Spiele davor nur zum Einschwingen, nicht zum Schätzen des Tormodells
 
 
-def load_matches() -> pd.DataFrame:
+SEPARATE = ("BRA",)  # Wettbewerbe ohne Spiele gegen den Rest: eigene Elo und eigene Modelle
+CALENDAR_YEAR = ("BRA",)  # Saison = Kalenderjahr (aus der Spalte season, nicht aus dem Datum)
+
+
+# Elo je Welt; Brasilien: Einschwingen ab 2014 (Ergebnisse seit 2012). Der Elo-Heimvorteil (50 bis 130 getestet)
+# ändert dort nichts, weil das Tormodell den Heimvorteil selbst schätzt; es bleibt der Standard.
+ELO_BY_COMP: dict[str, EloConfig] = {"BRA": EloConfig(burn_in="2014-01-01")}
+
+
+def elo_config(competition: str | None) -> EloConfig:
+    return ELO_BY_COMP.get(competition, EloConfig())
+
+
+def load_matches(competition: str | None = None) -> pd.DataFrame:
+    """Alle Spiele der Welt von `competition`: Brasilien allein, sonst Europa und Deutschland ohne Brasilien."""
     with engine.connect() as conn:
         df = pd.read_sql(text("""
             SELECT m.id, m.competition, m.season, m.round_no, m.round_name, m.kickoff, m.home_id, m.away_id,
@@ -66,7 +84,9 @@ def load_matches() -> pd.DataFrame:
             FROM eu_match m JOIN eu_team th ON th.id = m.home_id JOIN eu_team ta ON ta.id = m.away_id
             ORDER BY m.kickoff, m.id"""), conn)
     df["kickoff"] = pd.to_datetime(df["kickoff"], utc=True)
-    return df
+    if competition in SEPARATE:
+        return df[df["competition"] == competition].reset_index(drop=True)
+    return df[~df["competition"].isin(SEPARATE)].reset_index(drop=True)
 
 
 def load_values() -> dict[int, tuple[list, list]]:
@@ -122,7 +142,7 @@ def run_elo(df: pd.DataFrame, values: dict, config: EloConfig | None = None) -> 
     for m in df[df["finished"]].itertuples():
         for team, comp in ((m.home_id, m.competition), (m.away_id, m.competition)):
             v = value_at(values, team, m.kickoff)
-            season = season_of(m.kickoff)
+            season = int(m.season) if m.competition in CALENDAR_YEAR else season_of(m.kickoff)
             if team not in st.rating:
                 if v:
                     st.rating[team] = st.value_rating(v)
@@ -297,6 +317,7 @@ class XgConfig:
     form_xi: float = 0.02
     alpha: float = 1.0  # Anteil Dixon-Coles an den Wahrscheinlichkeiten, Rest Elo-Modell
     train_years: float = 3.0
+    dc_extra: dict = field(default_factory=dict)  # weitere DixonColes-Einstellungen (verworfene Bausteine im Test)
 
 
 def _value_priors(values: dict, teams, cutoff: pd.Timestamp, k: float) -> dict:
@@ -329,11 +350,12 @@ class XgModel:
         in_league = set(league["home_id"]) | set(league["away_id"])
         for t in teams - in_league - set(priors):
             priors[t] = AMATEUR_PRIOR
-        dc = DixonColes(xi=cfg.xi, ridge=cfg.ridge, w_xg=cfg.w_xg, priors=priors)
+        dc = DixonColes(xi=cfg.xi, ridge=cfg.ridge, w_xg=cfg.w_xg, priors=priors, **cfg.dc_extra)
         dc.fit(train, now=cutoff)
         form = None
         if cfg.form_weight > 0:
-            form = DixonColes(xi=cfg.form_xi, ridge=cfg.ridge, w_xg=cfg.w_xg, priors=dc.priors).fit(train, now=cutoff)
+            form = DixonColes(xi=cfg.form_xi, ridge=cfg.ridge, w_xg=cfg.w_xg, priors=dc.priors,
+                              **cfg.dc_extra).fit(train, now=cutoff)
         return cls(dc, form, cfg)
 
     def with_cfg(self, cfg: XgConfig) -> "XgModel":
@@ -384,8 +406,8 @@ def _outcome(h: int, a: int) -> int:
 def backtest(config: EloConfig | None = None, competitions=("CL",), log=print) -> pd.DataFrame:
     """Jede gespielte CL-Runde mit dem Stand vor ihrem ersten Anpfiff vorhersagen. Vergleicht das Modell
     mit Elo + Kaderwert-Merkmal, Kaderwert allein und der Grundverteilung."""
-    df, values = load_matches(), load_values()
-    st = run_elo(df, values, config)
+    df, values = load_matches(competitions[0]), load_values()
+    st = run_elo(df, values, config or elo_config(competitions[0]))
     feats = all_features(df, st, values)
     rows = []
     for comp in competitions:
@@ -433,10 +455,10 @@ def _mio(v: float | None) -> str:
     return f"{_de(v / 1e9, 2)} Mrd. €" if v >= 1e9 else f"{v / 1e6:.0f} Mio. €"
 
 
-def explain(p: dict, home: str, away: str, neutral: bool) -> list[str]:
+def explain(p: dict, home: str, away: str, neutral: bool, competition: str = "CL") -> list[str]:
     fav, fav_p = (home, p["p_home"]) if p["p_home"] >= p["p_away"] else (away, p["p_away"])
     lines = [f"{fav} Favorit, {_pct(fav_p)} Siegchance: erwartet {_de(p['exp_home'], 1)} : {_de(p['exp_away'], 1)} Tore"]
-    lines.append(f"Europa-Elo {p['elo_home']:.0f} : {p['elo_away']:.0f}")
+    lines.append(f"{'Elo' if competition in SEPARATE else 'Europa-Elo'} {p['elo_home']:.0f} : {p['elo_away']:.0f}")
     form = p.get("form")
     if form:
         parts = [f"{t} {'+' if f >= 1 else '−'}{round(abs(f - 1) * 100)} % Tore" for t, f in zip((home, away), form)
@@ -476,21 +498,23 @@ def _row(p: dict, m, basis: str, as_of: pd.Timestamp) -> dict:
             "elo_home": p["elo_home"], "elo_away": p["elo_away"],
             "value_home": p["value_home"], "value_away": p["value_away"],
             "tip_home": p["tip"][0], "tip_away": p["tip"][1],
-            "explanation": json.dumps(explain(p, m.home, m.away, bool(m.neutral)), ensure_ascii=False)}
+            "explanation": json.dumps(explain(p, m.home, m.away, bool(m.neutral), m.competition), ensure_ascii=False)}
 
 
 ACTIVE_XG: XgConfig | None = XgConfig(alpha=0.7, form_weight=0.4)  # None = nur Elo
 # Modell je Wettbewerb nach eigenem Rückblick-Test (Oktober 2026, eingestellt an 2024/25):
 # 2. Liga: Elo im Einstelljahr am besten, Mischungen danach kaum besser (RPS 0,2224 statt 0,2234) -> Elo.
 # DFB-Pokal: Dixon-Coles allein klar besser (0,142 statt 0,171, alle Saisons, 99 % der Ziehungen).
-ACTIVE_BY_COMP: dict[str, XgConfig | None] = {"CL": ACTIVE_XG, "D2": None, "DFB": XgConfig()}
+# Brasilien (Oktober 2026, eingestellt an 2023, Test 2024–2026, 1.459 Spiele): xG/Elo 70/30 + Form RPS 0,2041
+# statt 0,2059 für die Elo (98 % der Ziehungen, alle 4 Saisons); Wettmarkt 0,1972. Verworfene Bausteine dazu ±0.
+ACTIVE_BY_COMP: dict[str, XgConfig | None] = {"CL": ACTIVE_XG, "D2": None, "DFB": XgConfig(), "BRA": ACTIVE_XG}
 PREDICTED_COMPETITIONS = tuple(ACTIVE_BY_COMP)
 
 
 def backfill(competition: str = "CL", force: bool = False) -> int:
     """Rückblick-Prognosen für gespielte Runden (Stand vor dem ersten Anpfiff der Runde)."""
-    df, values = load_matches(), load_values()
-    st = run_elo(df, values)
+    df, values = load_matches(competition), load_values()
+    st = run_elo(df, values, elo_config(competition))
     feats = all_features(df, st, values)
     with engine.connect() as conn:
         done = {r[0] for r in conn.execute(text("SELECT match_id FROM eu_prediction WHERE basis = 'rueckblick'"))}
@@ -512,8 +536,8 @@ def backfill(competition: str = "CL", force: bool = False) -> int:
 
 def predict_upcoming(competition: str = "CL") -> int:
     """Live-Prognosen für alle offenen Spiele mit dem heutigen Stand (bis zum Anpfiff überschrieben)."""
-    df, values = load_matches(), load_values()
-    st = run_elo(df, values)
+    df, values = load_matches(competition), load_values()
+    st = run_elo(df, values, elo_config(competition))
     now = pd.Timestamp(datetime.now(timezone.utc))
     ms = df[(df["competition"] == competition) & ~df["finished"] & (df["kickoff"] > now)]
     if ms.empty:
@@ -539,13 +563,14 @@ XG_VARIANTS: dict[str, XgConfig | None] = {
 }
 
 
-def backtest_xg(variants: dict[str, XgConfig | None] | None = None, log=print, competition: str = "CL") -> pd.DataFrame:
+def backtest_xg(variants: dict[str, XgConfig | None] | None = None, log=print, competition: str = "CL",
+                elo: EloConfig | None = None) -> pd.DataFrame:
     """Rückblick-Test aller CL-Runden für das Elo-Modell und die xG-Varianten. Je Runde wird jedes
     xG-Modell (Kaderwert-Gewicht, xG/Tore) einmal mit Formkomponente angepasst; die Varianten
     unterscheiden sich danach nur in der Mischung. Liefert je Spiel und Variante RPS, Log-Loss und Punkte."""
     variants = variants or XG_VARIANTS
-    df, values = load_matches(), load_values()
-    st = run_elo(df, values)
+    df, values = load_matches(competition), load_values()
+    st = run_elo(df, values, elo or elo_config(competition))
     feats = all_features(df, st, values)
     rows = []
     for r in rounds(df, competition).itertuples():
@@ -558,10 +583,11 @@ def backtest_xg(variants: dict[str, XgConfig | None] | None = None, log=print, c
         for name, cfg in variants.items():
             xm = None
             if cfg is not None:
-                key = (cfg.value_k, cfg.w_xg, cfg.ridge, cfg.xi)
+                key = (cfg.value_k, cfg.w_xg, cfg.ridge, cfg.xi, tuple(sorted(cfg.dc_extra.items())))
                 if key not in fitted:
                     fitted[key] = XgModel.fit(df, values, r.cutoff, XgConfig(value_k=cfg.value_k, w_xg=cfg.w_xg,
-                                                                                ridge=cfg.ridge, xi=cfg.xi, form_weight=0.4))
+                                                                                ridge=cfg.ridge, xi=cfg.xi, form_weight=0.4,
+                                                                                dc_extra=cfg.dc_extra))
                 xm = fitted[key].with_cfg(cfg)
             preds[name] = predict_round(feats, st, values, r.cutoff, ms, use_value=USE_VALUE, xg_model=xm)
         for i, m in enumerate(ms.itertuples()):
@@ -594,3 +620,53 @@ def compare_xg(res: pd.DataFrame, base: str = "Elo (bisher)", tune=(2024,), seed
                     "punkte": res[f"pkt|{n}"].mean(),
                     "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if n != base else np.nan})
     return pd.DataFrame(out).sort_values("rps_test")
+
+
+def brazil_test(homes=(65.0,), variants: dict[str, XgConfig | None] | None = None, tune=(2023,),
+                seed: int = 0, log=print) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Rückblick-Test der Série A: Elo mit verschiedenen Heimvorteilen und die xG-Varianten (mit Heimvorteil
+    90), dazu der Wettmarkt (Schlussquoten football-data). Eingestellt an `tune`, getestet an den Saisons danach.
+    Liefert (Zusammenfassung, Einzelwerte)."""
+    from fussballdb.ingest.brazil import market_probs
+
+    variants = variants or XG_VARIANTS
+    res = None
+    for h in homes:
+        r = backtest_xg({f"Elo, Heim {h:.0f}": None}, log=lambda m: None, competition="BRA", elo=EloConfig(home=h, burn_in="2014-01-01"))
+        res = r if res is None else res.merge(r, on=["season", "round", "match_id"])
+    xg = backtest_xg({k: v for k, v in variants.items() if v is not None}, log=log, competition="BRA",
+                     elo=EloConfig(burn_in="2014-01-01"))
+    res = res.merge(xg, on=["season", "round", "match_id"])
+    # Wettmarkt: Paarung über die football-data-Namen der Teams
+    with engine.connect() as conn:
+        fd_name = dict(conn.execute(text("SELECT team_id, alias FROM eu_team_alias WHERE source = 'fd:BRA'")).all())
+        games = {r.id: r for r in conn.execute(text(
+            "SELECT id, season, home_id, away_id, home_goals, away_goals FROM eu_match WHERE id = ANY(:ids)"),
+            {"ids": res["match_id"].tolist()})}
+    market = market_probs()
+    mk, ok = [], []
+    for mid in res["match_id"]:
+        g = games[mid]
+        p = market.get((g.season, fd_name.get(g.home_id), fd_name.get(g.away_id)))
+        ok.append(p is not None)
+        mk.append(rps(p, _outcome(g.home_goals, g.away_goals)) if p else np.nan)
+    res["rps|Markt (Schlussquoten)"] = mk
+    res = res[np.array(ok)].reset_index(drop=True)
+    base = f"Elo, Heim {homes[0]:.0f}"
+    names = [c.split("|", 1)[1] for c in res.columns if c.startswith("rps|")]
+    is_tune = res["season"].isin(tune).to_numpy()
+    rng = np.random.default_rng(seed)
+    test_idx = np.flatnonzero(~is_tune)
+    boot = rng.choice(test_idx, (4000, len(test_idx)))
+    out = []
+    for n in names:
+        d = res[f"rps|{n}"].to_numpy() - res[f"rps|{base}"].to_numpy()
+        row = {"variante": n, "rps_einstellen": res.loc[is_tune, f"rps|{n}"].mean(),
+               "rps_test": res.loc[~is_tune, f"rps|{n}"].mean(),
+               "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if n != base else np.nan,
+               "saisons_besser": f"{sum(d[(res['season'] == s).to_numpy()].mean() < 0 for s in sorted(res['season'].unique()))}"
+                                 f"/{res['season'].nunique()}"}
+        if f"pkt|{n}" in res:
+            row["punkte_test"] = res.loc[~is_tune, f"pkt|{n}"].mean()
+        out.append(row)
+    return pd.DataFrame(out).sort_values("rps_test"), res

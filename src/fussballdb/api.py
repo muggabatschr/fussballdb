@@ -266,7 +266,13 @@ def matchday(season: int, matchday: int, runde: str | None = None):
 
 
 # Wettbewerbe mit eigener Prognose aus dem Europa-Modell (model/europe.py)
-COMPETITIONS = {"CL": "Champions League", "D2": "2. Bundesliga", "DFB": "DFB-Pokal"}
+COMPETITIONS = {"CL": "Champions League", "D2": "2. Bundesliga", "DFB": "DFB-Pokal", "BRA": "Série A (Brasilien)"}
+CALENDAR_YEAR = ("BRA",)  # Saison = Kalenderjahr: "2026" statt "2026/27"
+FIRST_SHOWN = {"BRA": 2023}  # erste Saison mit Runden und Prognosen (Brasilien: FotMob ab 2023), sonst 2024
+
+
+def _season_label(comp: str, season: int) -> str:
+    return str(season) if comp in CALENDAR_YEAR else f"{season}/{(season + 1) % 100:02d}"
 
 
 def _comp(comp: str) -> str:
@@ -290,14 +296,15 @@ def comp_rounds(comp: str):
     rows = _rows(
         """
         SELECT season, round_no, min(round_name) AS round_name, count(*) AS spiele,
-               bool_and(finished) AS finished, min(kickoff) AS start
-        FROM eu_match WHERE competition = :c AND season >= 2024
+               -- verlegte Spiele, die seit Tagen ohne neuen Termin offen sind, halten die aktuelle Runde nicht fest
+               bool_and(finished OR kickoff < now() - interval '3 days') AS finished, min(kickoff) AS start
+        FROM eu_match WHERE competition = :c AND season >= :first AND round_no > 0
         GROUP BY season, round_no ORDER BY season DESC, round_no
-        """, c=comp,
+        """, c=comp, first=FIRST_SHOWN.get(comp, 2024),
     )
     seasons: dict[int, dict] = {}
     for r in rows:
-        s = seasons.setdefault(r["season"], {"season": r["season"], "label": f"{r['season']}/{(r['season'] + 1) % 100:02d}",
+        s = seasons.setdefault(r["season"], {"season": r["season"], "label": _season_label(comp, r["season"]),
                                              "rounds": [], "current_round": None})
         s["rounds"].append({k: r[k] for k in ("round_no", "round_name", "spiele", "finished", "start")})
         if s["current_round"] is None and not r["finished"]:
@@ -358,7 +365,7 @@ def comp_table(comp: str, season: int):
     if not rows:
         raise ValueError(f"Keine Tabelle für {COMPETITIONS[comp]} {season}.")
     zones = [{"key": k, "label": label, "von": a, "bis": b} for k, label, a, b in ZONES[comp]["zones"]]
-    return {"season": season, "label": f"{season}/{(season + 1) % 100:02d}", "rows": rows, "zonen": zones,
+    return {"season": season, "label": _season_label(comp, season), "rows": rows, "zonen": zones,
             "wettbewerb": COMPETITIONS[comp]}
 
 
@@ -455,7 +462,7 @@ def comp_round(comp: str, season: int, round_no: int):
 FORM_GAMES = 6
 # Wettbewerbe im Europa-Modell (football-data-Kürzel und OpenLigaDB) für die Form-Liste
 COMP_NAMES = {
-    "D1": "Bundesliga", "D2": "2. Bundesliga", "D3": "3. Liga", "DFB": "DFB-Pokal", "CL": "Champions League",
+    "D1": "Bundesliga", "D2": "2. Bundesliga", "D3": "3. Liga", "DFB": "DFB-Pokal", "CL": "Champions League", "BRA": "Série A (BR)",
     "EL": "Europa League", "E0": "Premier League", "SP1": "LaLiga", "I1": "Serie A", "F1": "Ligue 1",
     "N1": "Eredivisie", "P1": "Liga Portugal", "B1": "Pro League", "T1": "Süper Lig", "SC0": "Premiership",
     "G1": "Super League GR", "AUT": "Bundesliga AT", "SWZ": "Super League CH", "DNK": "Superliga",
@@ -630,7 +637,7 @@ def comp_match_detail(comp: str, match_id: int):
     if comp in ZONES and (g["round_no"] or 0) <= ZONES[comp]["rounds"]:
         rows = {r["name"]: r for r in table(g["season"], comp)}
         tabelle = {"home": rows.get(g["home"]), "away": rows.get(g["away"]),
-                   "stand": f"{g['season']}/{(g['season'] + 1) % 100:02d}",
+                   "stand": _season_label(comp, g["season"]),
                    "zonen": [{"key": k, "label": label, "von": x, "bis": y} for k, label, x, y in ZONES[comp]["zones"]]}
     values = {r["team_id"]: r["value_eur"] for r in _rows(
         """SELECT DISTINCT ON (team_id) team_id, value_eur FROM eu_squad_value

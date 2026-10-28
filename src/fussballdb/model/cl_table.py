@@ -17,11 +17,16 @@ LEAGUE_PHASE_ROUNDS = 8
 N_SIMS = 10_000
 
 # Tabellen je Wettbewerb: berücksichtigte Runden und Zonen (Schlüssel, Beschriftung, Platz von, bis)
+WINS_FIRST = ("BRA",)  # Tabellen, in denen bei Punktgleichheit zuerst die Siege zählen
 ZONES = {
     "CL": {"rounds": LEAGUE_PHASE_ROUNDS, "zones": [("p_achtelfinale", "Achtelfinale", 1, 8),
                                                    ("p_playoffs", "Play-offs", 9, 24), ("p_aus", "Aus", 25, 36)]},
     "D2": {"rounds": 34, "zones": [("p_aufstieg", "Aufstieg", 1, 2), ("p_relegation_oben", "Relegation", 3, 3),
                                    ("p_relegation_unten", "Rel. unten", 16, 16), ("p_abstieg", "Abstieg", 17, 18)]},
+    # Série A 2026 (CBF-Regeln laut brasilianischer Presse): 1–4 Libertadores-Gruppenphase, 5 Libertadores-
+    # Qualifikation, 6–11 Copa Sudamericana, 17–20 Abstieg in die Série B
+    "BRA": {"rounds": 38, "zones": [("p_libertadores", "Libertadores", 1, 4), ("p_libertadores_quali", "Lib.-Quali", 5, 5),
+                                    ("p_sudamericana", "Sudamericana", 6, 11), ("p_abstieg", "Abstieg", 17, 20)]},
 }
 
 # Prognose je Spiel wie in der Rundenansicht: Live-Prognose von vor dem Anpfiff, sonst Rückblick
@@ -63,12 +68,14 @@ def table(season: int, competition: str = "CL", n: int = N_SIMS, seed: int = 0) 
     home, away = df["home"].map(idx).to_numpy(), df["away"].map(idx).to_numpy()
     done = df["finished"].to_numpy(bool)
 
-    sp, points, gd, goals, conceded, exp_pts = (np.zeros(k) for _ in range(6))
+    sp, points, gd, goals, conceded, exp_pts, wins = (np.zeros(k) for _ in range(7))
     for r, h, a in zip(df[done].itertuples(), home[done], away[done]):
         hg, ag = int(r.hg), int(r.ag)
         sp[[h, a]] += 1
         points[h] += 3 if hg > ag else 1 if hg == ag else 0
         points[a] += 3 if ag > hg else 1 if hg == ag else 0
+        wins[h] += hg > ag
+        wins[a] += ag > hg
         gd[h] += hg - ag
         gd[a] += ag - hg
         goals[h] += hg
@@ -78,7 +85,9 @@ def table(season: int, competition: str = "CL", n: int = N_SIMS, seed: int = 0) 
         if not pd.isna(r.p_home):
             exp_pts[h] += 3 * r.p_home + r.p_draw
             exp_pts[a] += 3 * r.p_away + r.p_draw
-    rank_today = _rank(points, gd, goals)
+    wins_first = competition in WINS_FIRST
+    # Brasilien: bei Punktgleichheit zuerst die Zahl der Siege, dann Tordifferenz und Tore
+    rank_today = _rank(points, wins * 1e3 + gd, goals) if wins_first else _rank(points, gd, goals)
     has_model = df.loc[done, "p_home"].notna().any()
     model_rank = _rank(exp_pts, np.zeros(k), np.zeros(k)) if has_model else None
 
@@ -112,6 +121,12 @@ def table(season: int, competition: str = "CL", n: int = N_SIMS, seed: int = 0) 
             sim[:, h] += 3 * home_win[:, col] + draw[:, col]
             sim[:, a] += 3 * away_win[:, col] + draw[:, col]
         tiebreak = exp_gd / 1e3 + exp_goals / 1e6 + rng.random((n, k)) / 1e9
+        if wins_first:  # Siege vor Tordifferenz (höchstens 38 Siege, also unter einem Punkt)
+            sim_wins = np.tile(wins, (n, 1))
+            for col, (h, a) in enumerate(zip(oh, oa)):
+                sim_wins[:, h] += home_win[:, col]
+                sim_wins[:, a] += away_win[:, col]
+            tiebreak = sim_wins / 1e2 + exp_gd / 1e5 + exp_goals / 1e8 + rng.random((n, k)) / 1e11
         order = np.argsort(-(sim + tiebreak), axis=1)
         ranks = np.empty_like(order)
         ranks[np.arange(n)[:, None], order] = np.arange(1, k + 1)
