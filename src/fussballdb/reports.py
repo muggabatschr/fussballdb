@@ -405,6 +405,33 @@ def _assessment(m: dict, stats: dict, rnd: random.Random) -> list[str]:
     return out
 
 
+def _running(m: dict, stats: dict, rnd: random.Random) -> list[str]:
+    """Ballbesitz (ab 60 %), Laufleistung (ab 3 km Unterschied) und der laufstärkste Spieler (Sportschau)."""
+    out = []
+    hs, as_ = stats.get("home") or {}, stats.get("away") or {}
+    hg, ag = m["home_goals"], m["away_goals"]
+    home, away = _prose(m["home_short"]), _prose(m["away_short"])
+    if hs.get("possession") is not None and as_.get("possession") is not None and max(hs["possession"], as_["possession"]) >= 60:
+        team, pos, won = (home, hs["possession"], hg > ag) if hs["possession"] > as_["possession"] else (away, as_["possession"], ag > hg)
+        pos = de(pos, 0)
+        out.append(_pick(rnd, f"{team} hatte {pos} Prozent Ballbesitz und nutzte ihn auch." if won else
+                         f"{team} hatte {pos} Prozent Ballbesitz, machte daraus aber zu wenig.",
+                         f"Den Ball hatte meist {team} ({pos} Prozent)."))
+    if hs.get("distance_km") is not None and as_.get("distance_km") is not None:
+        diff = hs["distance_km"] - as_["distance_km"]
+        if abs(diff) >= 3:
+            more, less = (home, away) if diff > 0 else (away, home)
+            km = (hs["distance_km"], as_["distance_km"]) if diff > 0 else (as_["distance_km"], hs["distance_km"])
+            out.append(_pick(rnd, f"{more} lief {de(abs(diff))} Kilometer mehr als {less} ({de(km[0])} zu {de(km[1])}).",
+                             f"Auch läuferisch legte {more} mehr hinein: {de(km[0])} Kilometer, {less} kam auf {de(km[1])}."))
+    r = m.get("runner")
+    if r and r["distance_km"] >= 12:
+        team = home if r["is_home"] else away
+        out.append(_pick(rnd, f"Am meisten lief {_short(r['player'])} ({team}) mit {de(r['distance_km'])} Kilometern.",
+                         f"Laufstärkster Spieler war {_short(r['player'])} mit {de(r['distance_km'])} Kilometern."))
+    return out
+
+
 def _standing(m: dict, rnd: random.Random) -> list[str]:
     """Folgen für Tabelle und Serien: Tabellenführung, Abstiegsplätze, Siegesserien, Durststrecken."""
     out = []
@@ -549,9 +576,12 @@ def _numbers_line(s: dict) -> str | None:
     h, a = s.get("home") or {}, s.get("away") or {}
     parts = []
     for key, label, digits in (("xg", "xG", 2), ("shots", "Schüsse", 0), ("shots_on_target", "aufs Tor", 0),
-                               ("big_chances", "Großchancen", 0), ("corners", "Ecken", 0), ("ppda", "PPDA", 1)):
+                               ("big_chances", "Großchancen", 0), ("corners", "Ecken", 0), ("ppda", "PPDA", 1),
+                               ("possession", "Ballbesitz", 0), ("duels_won_pct", "Zweikämpfe gewonnen", 0),
+                               ("distance_km", "Laufleistung", 1), ("sprints", "Sprints", 0)):
         if h.get(key) is not None and a.get(key) is not None:
-            parts.append(f"{label} {de(h[key], digits)}:{de(a[key], digits)}" if digits else f"{label} {h[key]}:{a[key]}")
+            unit = " %" if key in ("possession", "duels_won_pct") else " km" if key == "distance_km" else ""
+            parts.append(f"{label} {de(h[key], digits)}:{de(a[key], digits)}{unit}")
     return "Zahlen zum Spiel: " + ", ".join(parts) + "." if parts else None
 
 
@@ -700,7 +730,7 @@ def build(m: dict, shots: list[dict], starters: set[str], reds: list[dict], stat
     if second:
         lines.append(" ".join(second))
     best = _best_player(m, rnd, star)
-    close = star + best + _assessment(m, stats, rnd) + _standing(m, rnd)
+    close = star + best + _assessment(m, stats, rnd) + _running(m, stats, rnd) + _standing(m, rnd)
     for side in ("home", "away"):
         if m.get(f"missing_{side}"):
             played = m.get("players") or set()
@@ -802,9 +832,17 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
                 starters.setdefault(r.match_id, set()).add(r.name)
             if r.red_cards:
                 reds.setdefault(r.match_id, []).append({"player": r.name, "team": short(r.team)})
-        for r in conn.execute(text("""SELECT x.match_id, x.is_home, x.xg, x.shots, x.shots_on_target, x.big_chances, x.corners, x.ppda
-                                       FROM match_team_stats x WHERE x.match_id = ANY(:ids)"""), {"ids": ids}):
+        for r in conn.execute(text("""SELECT x.match_id, x.is_home, x.xg, x.shots, x.shots_on_target, x.big_chances, x.corners, x.ppda,
+                                              e.distance_km, e.sprints, e.possession, e.duels_won_pct
+                                       FROM match_team_stats x
+                                       LEFT JOIN match_extra_stats e ON e.competition = 'BL' AND e.match_id = x.match_id
+                                            AND e.is_home = x.is_home
+                                       WHERE x.match_id = ANY(:ids)"""), {"ids": ids}):
             stats.setdefault(r.match_id, {})["home" if r.is_home else "away"] = dict(r._mapping)
+        runners = {r.match_id: dict(r._mapping) for r in conn.execute(text("""
+            SELECT DISTINCT ON (match_id) match_id, is_home, player, distance_km FROM player_tracking
+            WHERE competition = 'BL' AND match_id = ANY(:ids) AND distance_km IS NOT NULL
+            ORDER BY match_id, distance_km DESC"""), {"ids": ids})}
         ctx, season_goals = _season_context(conn, sorted({m["season"] for m in matches}))
         press: dict[tuple, list] = {}
         first = min(m["kickoff"] for m in matches)
@@ -818,6 +856,7 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
         c = m["ctx"] = ctx.get(m["id"], {})
         m["season_goals"] = season_goals.get(m["id"], {})
         m["players"] = players.get(m["id"], set())
+        m["runner"] = runners.get(m["id"])
         for side in ("home", "away"):  # Presse in den 36 Stunden nach dem Anpfiff
             m[f"press_{side}"] = [n for n in press.get(m[f"{side}_id"], [])
                                   if m["kickoff"] <= n["published_at"] <= m["kickoff"] + PRESS_AFTER]

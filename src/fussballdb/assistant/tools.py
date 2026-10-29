@@ -20,7 +20,12 @@ Tabellen (PostgreSQL):
         ht_home_goals, ht_away_goals, finished, openligadb_id, understat_id)
 - match_team_stats(match_id, team_id, is_home, goals, xg, npxg, xpts, ppda, deep, big_chances,
         xg_fd, shots, shots_on_target, corners, fouls, yellow_cards, red_cards, possession)
-        -- possession ist leer (keine freie Quelle); big_chances = Schüsse mit xG >= 0.3
+        -- possession in % (Sportschau, ab 2014/15); big_chances = Schüsse mit xG >= 0.3
+- match_extra_stats(competition, match_id, is_home, distance_km, sprints, possession, duels_won_pct, passes, pass_pct)
+        -- Sportschau; competition 'BL' -> match.id, sonst ('D2', 'DFB', 'CL') eu_match.id;
+        -- distance_km (gelaufene Kilometer) und sprints nur Bundesliga ab 2014/15
+- player_tracking(competition, match_id, is_home, player, minutes, distance_km, top_speed)
+        -- Kilometer und Höchstgeschwindigkeit (km/h) je Spieler, nur Bundesliga, Spielername laut Sportschau
 - shot(id, match_id, team_id, player, player_assisted, minute, xg, result, situation, shot_type, last_action, x, y)
 - odds(match_id, bookmaker, is_closing, home, draw, away, over25, under25)   -- bookmaker: B365, PS, BFE, Avg, Max
 - elo_rating(match_id, team_id, played_at, elo_before, elo_after)
@@ -41,7 +46,8 @@ TOOLS = [
     },
     {
         "name": "get_team_form",
-        "description": "Letzte Spiele eines Teams mit Ergebnis, xG, Schüssen, Großchancen, PPDA sowie Durchschnittswerte. "
+        "description": "Letzte Spiele eines Teams mit Ergebnis, xG, Schüssen, Großchancen, PPDA, Ballbesitz, "
+                       "Laufleistung (km, auch des Gegners), Sprints und Zweikampfquote sowie Durchschnittswerte. "
                        "Achtung: die letzten N Spiele können in die Vorsaison reichen (Feld saison).",
         "input_schema": {"type": "object", "properties": {
             "team": {"type": "string", "description": "Teamname, auch umgangssprachlich (z. B. BVB, Gladbach)"},
@@ -154,11 +160,14 @@ class Toolbox:
                    own.goals AS tore, o.goals AS gegentore, m.home_goals, m.away_goals,
                    own.xg, o.xg AS xga, own.shots, o.shots AS shots_against,
                    own.shots_on_target, own.big_chances, o.big_chances AS big_chances_against,
-                   own.ppda, own.xpts
+                   own.ppda, own.xpts, ex.possession, ex.distance_km, ox.distance_km AS distance_km_against,
+                   ex.sprints, ex.duels_won_pct
             FROM match m JOIN season s ON s.id = m.season_id
             JOIN match_team_stats own ON own.match_id = m.id AND own.team_id = :t
             JOIN match_team_stats o ON o.match_id = m.id AND o.team_id <> :t
             JOIN team opp ON opp.id = o.team_id
+            LEFT JOIN match_extra_stats ex ON ex.competition = 'BL' AND ex.match_id = m.id AND ex.is_home = own.is_home
+            LEFT JOIN match_extra_stats ox ON ox.competition = 'BL' AND ox.match_id = m.id AND ox.is_home = o.is_home
             WHERE m.finished ORDER BY m.kickoff DESC LIMIT :n
             """, t=team_id, n=last_n)
         df = pd.DataFrame(games)
@@ -167,7 +176,8 @@ class Toolbox:
             pts = ((df["tore"] > df["gegentore"]) * 3 + (df["tore"] == df["gegentore"])).sum()
             summary = {"spiele": len(df), "punkte": int(pts),
                        **{f"avg_{c}": round(float(df[c].mean()), 2) for c in
-                          ("tore", "gegentore", "xg", "xga", "shots", "shots_against", "big_chances", "big_chances_against", "ppda", "xpts")
+                          ("tore", "gegentore", "xg", "xga", "shots", "shots_against", "big_chances", "big_chances_against", "ppda", "xpts",
+                           "possession", "distance_km", "distance_km_against", "sprints", "duels_won_pct")
                           if df[c].notna().any()}}
         return {"team_id": team_id, "zusammenfassung": summary, "spiele": games}
 

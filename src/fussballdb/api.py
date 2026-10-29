@@ -14,7 +14,7 @@ from sqlalchemy import text
 from fussballdb.assistant.tools import Toolbox, _rows
 from fussballdb.config import TIPP_PUNKTE
 from fussballdb.ingest.tv import for_matches as tv_for
-from fussballdb.ingest import matchpage, news
+from fussballdb.ingest import matchpage, news, sportschau
 from fussballdb.model import knockout
 from fussballdb.ingest.venues import for_matches as venues_for
 from fussballdb.model.tips import apply_rule
@@ -549,6 +549,7 @@ def match_detail(match_id: int, runde: str | None = None):
                ppda, xpts
         FROM match_team_stats WHERE match_id = :id ORDER BY is_home DESC
         """, id=match_id) if g["finished"] else []
+    extra = sportschau.for_match("BL", match_id) if g["finished"] else None
     odds = _implied(_rows(
         """SELECT bookmaker, is_closing, home, draw, away FROM odds
            WHERE match_id = :id AND bookmaker IN ('Avg', 'B365') ORDER BY bookmaker, is_closing""", id=match_id))
@@ -560,7 +561,8 @@ def match_detail(match_id: int, runde: str | None = None):
         "ausfaelle": None if g["finished"] else {"home": toolbox.get_absences(g["home"]),
                                                  "away": toolbox.get_absences(g["away"])},
         "aufstellung": None if g["finished"] else {"home": _lineup(h), "away": _lineup(a)},
-        "statistik": {"home": stats[0], "away": stats[1]} if len(stats) == 2 else None,
+        "statistik": _with_extra({"home": stats[0], "away": stats[1]} if len(stats) == 2 else None, extra),
+        "laufdaten": extra["spieler"] if extra and (extra["spieler"]["home"] or extra["spieler"]["away"]) else None,
         "bericht": _report(match_id) if g["finished"] else None,
         "spielfeld": matchpage.for_match("BL", match_id),
         # Presse: die neuesten Meldungen der letzten 7 Tage vor dem Anpfiff (offen: bis jetzt), Lokalzeitungen zuerst
@@ -569,6 +571,15 @@ def match_detail(match_id: int, runde: str | None = None):
         "farben": matchpage.colors_for("BL", match_id, g["home"], g["away"]),
         "quoten": odds,
     }
+
+
+def _with_extra(stats: dict | None, extra: dict | None) -> dict | None:
+    """Spielstatistik um Laufleistung, Sprints, Ballbesitz, Zweikämpfe und Pässe der Sportschau ergänzen."""
+    if not extra:
+        return stats
+    if stats is None:
+        return {side: dict(extra[side]) for side in ("home", "away")}
+    return {side: {**stats[side], **extra[side]} for side in ("home", "away")}
 
 
 def _report(match_id: int) -> str | None:
@@ -652,6 +663,8 @@ def comp_match_detail(comp: str, match_id: int):
         "tabelle": tabelle,
         "kaderwert": {"home": values.get(h), "away": values.get(a)},
         "ausfaelle": None if g["finished"] else {"home": _eu_absences(h, g["home"]), "away": _eu_absences(a, g["away"])},
+        "statistik": _with_extra({"home": {"xg": g["home_xg"]}, "away": {"xg": g["away_xg"]}} if g["home_xg"] is not None
+                                 else None, sportschau.for_match(comp, match_id)) if g["finished"] else None,
         "spielfeld": matchpage.for_match(comp, match_id),
         "farben": matchpage.colors_for(comp, match_id, g["home"], g["away"]),
     }

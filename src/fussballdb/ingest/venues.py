@@ -83,11 +83,17 @@ def _candidates(session: Session, comp: str, season: int) -> list[tuple]:
 
 def pair(fx: dict, todo: list[tuple]) -> tuple | None | bool:
     """Unser Spiel (aus _candidates) zu einem FotMob-Spiel: gleicher Anstoß, oder gleicher Tag mit klar passenden
-    Namen (Uhrzeit offen oder Anpfiff verschoben). None = kein Spiel an dem Tag, False = Namen passen nicht."""
+    Namen (Uhrzeit offen oder Anpfiff verschoben), ohne Spiel an dem Tag auch ±1 Tag bei sehr klaren Namen.
+    None = kein Spiel an dem Tag, False = Namen passen nicht."""
     # Datum beider Seiten in UTC (die Datenbank liefert Berliner Zeit; brasilianische Abendspiele um 23 Uhr UTC
     # lägen sonst an verschiedenen Tagen)
     day = fx["kickoff"].astimezone(timezone.utc).date()
     near = [c for c in todo if c[1].astimezone(timezone.utc).date() == day]
+    if not near:  # Datum weicht um einen Tag ab (Hannover – Darmstadt 2024/25): nur bei sehr klaren Namen
+        near = [c for c in todo if abs((c[1].astimezone(timezone.utc).date() - day).days) == 1]
+        scored = [(_similarity(fx["home"], c[3]) + _similarity(fx["away"], c[4]), c) for c in near]
+        best = max(scored, default=None, key=lambda x: x[0])
+        return best[1] if best and best[0] >= 1.8 else None
     scored = [(_similarity(fx["home"], c[3]) + _similarity(fx["away"], c[4]), c) for c in near]
     best = max(scored, default=None, key=lambda x: x[0])
     if best is None:

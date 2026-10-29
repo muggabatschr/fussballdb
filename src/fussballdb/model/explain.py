@@ -64,6 +64,8 @@ def explain(p: dict, home: str, away: str, market: tuple[float, float, float] | 
         missing = i.get("missing_regulars") or []
         att, conc = i.get("attack_mult", 1.0), i.get("concede_mult", 1.0)
         att = att / (i.get("euro_load") or {}).get("faktor", 1.0)  # Belastung extra (Punkt 3b)
+        style = (i.get("spielstil") or {}).get("faktor", 1.0)  # Ballbesitz extra (Punkt 3c)
+        att, conc = att / style, conc * style
         if missing and (1 - att >= AUSFALL_SCHWELLE or conc - 1 >= AUSFALL_SCHWELLE):
             effect = [f"{signed_pct(att)} eigene Tore"] if 1 - att >= AUSFALL_SCHWELLE else []
             if conc - 1 >= AUSFALL_SCHWELLE:
@@ -77,6 +79,13 @@ def explain(p: dict, home: str, away: str, market: tuple[float, float, float] | 
             comp = {"CL": "der Champions League", "EL": "der Europa League"}.get(load["wettbewerb"], "Europa")
             days = "einem Tag" if load["tage"] == 1 else f"{load['tage']} Tagen"
             lines.append(f"{t} spielte vor {days} in {comp}: {signed_pct(load['faktor'])} eigene Tore")
+
+    # 3c. Ballbesitz der letzten Spiele (nur wenn er spürbar wirkt)
+    for t, side in ((h, "home"), (a, "away")):
+        st = (impact.get(side) or {}).get("spielstil")
+        if st and st.get("ballbesitz") is not None and abs(st["faktor"] - 1) >= 0.02:
+            lines.append(f"{t} zuletzt mit {de(st['ballbesitz'], 0)} % Ballbesitz ({st['spiele']} Spiele): "
+                         f"{signed_pct(st['faktor'])} eigene Tore, {signed_pct(1 / st['faktor'])} Gegentore")
 
     # 4. Warum genau dieser Tipp (erwartete Punkte nach der Punkteregel)
     opts = p.get("tip_options") or []

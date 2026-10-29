@@ -16,9 +16,25 @@ const LABEL: Record<MatchEvent["art"], string> = {
   elfmeter_vergeben: "Elfmeter vergeben",
 };
 
-/** Momentum über die Spielzeit wie bei FotMob: je Minute ein Balken nach oben, wenn das Heimteam drückt, nach
- * unten für den Gast (Wert -100 bis 100). Tore, Platzverweise und vergebene Elfmeter stehen als Marken an der
- * Zeitachse über bzw. unter dem Graphen, die Halbzeit als gestrichelte Linie. */
+/** Glatte Kurve durch die Punkte (Catmull-Rom als kubische Bézier-Stücke). */
+function curve(pts: [number, number][]): string {
+  return pts
+    .slice(1)
+    .map((p, i) => {
+      const p0 = pts[Math.max(i - 1, 0)];
+      const p1 = pts[i];
+      const p3 = pts[Math.min(i + 2, pts.length - 1)];
+      const c1 = [p1[0] + (p[0] - p0[0]) / 6, p1[1] + (p[1] - p0[1]) / 6];
+      const c2 = [p[0] - (p3[0] - p1[0]) / 6, p[1] - (p3[1] - p1[1]) / 6];
+      return `C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p[0].toFixed(1)},${p[1].toFixed(1)}`;
+    })
+    .join("");
+}
+
+/** Momentum über die Spielzeit wie bei FotMob als Welle: nach oben in der Farbe des Heimteams, wenn es drückt,
+ * nach unten für den Gast (Wert -100 bis 100, leicht geglättet über die Nachbarminuten). Tore, Platzverweise und
+ * vergebene Elfmeter stehen als Marken an der Zeitachse über bzw. unter dem Graphen, die Halbzeit als
+ * gestrichelte Linie. */
 export function Momentum({
   data,
   events,
@@ -33,8 +49,19 @@ export function Momentum({
   const end = Math.max(90, ...data.map(([m]) => m), ...events.map((e) => e.pos));
   const W = 1000;
   const H = 200;
-  const bar = (W / end) * 0.8;
+  const mid = H / 2;
   const x = (m: number) => ((m - 0.5) / end) * W;
+  const y = (v: number) => mid - (Math.max(-100, Math.min(100, v)) / 100) * (mid - 4);
+  const smooth = data.map(([m, v], i) => {
+    const prev = data[i - 1]?.[1] ?? v;
+    const next = data[i + 1]?.[1] ?? v;
+    return [x(m), y((prev + 2 * v + next) / 4)] as [number, number];
+  });
+  const line = smooth.length ? `M${smooth[0][0].toFixed(1)},${smooth[0][1].toFixed(1)}${curve(smooth)}` : "";
+  const area = smooth.length
+    ? `M${smooth[0][0].toFixed(1)},${mid}L${smooth[0][0].toFixed(1)},${smooth[0][1].toFixed(1)}${curve(smooth)}` +
+      `L${smooth[smooth.length - 1][0].toFixed(1)},${mid}Z`
+    : "";
   const left = (m: number) => `${(Math.min(Math.max(m - 0.5, 0), end) / end) * 100}%`;
   const markers = (heim: boolean) =>
     events
@@ -60,7 +87,23 @@ export function Momentum({
       <div className="relative mt-1 h-4">{markers(true)}</div>
       <div className="relative">
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block h-32 w-full sm:h-40" role="img" aria-label="Momentum über die Spielzeit">
-          <line x1={0} x2={W} y1={H / 2} y2={H / 2} className="stroke-border" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          <defs>
+            <linearGradient id="momentum-home" x1="0" x2="0" y1="0" y2={mid} gradientUnits="userSpaceOnUse">
+              <stop offset="0" style={{ stopColor: "var(--home)", stopOpacity: 0.85 }} />
+              <stop offset="1" style={{ stopColor: "var(--home)", stopOpacity: 0.15 }} />
+            </linearGradient>
+            <linearGradient id="momentum-away" x1="0" x2="0" y1={mid} y2={H} gradientUnits="userSpaceOnUse">
+              <stop offset="0" style={{ stopColor: "var(--away)", stopOpacity: 0.15 }} />
+              <stop offset="1" style={{ stopColor: "var(--away)", stopOpacity: 0.85 }} />
+            </linearGradient>
+            <clipPath id="momentum-top">
+              <rect x={0} y={0} width={W} height={mid} />
+            </clipPath>
+            <clipPath id="momentum-bottom">
+              <rect x={0} y={mid} width={W} height={mid} />
+            </clipPath>
+          </defs>
+          <line x1={0} x2={W} y1={mid} y2={mid} className="stroke-border" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           <line
             x1={(45 / end) * W}
             x2={(45 / end) * W}
@@ -71,15 +114,16 @@ export function Momentum({
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
+          <g clipPath="url(#momentum-top)">
+            <path d={area} fill="url(#momentum-home)" />
+            <path d={line} fill="none" style={{ stroke: "var(--home)" }} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+          </g>
+          <g clipPath="url(#momentum-bottom)">
+            <path d={area} fill="url(#momentum-away)" />
+            <path d={line} fill="none" style={{ stroke: "var(--away)" }} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+          </g>
           {data.map(([m, v]) => (
-            <rect
-              key={m}
-              x={x(m) - bar / 2}
-              width={bar}
-              y={v >= 0 ? H / 2 - (v / 100) * (H / 2) : H / 2}
-              height={(Math.abs(v) / 100) * (H / 2)}
-              className={v >= 0 ? "fill-home" : "fill-away"}
-            >
+            <rect key={m} x={x(m) - W / end / 2} width={W / end} y={0} height={H} fill="transparent">
               <title>{`${Math.floor(m)}. Minute: ${v >= 0 ? home : away} ${Math.abs(v)}`}</title>
             </rect>
           ))}

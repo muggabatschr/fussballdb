@@ -77,12 +77,13 @@ lassen sich im Backtest prüfen.
 | football-data.co.uk, 18 Ligen | Ligaergebnisse aus England, Spanien, Italien, Deutschland, Frankreich, Niederlande, Portugal, Belgien, Türkei, Schottland, Griechenland, Österreich, Schweiz, Dänemark, Norwegen, Schweden, Polen, Rumänien (für die Europa-Elo) |
 | [Understat](https://understat.com) | xG, npxG, xPts, PPDA, Deep, jeder Schuss mit xG, Kader je Spiel mit Minuten/xG/xA |
 | [Transfermarkt](https://www.transfermarkt.de) | aktuelle Verletzte und Kranke, Verletzungshistorie je Spieler, Kaderwerte zum 1. jedes Monats |
-| [FotMob](https://www.fotmob.com/de/tv-guide/de) | TV-Sender je Spiel von Bundesliga, 2. Bundesliga, DFB-Pokal und CL in Deutschland und Österreich (nächste 7 Tage), xG der Champions-League-Spiele |
+| [FotMob](https://www.fotmob.com/de/tv-guide/de) | TV-Sender je Spiel von Bundesliga, 2. Bundesliga, DFB-Pokal und CL in Deutschland und Österreich (nächste 7 Tage), xG der Spiele in Champions League (ab 2024/25), 2. Liga und DFB-Pokal (ab 2022/23) |
 | [LiveOnSat](https://liveonsat.com) | Sky-Bundesliga-Kanalnummer je Bundesliga-Spiel (zweite Quelle zu FotMob, gilt für DE und AT) |
 | FotMob, Spielseiten | Spielort je Spiel (Stadion, Stadt, Kapazität, Koordinaten) für Bundesliga, 2. Liga, Pokal und CL ab 2026/27 |
 | [Open-Meteo](https://open-meteo.com) | Wetter am Stadion zur Spielzeit: Vorhersage bis 16 Tage vorher, danach gemessen (Archiv ERA5) |
 | [Ligainsider](https://www.ligainsider.de) | voraussichtliche Aufstellungen vor dem Spiel, tatsächliche danach |
 | [Kickbase](https://www.kickbase.com) (inoffizielle API, eigenes Konto) | Punkte, Marktwerte, Status, Markt und Kader der eigenen Liga |
+| [Sportschau](https://www.sportschau.de/live-und-ergebnisse/fussball/deutschland-bundesliga/spiele-und-ergebnisse) (Live & Ergebnisse) | Laufleistung (km) und Sprints je Team, km und Höchstgeschwindigkeit je Spieler (Tracking der DFL, nur Bundesliga ab 2014/15); Ballbesitz, Zweikampfquote, Pässe und Passquote (Bundesliga, 2. Liga, CL, teils DFB-Pokal) |
 
 Abgeleitet:
 - **Tore und Vorlagen je Spieler** aus den Understat-Kadern (`player_match`)
@@ -90,8 +91,8 @@ Abgeleitet:
 - **Sperren** = Rot/Gelb-Rot im letzten Spiel oder 5./10./15. Gelbe Karte
 - **Elo** je Team und Spiel
 
-Nicht verfügbar: **Ballbesitz**. FBref, Sofascore und FotMob blocken automatisierte Abrufe, die Spalte
-`possession` bleibt leer.
+**Ballbesitz** kommt von der Sportschau (siehe „Laufleistung und Ballbesitz“); FBref, Sofascore und FotMob
+blocken automatisierte Abrufe bzw. liefern für die Bundesliga keine Laufdaten.
 
 **Ältere Saisons 1993/94 bis 2013/14** (`fussballdb historie`, `ingest/history.py`) sind nur zum
 Nachschlagen da: Ergebnisse, Halbzeitstand, Statistik und Quoten von football-data, Anstoßzeit und Spieltag
@@ -174,6 +175,7 @@ uv run fussballdb init-db
 uv run fussballdb ingest      # alle Saisons seit 2014/15, beim ersten Mal ~30 Min. (wird gecacht)
 uv run fussballdb historie    # 1993/94 bis 2013/14, nur zum Nachschlagen (~1 Min.)
 uv run fussballdb aufstellungen -s 2025 -s 2024   # optional: Aufstellung und Momentum älterer Saisons ab 2014 (~6 Min. je Saison)
+uv run fussballdb laufleistung --wettbewerb BL --saison 2014 --saison 2015   # optional: km, Ballbesitz älterer Saisons (~15 Min. je Saison)
 uv run fussballdb ensure      # alles Weitere: Kaderwerte, Ausfälle, Quoten, Prognosen, Verletzungshistorie
 uv run fussballdb logos
 cd web && cp .env.example .env.local && npm install
@@ -311,8 +313,10 @@ die Begründung aufgeklappt, die letzten 6 Spiele beider Teams vor dem Spiel (be
 alle Wettbewerbe), der Direktvergleich mit Bilanz und den letzten 10 Duellen, beide Teams in der Tabelle
 (CL und 2. Liga mit Zonen-Chancen) und Kaderwert und Elo. Für offene Bundesliga-Spiele kommen die
 wahrscheinlichen Torschützen, die voraussichtliche Aufstellung laut Ligainsider und die Ausfälle dazu, für
-gespielte die Spielstatistik (Schüsse, Großchancen, Ecken, PPDA, Karten …) und der Vergleich Modell gegen
-Quoten. Ausfälle bei CL, 2. Liga und Pokal kommen aus der Transfermarkt-Liste der CL-Teams, sonst aus der
+gespielte die Spielstatistik (Ballbesitz, Schüsse, Großchancen, Ecken, PPDA, Karten, Zweikämpfe, Pässe,
+Laufleistung und Sprints), die Laufstärksten je Team mit Höchstgeschwindigkeit und der Vergleich Modell gegen
+Quoten. Gespielte Spiele in 2. Liga, Pokal und CL zeigen Ballbesitz, Zweikämpfe und Pässe, soweit die
+Sportschau sie hat. Ausfälle bei CL, 2. Liga und Pokal kommen aus der Transfermarkt-Liste der CL-Teams, sonst aus der
 Bundesliga-Liste, wenn ein Bundesligist spielt. Teamnamen, „Warum?“ und „Wer trifft?“ in der Kachel bleiben
 einzeln klickbar.
 
@@ -324,7 +328,7 @@ Kapitän, Tore, Vorlagen, Karten und Auswechselminute; darunter die Eingewechsel
 übrige Bank und der Trainer. Spielerfotos gibt es bewusst nicht. Vor dem Spiel ist es die voraussichtliche
 Aufstellung (etwa zwei Tage vorher), rund eine Stunde vor dem Anpfiff die offizielle; solange es keine
 FotMob-Aufstellung gibt, steht die von Ligainsider da. Das Momentum zeigt je Minute, wer Druck gemacht hat
-(Balken nach oben Heim, nach unten Gast), mit Toren, Platzverweisen und vergebenen Elfmetern an der Zeitachse.
+(als Welle in den Teamfarben, nach oben Heim, nach unten Gast, leicht geglättet über die Nachbarminuten), mit Toren, Platzverweisen und vergebenen Elfmetern an der Zeitachse.
 Gespielte Spiele werden einmal geladen und eingefroren. Die laufende Saison kommt mit dem Update, ältere
 Bundesliga-Saisons mit `fussballdb aufstellungen -s 2024` (~1 s je Spiel). Geladen ist die Bundesliga ab
 2014/15: Aufstellung und Formation für alle Spiele, Noten und Spieler des Spiels ab 2016/17 (2015/16 nur
@@ -382,7 +386,8 @@ oder glücklich nach den Chancen, Überraschung, Folgen für die Tabelle (Tabell
 wenn der Spieltag noch läuft), Serien („der dritte Sieg in Folge“, „seit sieben Spielen ohne Sieg“) und Ausfälle.
 Derbys, Spitzenspiele (beide unter den ersten drei) und Kellerduelle (beide ab Platz 15) werden als solche
 benannt. Mit der FotMob-Aufstellung nennt der Bericht die Formationen (ab 2014/15) und den Spieler des Spiels
-mit Note (ab 2016/17). Ab Oktober 2026 steht vor den Stichworten eine Zeile „Pressestimmen“: je Verein bis zu
+mit Note (ab 2016/17). Mit den Sportschau-Daten nennt er auf Ballbesitz ab 60 %, einen Unterschied in der
+Laufleistung ab 3 km und den laufstärksten Spieler (ab 12 km). Ab Oktober 2026 steht vor den Stichworten eine Zeile „Pressestimmen“: je Verein bis zu
 zwei Überschriften aus den 36 Stunden nach dem Anpfiff (`news_item`), wörtlich mit Zeitung. Zuerst die, die
 Gegner oder Ergebnis nennen (Lokalzeitung und Vereinsseite vor überregionalen), andere nur aus der
 Lokalzeitung; TV-Hinweise, Ticker, Vorberichte, Fotostrecken, Videos und reine Paarungen fallen weg. Aus den
@@ -435,8 +440,10 @@ die Glättung sie zum Positionsschnitt zieht (Kane gegen Freiburg 39 %).
 
 **xG in der Kachel:** Bei gespielten Bundesliga-Spielen steht unter dem Ergebnis das xG und unter jedem Team
 die Differenz Tore minus xG: grün = mehr Tore als die Chancen hergaben (überperformt), orange = weniger
-(unterperformt), grau = weniger als ein halbes Tor Abweichung. Das gilt auch für die Champions League;
-deren xG kommen von FotMob (`ingest/cl_xg.py`, seit 2024/25, nach jedem Spieltag nachgeladen).
+(unterperformt), grau = weniger als ein halbes Tor Abweichung. Das gilt auch für Champions League, 2. Liga
+und DFB-Pokal; deren xG kommen von FotMob (`ingest/cl_xg.py`, CL seit 2024/25, 2. Liga und Pokal seit
+2022/23, im Pokal auch bei Amateurteams, nach jedem Spieltag nachgeladen). Auf der Detailseite steht das xG
+dort zusätzlich in der Spielstatistik.
 
 **Stadion und Wetter** (Kachel und Detailseite, `ingest/venues.py`, `ingest/weather.py`,
 `components/VenueLine.tsx`): Stadion mit Kapazität laut FotMob-Spielseite, darunter das Wetter in der Stunde
@@ -648,7 +655,9 @@ Beide laufen über dasselbe Modell wie die Champions League (`model/europe.py`):
 (2. und 3. Liga seit 2022/23, DFB-Pokal seit 2024/25) kommen zu den europäischen Ligen dazu, Kaderwerte von
 Transfermarkt (L2, L3). Frühere Bundesligisten bleiben dasselbe Team über alle Ligen; Amateure im Pokal
 ohne Liga- und Kaderdaten starten deutlich schwächer (Elo 400 unter dem Basiswert, im Dixon-Coles
-Angriff −0,6 / Abwehr +0,6). Für die 2. Liga gibt es kein xG, ihr Dixon-Coles rechnet mit Toren.
+Angriff −0,6 / Abwehr +0,6). Das xG von 2. Liga und Pokal kommt seit Oktober 2026 von FotMob (ab 2022/23);
+das Modell der 2. Liga nutzt es, Pokal und CL rechnen für diese Spiele weiter mit Toren (`XG_IGNORED` in
+`model/europe.py`).
 
 Rückblick-Test (`fussballdb cl-xg-test` mit `competition`, eingestellt an 2024/25):
 
@@ -656,6 +665,15 @@ Rückblick-Test (`fussballdb cl-xg-test` mit `competition`, eingestellt an 2024/
 |---|---|---|---|---|
 | 2. Bundesliga (1.296 Spiele) | 0,2234 | 0,2235 | 0,2231 | Elo: im Einstelljahr am besten, Mischungen danach kaum besser (87 %) |
 | DFB-Pokal (158 Spiele) | 0,1708 | **0,1420** | 0,1483 | Dixon-Coles allein: in allen Saisons besser, 99 % der Ziehungen |
+
+Mit dem xG von 2. Liga und Pokal (`fussballdb pokal-xg-test`, Oktober 2026, eingestellt an 2024/25, Test die
+übrigen Saisons; „bisher“ = aktives Modell ohne dieses xG):
+
+| | bisher (Test) | mit xG (Test) | Ergebnis |
+|---|---|---|---|
+| 2. Bundesliga (1.305 Spiele) | 0,2232 (Elo) | **0,2208** (xG/Elo 70/30 + Form) | übernommen: 98 % der Ziehungen, 4 von 5 Saisons, Einstelljahr 0,2229 statt 0,2234 |
+| DFB-Pokal (174 Spiele) | **0,1388** | 0,1408 | verworfen (18 %); im Einstelljahr besser, danach schlechter, wenig Spiele |
+| Champions League (432 Spiele) | 0,1963 | 0,1964 | kein Unterschied, bleibt ohne |
 
 **Pokal: 90 Minuten und Weiterkommen.** OpenLigaDB speichert im DFB-Pokal als „Endergebnis“ den Stand nach
 90 Minuten, Verlängerung und Elfmeterschießen stehen getrennt (Halle – Schalke 2026/27: 2:2, nach Verlängerung
@@ -671,6 +689,39 @@ das „Endergebnis“ dagegen der Stand nach Verlängerung (Inter – Barcelona 
 Seiten: `/2bl` (Spieltage), `/2bl/tabelle` (Tabelle mit Modell-Platz und Hochrechnung: Aufstieg,
 Relegation, Abstieg), `/pokal` (Runden). MCP: `wettbewerb` (D2, DFB oder CL) und `tabelle_2_liga`.
 Eingerichtet wird alles mit `uv run fussballdb europa` und `uv run fussballdb cl-prognosen`.
+
+## Laufleistung und Ballbesitz
+
+`ingest/sportschau.py`, Tabellen `match_extra_stats` (je Spiel und Team) und `player_tracking` (je Spieler):
+von den Seiten „Teamstatistik“, „Laufleistung“ und „Max. Geschwindigkeit“ der Sportschau.
+
+| | Bundesliga | 2. Bundesliga | DFB-Pokal | Champions League |
+|---|---|---|---|---|
+| gelaufene km, Sprints (Team) | ab 2014/15 | – | – | – |
+| km, Minuten, Höchstgeschwindigkeit je Spieler | ab 2014/15 | – | – | – |
+| Ballbesitz, Zweikämpfe gewonnen, Pässe, Passquote | ab 2014/15 | ab 2022/23 | teils, oft nur Ballbesitz | ab 2024/25 |
+
+Laufdaten misst nur das Tracking der DFL in der Bundesliga; FotMob kennt die Felder, liefert für die Bundesliga
+aber keine Werte. Die Spiele einer Saison stehen auf den Spieltags- und Rundenseiten der Sportschau mit Anstoß
+(UTC) und beiden Teamnamen. Zugeordnet wird über den Anstoß (±36 Stunden) und die ähnlichsten Namen, so
+klappt es in allen vier Wettbewerben ohne eigene Namensliste. Gespielte Spiele werden frühestens drei Stunden
+nach dem Anpfiff einmal geladen (Seiten im Cache); ein Spiel ohne Werte bekommt leere Zeilen, damit es nicht
+ständig neu abgefragt wird. Der Ballbesitz der Bundesliga steht zusätzlich in `match_team_stats.possession`.
+
+- **Update**: Schritt „Laufleistung, Ballbesitz, Zweikämpfe“ lädt die gespielten Spiele der laufenden Saisons
+- **Historie**: `fussballdb laufleistung --wettbewerb BL --saison 2014 …` (~3 Seiten je Bundesligaspiel,
+  unter einer Seite je Sekunde, ~3 Std. für 2014–2026)
+- **Detailseite**: Zeilen in der Spielstatistik und Abschnitt „Laufleistung“ mit den fünf Laufstärksten je
+  Team und dem Schnellsten
+- **Spielbericht**: Ballbesitz, Unterschied in der Laufleistung, laufstärkster Spieler, Zahlenzeile
+- **Chat und MCP**: `team_form` mit Ballbesitz, km (eigene und gegnerische), Sprints und Zweikampfquote; per
+  `sql` beide Tabellen
+- **Modell**: Der Ballbesitz der letzten 10 Spiele ist Teil der Bundesliga-Prognose (Punkt 7 unter „Modell“);
+  km, Sprints und Zweikämpfe brachten nichts (`fussballdb laufleistung-test`, siehe „Was getestet und
+  verworfen wurde“)
+
+Die Sportschau-Seiten sind frei abrufbar; ihre robots.txt sperrt nur KI-Crawler für das Training. Abgefragt wird
+langsam und nur für die private Nutzung.
 
 ## Presse je Verein
 
@@ -846,7 +897,10 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb tipp-test` | Tipp-Regeln im Rückblick vergleichen |
 | `fussballdb belastung-test` | Europapokal-Belastung im Rückblick-Test (`--tage`) |
 | `fussballdb cl-xg-test` | CL: europaweites xG-Modell gegen die Elo im Rückblick-Test |
+| `fussballdb pokal-xg-test` | xG von 2. Liga und DFB-Pokal im Modell: Pokal, 2. Liga und CL mit und ohne dieses xG im Rückblick |
 | `fussballdb elo-historie-test` | Elo mit Vorgeschichte ab 1993/94 gegen Elo ab 2014/15 (verworfen) |
+| `fussballdb laufleistung` | Laufleistung, Sprints, Ballbesitz, Zweikämpfe und Pässe von der Sportschau (`--saison 2014`, `--wettbewerb BL`; ohne: laufende Saison aller vier Wettbewerbe) |
+| `fussballdb laufleistung-test` | Laufleistung, Sprints, Ballbesitz und Zweikämpfe der letzten 10 Spiele als Faktor im Rückblick, auch zusammen mit den verworfenen Erweiterungen |
 | `fussballdb startelf-test` | Startelf-Korrektur (Kickbase-Punkte, FotMob-Noten, xG+xA) im Rückblick, auch zusammen mit den verworfenen Erweiterungen (verworfen) |
 | `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test (`--kombi`: zusammen mit den verworfenen Erweiterungen) |
 | `fussballdb kombi-test` | alle Erweiterungen zusammen, jeweils eine weggelassen |
@@ -886,6 +940,7 @@ Geprüft werden:
 | Spielorte (Stadion, Kapazität) | gespielte Spiele der Saison ohne eingefrorenen Ort oder offene der nächsten 14 Tage älter als 20 Std. | 6 Std. |
 | Wetter zur Spielzeit | Vorhersage älter als 6 Std. oder Spiel vorbei und noch nicht gemessen | 3 Std. |
 | Aufstellung und Momentum (FotMob) | gespielte Spiele mit FotMob-ID ohne eingefrorene Seite, offene der nächsten 2 Tage älter als 1 Std. | 1 Std. |
+| Laufleistung, Ballbesitz, Zweikämpfe (Sportschau) | gespielte Spiele der laufenden Saisons (letzte 30 Tage), seit 3 Std. vorbei, ohne Werte | 3 Std. |
 | Presse je Verein (Google News) | letzter Abruf älter als 5 Std. | 6 Std. |
 | Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |
 | Verletzungshistorie (langsam) | noch nie vollständig geladen | 7 Tage |
@@ -958,6 +1013,10 @@ Log: `~/Library/Logs/fussballdb-snapshot.log`. Abschalten mit
 6. **Europapokal-Belastung**: Hatte ein Team in den 4 Tagen vor dem Bundesliga-Spiel ein Spiel in der
    Champions oder Europa League, sinkt seine Torerwartung um 10 % (`features/euro_load.py`, Spielplan aus
    der CL-Datenbank, also ab 2024/25; die Europa League ist nur für 2024/25 erfasst).
+7. **Ballbesitz**: Mittel des Ballbesitz-Unterschieds zum Gegner aus den letzten 10 Bundesligaspielen
+   (Sportschau), als z-Wert über alle Teams. Der Faktor e^(0,03·z) hebt die eigene Torerwartung und senkt die
+   gegnerische (`features/running.py`, `ACTIVE_BETAS`). Bayern mit 63 % Ballbesitz: +8 % eigene Tore, −7 %
+   Gegentore; ein Team mit 44 %: etwa −3 % / +3 %. Ab ±2 % steht es in der Begründung.
 
 Backtest 2025/26 und 2026/27 (bis Spieltag 6, 360 Spiele), jeweils nur mit den Daten vor dem Spieltag
 (`fussballdb backtest`), Ausfälle aus der Verletztenliste zum Stichtag:
@@ -1013,6 +1072,8 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Echte Aufstellung (Obergrenze, Wissen aus der Zukunft) | −0,0006 | nur zur Einordnung: Ausfälle sind kaum noch ein Hebel |
 | Startelf-Korrektur: Stärke der aufgebotenen gegen die übliche Elf (die Startelf steht 1 Std. vor dem Anpfiff fest), Spielerstärke aus FotMob-Noten, Kickbase-Punkten, xG+xA oder gemischt, k 0,1–0,4, zusätzlich zu den Ausfällen oder statt ihrer (`fussballdb startelf-test`, Einstellen 2016–20, Test 2021–26) | beste: FotMob-Note k 0,1 −0,0001 (62 %); „statt Ausfälle“ +0,0008 bis +0,0019; Kickbase +0,0002 bis +0,0019 | verworfen; mit 11 Saisons nicht von Zufall zu unterscheiden. Ein erster Test nur mit 2024–26 sah besser aus (−0,0003), das war Zufall. Kickbase deckt nur 20 % ab (ehemalige Spieler fehlen) |
 | Startelf-Korrektur zusammen mit den verworfenen Erweiterungen (Heimvorteil je Team, Duelle, Remis-Kalibrierung, Halbwertszeit 3 Mon., Tor-Skalierung, alle zusammen) | bestes Paar Tor-Skalierung + Note k 0,1: −0,0005 (91 %), Tor-Skalierung allein ebenso −0,0005 (90 %) | verworfen; der Gewinn kommt allein von der Tor-Skalierung (besser in 5–6 von 11 Saisons, siehe oben), die Note fügt nichts hinzu. Direkte Duelle über 2016–26 ±0 |
+| Ballbesitz der letzten 10 Spiele (Unterschied zum Gegner, z-Wert) als Faktor e^(β·z), β 0,03 (`fussballdb laufleistung-test`, Einstellen 2016–20, Test 2021–26, 98 % der Spiele mit Daten) | Einstellen −0,0005, Test −0,0005 | übernommen; 96 % der Ziehungen, 8 von 11 Saisons, 1,347 statt 1,335 Tipp-Punkte je Spiel. β 0,06 ähnlich (−0,0006), aber nur 85 % |
+| Laufleistung (km), Sprints, Zweikampfquote der letzten 10 Spiele, einzeln (β 0,03 und 0,06) und alle vier zusammen (β 0,02) | Test −0,0003 bis +0,0011 | verworfen; mehr laufen als der Gegner sagt nichts über künftige Tore. Mit den verworfenen Erweiterungen kombiniert ebenso; Tor-Skalierung + Ballbesitz kam auf −0,0010 (98 %), der Gewinn über den Ballbesitz hinaus kommt aber von der Tor-Skalierung, die im Einstellzeitraum schlechter ist |
 | Elo mit Vorgeschichte ab 1993/94 statt ab 2014/15 (nur die Elo, `fussballdb elo-historie-test`) | Einstellen 2015–19: −0,0003, Test 2020–26: +0,0005 | verworfen; im Test in keiner der 7 Saisons besser, 9 % der Ziehungen. Die alten Ergebnisse bleiben reine Anzeige |
 
 ## Datenbank
@@ -1035,6 +1096,8 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `match_venue` | Spielort je Spiel (`competition` BL → `match`, sonst `eu_match`), nach dem Spiel eingefroren (`frozen`) |
 | `news_item` | Presse-Meldungen je Verein (Überschrift, Quelle, Link, `kind` lokal/verein) mit Volltextindex und Embedding |
 | `match_page` | Aufstellung (JSON mit Formation, Positionen, Noten, Ereignissen), Momentum, Tore/Platzverweise und Teamfarben je Spiel laut FotMob, nach dem Spiel eingefroren |
+| `match_extra_stats` | Teamwerte je Spiel von der Sportschau (`competition` BL → `match`, sonst `eu_match`): km, Sprints, Ballbesitz, Zweikämpfe, Pässe, Passquote |
+| `player_tracking` | km, Minuten und Höchstgeschwindigkeit je Spieler und Spiel (Sportschau, nur Bundesliga) |
 | `match_weather` | Wetter je Spiel zur Spielzeit (`kind` vorhersage oder gemessen) |
 | `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL, D2, DFB → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |
 | `kb_session` | Kickbase-Anmeldung: Token, Ablauf, Ligen, gewählte Liga (nie das Passwort) |
@@ -1137,6 +1200,11 @@ Was in welcher Reihenfolge entstanden ist und warum.
 31. **Spielberichte im Zeitungsstil** mit Verlauf je Halbzeit, Tabelle, Serien, Formation und Spieler des Spiels;
     Datenbankzugang nur noch aus `.env`.
 32. **Aufstellung auf dem Spielfeld und Momentum** (FotMob) auf der Detailseite, Diagramme in Teamfarben.
+33. **Laufleistung und Ballbesitz** (Sportschau): km, Sprints, Ballbesitz, Zweikämpfe und Pässe je Spiel,
+    km und Höchstgeschwindigkeit je Spieler; auf der Detailseite, im Spielbericht, in Chat und MCP. Der
+    Ballbesitz der letzten 10 Spiele geht ins Bundesliga-Modell ein, das Momentum ist eine Welle.
+34. **xG für 2. Liga und DFB-Pokal** von FotMob ab 2022/23, auf Kachel und Detailseite; die 2. Liga rechnet
+    damit jetzt mit dem xG-Modell (xG/Elo 70/30 + Form) statt der Elo allein.
 Offen:
 
 - **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**

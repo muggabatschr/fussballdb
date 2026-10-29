@@ -375,7 +375,17 @@ export type MatchStats = {
   red_cards: number | null;
   ppda: number | null;
   xpts: number | null;
+  // Sportschau: km und Sprints nur Bundesliga, dazu Ballbesitz, Zweikämpfe, Pässe (auch 2. Liga, CL)
+  distance_km?: number | null;
+  sprints?: number | null;
+  possession?: number | null;
+  duels_won_pct?: number | null;
+  passes?: number | null;
+  pass_pct?: number | null;
 };
+
+/** Laufleistung eines Spielers laut Sportschau (nur Bundesliga). */
+export type RunningPlayer = { player: string; minutes: number | null; distance_km: number | null; top_speed: number | null };
 
 export type DetailAbsence = Absence & { value_share?: number | null };
 
@@ -399,7 +409,8 @@ export type MatchDetail = {
     | null;
   ausfaelle: Sides<DetailAbsence[]> | null;
   aufstellung?: Sides<{ reihe: number | null; name: string }[]> | null;
-  statistik?: Sides<MatchStats> | null;
+  statistik?: Sides<Partial<MatchStats>> | null;
+  laufdaten?: Sides<RunningPlayer[]> | null; // Bundesliga: km und Höchstgeschwindigkeit je Spieler
   quoten?: { bookmaker: string; is_closing: boolean; p_home: number; p_draw: number; p_away: number }[];
   kaderwert?: Sides<number | null>;
   bericht?: string | null; // Spielbericht aus den Daten (Bundesliga, gespielt)

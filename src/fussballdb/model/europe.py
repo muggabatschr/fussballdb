@@ -62,6 +62,13 @@ class EloConfig:
 
 
 SEPARATE = ("BRA",)  # Wettbewerbe ohne Spiele gegen den Rest: eigene Elo und eigene Modelle
+# xG, das ein Modell nicht nutzt (dort zählen die Tore), je vorhergesagtem Wettbewerb; Standard: das xG von
+# 2. Liga und Pokal (FotMob, seit Oktober 2026) bleibt draußen. Rückblick-Test fussballdb pokal-xg-test (Oktober
+# 2026, eingestellt an 2024/25): 2. Liga mit xG/Elo 70/30 + Form RPS 0,2208 statt 0,2232 für die Elo (98 % der
+# Ziehungen, 4 von 5 Saisons, Einstelljahr nicht schlechter) -> übernommen; Pokal mit xG schlechter (0,1408 statt
+# 0,1388, 18 %), CL unverändert (0,1964 statt 0,1963).
+XG_IGNORED_DEFAULT: tuple[str, ...] = ("D2", "DFB")
+XG_IGNORED: dict[str | None, tuple[str, ...]] = {"D2": ()}
 CALENDAR_YEAR = ("BRA",)  # Saison = Kalenderjahr (aus der Spalte season, nicht aus dem Datum)
 
 
@@ -74,8 +81,9 @@ def elo_config(competition: str | None) -> EloConfig:
     return ELO_BY_COMP.get(competition, EloConfig())
 
 
-def load_matches(competition: str | None = None) -> pd.DataFrame:
-    """Alle Spiele der Welt von `competition`: Brasilien allein, sonst Europa und Deutschland ohne Brasilien."""
+def load_matches(competition: str | None = None, drop_xg: tuple[str, ...] | None = None) -> pd.DataFrame:
+    """Alle Spiele der Welt von `competition`: Brasilien allein, sonst Europa und Deutschland ohne Brasilien.
+    Das xG der Wettbewerbe in `drop_xg` (Standard XG_IGNORED je Wettbewerb) wird verworfen."""
     with engine.connect() as conn:
         df = pd.read_sql(text("""
             SELECT m.id, m.competition, m.season, m.round_no, m.round_name, m.kickoff, m.home_id, m.away_id,
@@ -84,6 +92,8 @@ def load_matches(competition: str | None = None) -> pd.DataFrame:
             FROM eu_match m JOIN eu_team th ON th.id = m.home_id JOIN eu_team ta ON ta.id = m.away_id
             ORDER BY m.kickoff, m.id"""), conn)
     df["kickoff"] = pd.to_datetime(df["kickoff"], utc=True)
+    drop = XG_IGNORED.get(competition, XG_IGNORED_DEFAULT) if drop_xg is None else drop_xg
+    df.loc[df["competition"].isin(drop), ["home_xg", "away_xg"]] = np.nan
     if competition in SEPARATE:
         return df[df["competition"] == competition].reset_index(drop=True)
     return df[~df["competition"].isin(SEPARATE)].reset_index(drop=True)
@@ -503,11 +513,12 @@ def _row(p: dict, m, basis: str, as_of: pd.Timestamp) -> dict:
 
 ACTIVE_XG: XgConfig | None = XgConfig(alpha=0.7, form_weight=0.4)  # None = nur Elo
 # Modell je Wettbewerb nach eigenem Rückblick-Test (Oktober 2026, eingestellt an 2024/25):
-# 2. Liga: Elo im Einstelljahr am besten, Mischungen danach kaum besser (RPS 0,2224 statt 0,2234) -> Elo.
+# 2. Liga: ohne eigenes xG war die Elo am besten (RPS 0,2234); mit dem xG von FotMob seit Oktober 2026 xG/Elo
+# 70/30 + Form (siehe XG_IGNORED).
 # DFB-Pokal: Dixon-Coles allein klar besser (0,142 statt 0,171, alle Saisons, 99 % der Ziehungen).
 # Brasilien (Oktober 2026, eingestellt an 2023, Test 2024–2026, 1.459 Spiele): xG/Elo 70/30 + Form RPS 0,2041
 # statt 0,2059 für die Elo (98 % der Ziehungen, alle 4 Saisons); Wettmarkt 0,1972. Verworfene Bausteine dazu ±0.
-ACTIVE_BY_COMP: dict[str, XgConfig | None] = {"CL": ACTIVE_XG, "D2": None, "DFB": XgConfig(), "BRA": ACTIVE_XG}
+ACTIVE_BY_COMP: dict[str, XgConfig | None] = {"CL": ACTIVE_XG, "D2": ACTIVE_XG, "DFB": XgConfig(), "BRA": ACTIVE_XG}
 PREDICTED_COMPETITIONS = tuple(ACTIVE_BY_COMP)
 
 
@@ -564,12 +575,12 @@ XG_VARIANTS: dict[str, XgConfig | None] = {
 
 
 def backtest_xg(variants: dict[str, XgConfig | None] | None = None, log=print, competition: str = "CL",
-                elo: EloConfig | None = None) -> pd.DataFrame:
+                elo: EloConfig | None = None, drop_xg: tuple[str, ...] | None = None) -> pd.DataFrame:
     """Rückblick-Test aller CL-Runden für das Elo-Modell und die xG-Varianten. Je Runde wird jedes
     xG-Modell (Kaderwert-Gewicht, xG/Tore) einmal mit Formkomponente angepasst; die Varianten
     unterscheiden sich danach nur in der Mischung. Liefert je Spiel und Variante RPS, Log-Loss und Punkte."""
     variants = variants or XG_VARIANTS
-    df, values = load_matches(competition), load_values()
+    df, values = load_matches(competition, drop_xg), load_values()
     st = run_elo(df, values, elo or elo_config(competition))
     feats = all_features(df, st, values)
     rows = []
@@ -620,6 +631,38 @@ def compare_xg(res: pd.DataFrame, base: str = "Elo (bisher)", tune=(2024,), seed
                     "punkte": res[f"pkt|{n}"].mean(),
                     "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if n != base else np.nan})
     return pd.DataFrame(out).sort_values("rps_test")
+
+
+GERMAN_XG = ("D2", "DFB")  # xG von FotMob seit Oktober 2026 (ingest/cl_xg.py)
+
+
+def german_xg_test(comps=("DFB", "D2", "CL"), tune=(2024,), seed: int = 0, log=print) -> pd.DataFrame:
+    """Nutzt das xG von 2. Liga und DFB-Pokal dem Modell? Je Wettbewerb das aktive Modell ohne dieses xG (nur
+    Tore, wie bisher) gegen dasselbe mit xG und gegen die xG-Varianten. Eingestellt an `tune`, Test danach.
+    Bootstrap und Saisons gegen "bisher"."""
+    keep = ("Elo (bisher)", "xG", "xG + Form", "xG/Elo 70/30", "xG/Elo 70/30 + Form")
+    out = []
+    for comp in comps:
+        active = ACTIVE_BY_COMP[comp]
+        old = backtest_xg({"bisher": active}, log=lambda m: None, competition=comp, drop_xg=GERMAN_XG)
+        new = backtest_xg({**{"aktiv mit xG": active}, **{k: XG_VARIANTS[k] for k in keep}} if active else
+                          {k: XG_VARIANTS[k] for k in keep}, log=log, competition=comp, drop_xg=())
+        res = old.merge(new, on=["season", "round", "match_id"])
+        is_tune = res["season"].isin(tune).to_numpy()
+        boot = np.random.default_rng(seed).choice(np.flatnonzero(~is_tune), (4000, int((~is_tune).sum())))
+        base = res["rps|bisher"].to_numpy()
+        for n in [c.split("|", 1)[1] for c in res.columns if c.startswith("rps|")]:
+            if n == "aktiv mit xG" and active is None:
+                continue
+            d = res[f"rps|{n}"].to_numpy() - base
+            out.append({"wettbewerb": comp, "variante": n, "spiele": len(res),
+                        "rps_einstellen": res.loc[is_tune, f"rps|{n}"].mean(),
+                        "rps_test": res.loc[~is_tune, f"rps|{n}"].mean(),
+                        "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if n != "bisher" else np.nan,
+                        "saisons_besser": f"{sum(d[(res['season'] == s).to_numpy()].mean() < 0 for s in sorted(res['season'].unique()))}"
+                                          f"/{res['season'].nunique()}",
+                        "punkte_test": res.loc[~is_tune, f"pkt|{n}"].mean()})
+    return pd.DataFrame(out)
 
 
 def brazil_test(homes=(65.0,), variants: dict[str, XgConfig | None] | None = None, tune=(2023,),

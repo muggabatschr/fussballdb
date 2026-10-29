@@ -1,5 +1,7 @@
-"""xG der Champions-League-Spiele von FotMob (Spielliste je Saison, dann die Spielseiten der gespielten
-Spiele). Zuordnung zu eu_match über Anstoßzeit und Teamnamen wie beim TV-Programm."""
+"""xG der Spiele in Champions League, 2. Bundesliga und DFB-Pokal von FotMob (Spielliste je Saison, dann die
+Spielseiten der gespielten Spiele). Zuordnung zu eu_match über Anstoßzeit und Teamnamen wie bei den Spielorten
+(venues.pair). FotMob hat xG für die CL ab 2024/25, für 2. Liga und Pokal ab 2022/23, im Pokal auch bei
+Amateurteams."""
 
 import json
 import re
@@ -10,9 +12,7 @@ from sqlalchemy.orm import Session
 
 from fussballdb.ingest.absences import BROWSER_HEADERS
 from fussballdb.ingest.http import get_text
-from fussballdb.ingest.tv import _similarity
 
-FIXTURES = "https://www.fotmob.com/leagues/42/fixtures/champions-league?season={season}-{next}"
 MATCH = "https://www.fotmob.com/match/{id}"
 
 
@@ -21,18 +21,6 @@ def _next_data(html: str) -> dict:
     if not m:
         raise ValueError("FotMob: Seitenaufbau hat sich geändert (__NEXT_DATA__ fehlt)")
     return json.loads(m.group(1))["props"]["pageProps"]
-
-
-def fixtures(season: int) -> list[dict]:
-    """Gespielte CL-Spiele einer Saison laut FotMob: id, Anstoß, Heim, Gast."""
-    html = get_text(FIXTURES.format(season=season, next=season + 1), headers=BROWSER_HEADERS)
-    out = []
-    for m in _next_data(html).get("fixtures", {}).get("allMatches", []):
-        status = m.get("status", {})
-        if status.get("finished") and not status.get("cancelled"):
-            out.append({"id": int(m["id"]), "home": m["home"]["name"], "away": m["away"]["name"],
-                        "kickoff": datetime.fromisoformat(status["utcTime"].replace("Z", "+00:00"))})
-    return out
 
 
 def match_xg(fotmob_id: int) -> tuple[float, float] | None:
@@ -47,37 +35,44 @@ def match_xg(fotmob_id: int) -> tuple[float, float] | None:
     return None
 
 
-def ingest(session: Session, seasons: list[int], log=print) -> dict:
-    """xG für gespielte CL-Spiele ohne xG nachtragen. Liefert Anzahl und nicht zuordenbare Spiele."""
-    rows = session.execute(text("""
-        SELECT m.id, m.kickoff, m.home_xg,
-               string_agg(DISTINCT ha.alias, '|') || '|' || ht.name, string_agg(DISTINCT aa.alias, '|') || '|' || at.name
-        FROM eu_match m JOIN eu_team ht ON ht.id = m.home_id JOIN eu_team at ON at.id = m.away_id
-        LEFT JOIN eu_team_alias ha ON ha.team_id = ht.id LEFT JOIN eu_team_alias aa ON aa.team_id = at.id
-        WHERE m.competition = 'CL' AND m.finished AND m.season = ANY(:s)
-        GROUP BY m.id, m.kickoff, m.home_xg, ht.name, at.name"""), {"s": seasons}).all()
-    missing = {r[0]: r for r in rows if r[2] is None}
+COMPETITIONS = ("CL", "D2", "DFB")
+FIRST_SEASON = {"CL": 2024, "D2": 2022, "DFB": 2022}
+
+
+def ingest(session: Session, seasons: list[int], comps=COMPETITIONS, log=print) -> dict:
+    """xG für gespielte Spiele ohne xG nachtragen. Liefert Anzahl und nicht zuordenbare Spiele."""
+    from fussballdb.ingest.venues import _fixtures, pair
+
     found, unmatched, no_xg = 0, [], 0
-    for season in seasons:
-        if not any(r[1].year in (season, season + 1) for r in missing.values()):
-            continue
-        for fx in fixtures(season):
-            same_time = [r for r in missing.values() if r[1] == fx["kickoff"]]
-            scored = [(_similarity(fx["home"], r[3]) + _similarity(fx["away"], r[4]), r) for r in same_time]
-            best = max(scored, default=None, key=lambda x: x[0])
-            if best is None:
-                continue  # schon mit xG oder nicht in unserer Datenbank
-            if best[0] < 1.0:
-                unmatched.append(f"{fx['home']} – {fx['away']}")
+    for comp in comps:
+        for season in seasons:
+            if season < FIRST_SEASON[comp]:
                 continue
-            xg = match_xg(fx["id"])
-            match_id = best[1][0]
-            session.execute(text("UPDATE eu_match SET fotmob_id = :f, home_xg = :h, away_xg = :a WHERE id = :id"),
-                            {"f": fx["id"], "h": xg[0] if xg else None, "a": xg[1] if xg else None, "id": match_id})
-            missing.pop(match_id, None)
-            found += bool(xg)
-            no_xg += not xg
-            if found and found % 50 == 0:
-                session.commit()
-                log(f"  {found} Spiele mit xG")
+            todo = session.execute(text("""
+                SELECT m.id, m.kickoff, m.finished,
+                       string_agg(DISTINCT ha.alias, '|') || '|' || ht.name, string_agg(DISTINCT aa.alias, '|') || '|' || at.name
+                FROM eu_match m JOIN eu_team ht ON ht.id = m.home_id JOIN eu_team at ON at.id = m.away_id
+                LEFT JOIN eu_team_alias ha ON ha.team_id = ht.id LEFT JOIN eu_team_alias aa ON aa.team_id = at.id
+                WHERE m.competition = :c AND m.season = :y AND m.finished AND m.home_xg IS NULL
+                GROUP BY m.id, m.kickoff, m.finished, ht.name, at.name"""), {"c": comp, "y": season}).all()
+            if not todo:
+                continue
+            for fx in _fixtures(comp, season):
+                if fx["kickoff"] > datetime.now(fx["kickoff"].tzinfo):
+                    continue
+                best = pair(fx, todo)
+                if best is None:
+                    continue  # schon mit xG oder nicht in unserer Datenbank
+                if best is False:
+                    unmatched.append(f"{comp} {fx['home']} – {fx['away']}")
+                    continue
+                todo = [c for c in todo if c[0] != best[0]]
+                xg = match_xg(fx["id"])
+                session.execute(text("UPDATE eu_match SET fotmob_id = :f, home_xg = :h, away_xg = :a WHERE id = :id"),
+                                {"f": fx["id"], "h": xg[0] if xg else None, "a": xg[1] if xg else None, "id": best[0]})
+                found += bool(xg)
+                no_xg += not xg
+                if found and found % 50 == 0:
+                    session.commit()
+                    log(f"  {found} Spiele mit xG")
     return {"mit_xg": found, "ohne_xg": no_xg, "nicht_zugeordnet": sorted(set(unmatched))}

@@ -23,9 +23,11 @@ Regeln:
 - Nutze die Werkzeuge, bevor du Zahlen nennst. Erfinde keine Ergebnisse oder Statistiken.
 - Nenne bei Prognosen kurz die wichtigsten Gründe aus den Daten (xG-Form, Ausfälle, Heimvorteil).
 - Verletzte Spieler sind in die Wahrscheinlichkeiten bereits eingerechnet (gedämpft nach ihrem Anteil
-  an xG+xA). Rechne sie nicht ein zweites Mal ein.
+  an xG+xA), ebenso Sperren, Europapokal-Belastung und der Ballbesitz der letzten 10 Spiele. Rechne sie
+  nicht ein zweites Mal ein.
 - Fußball ist zufallsbehaftet: Prognosen sind Wahrscheinlichkeiten, keine Tipps oder Wettempfehlungen.
-- Ballbesitz liegt in der Datenbank nicht vor.
+- Ballbesitz, Laufleistung (km), Sprints und Zweikampfquote stehen in get_team_form und in
+  match_extra_stats/player_tracking (Bundesliga ab 2014/15; km und Sprints nur Bundesliga).
 - Antworte knapp, Zahlen gerne als kleine Tabelle."""
 
 MAX_TOOL_ROUNDS = 12

@@ -728,3 +728,81 @@ def compare_lineup_strength(fit_configs: dict[str, dict] | None = None, tune=tup
     print("Abdeckung je Quelle (Anteil Team-Spiele mit Abstand):", {k: round(v, 2) for k, v in coverage.items()})
     print("Mittlerer Abstand im Einstellzeitraum (abgezogen):", {k: round(v, 3) for k, v in offset.items()})
     return pd.DataFrame(rows).sort_values("delta_test")
+
+
+RUNNING_BETAS = (0.03, 0.06)
+
+
+def compare_running(fit_configs: dict[str, dict] | None = None, tune=tuple(range(2016, 2021)),
+                    test=tuple(range(2021, 2027)), window: int = 10, seed: int = 0, progress=None) -> pd.DataFrame:
+    """Laufleistung, Sprints, Ballbesitz und Zweikämpfe der letzten Spiele (features/running.py, Sportschau ab
+    2014/15) als Faktor auf die Torerwartung, je Kennzahl mit beta aus RUNNING_BETAS und alle vier zusammen.
+    Jede Modellvariante (aktuelles Modell, jede verworfene Erweiterung, alle verworfenen) ohne und mit Faktor,
+    alles gegen das aktuelle Modell wie live (Ausfälle, Sperren, Europapokal-Belastung). delta < 0 = besser."""
+    from fussballdb.config import TIPP_PUNKTE
+    from fussballdb.features import euro_load
+    from fussballdb.features.running import METRICS, RunningForm
+    from fussballdb.model.data import load_squad_values
+    from fussballdb.model.ensemble import kicktipp_points
+
+    fit_configs = fit_configs or finishing_combo_configs()
+    df = load_matches()
+    values = load_squad_values()
+    injuries = load_injuries()
+    av = AvailabilityModel()
+    rf = RunningForm(window)
+    schedule = euro_load.euro_schedule()
+    seasons = tune + test
+    games_all = df[df["finished"] & df["season"].isin(seasons)]
+    groups = list(games_all.groupby(["season", "matchday"]))
+    meta = pd.DataFrame([{"season": s, "matchday": md} for (s, md), g in groups for _ in range(len(g))])
+    outcome = np.array([0 if r.hg > r.ag else 1 if r.hg == r.ag else 2 for _, g in groups for r in g.itertuples()])
+    goals = [(r.hg, r.ag) for _, g in groups for r in g.itertuples()]
+    variants: dict[str, dict] = {"": {}}
+    for name in METRICS:
+        for b in RUNNING_BETAS:
+            variants[f"{name} {b}"] = {name: b}
+    variants["alle vier 0.02"] = {name: 0.02 for name in METRICS}
+    labels = [" + ".join(x for x in (f, v) if x) or "basis" for f in fit_configs for v in variants]
+    probs = {label: [] for label in labels}
+    points = {label: [] for label in labels}
+    covered = []
+    for (season, md), games in groups:
+        cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
+        base_imp, zs = {}, {}
+        for r in games.itertuples():
+            for t in (r.home_id, r.away_id):
+                susp = av.suspended_as_of(t, cutoff)
+                imp = av.impact(t, cutoff, av.injured_as_of(t, cutoff, injuries) | susp, susp)
+                base_imp[t] = euro_load.apply(imp, t, r.kickoff, schedule)
+                zs[t] = rf.z(t, pd.Timestamp(cutoff))
+            covered.append(zs[r.home_id] is not None and zs[r.away_id] is not None)
+        for fit_name, cfg in fit_configs.items():
+            kw = {k: v for k, v in cfg.items() if k != "dc"}
+            model = Forecaster(dc=DixonColes(**cfg.get("dc", {})), values=values, **kw).fit(df, cutoff)
+            for var_name, betas in variants.items():
+                label = " + ".join(x for x in (fit_name, var_name) if x) or "basis"
+                for r in games.itertuples():
+                    hi = RunningForm.apply(base_imp[r.home_id], zs[r.home_id], betas)
+                    ai = RunningForm.apply(base_imp[r.away_id], zs[r.away_id], betas)
+                    p = model.predict_match(r.home_id, r.away_id, r.match_id, hi, ai)
+                    probs[label].append([p["p_home"], p["p_draw"], p["p_away"]])
+                    points[label].append(p["tip"])
+        if progress:
+            progress(season, md)
+    is_tune = meta["season"].isin(tune).to_numpy()
+    rng = np.random.default_rng(seed)
+    test_idx = np.flatnonzero(~is_tune)
+    boot = rng.choice(test_idx, (4000, len(test_idx)))
+    base = rps_per_match(np.array(probs["basis"]), outcome)
+    rows = []
+    for name, p in probs.items():
+        d = rps_per_match(np.array(p), outcome) - base
+        pts = np.array([kicktipp_points(th, ta, h, a, TIPP_PUNKTE) for (th, ta), (h, a) in zip(points[name], goals)])
+        rows.append({"variante": name, "rps_test": base[~is_tune].mean() + d[~is_tune].mean(),
+                     "delta_tune": d[is_tune].mean(), "delta_test": d[~is_tune].mean(),
+                     "test_besser_pct": 100 * (d[boot].mean(1) < 0).mean() if name != "basis" else np.nan,
+                     "saisons_besser": f"{sum(d[(meta['season'] == s).to_numpy()].mean() < 0 for s in seasons)}/{len(seasons)}",
+                     "punkte_tune": pts[is_tune].mean(), "punkte_test": pts[~is_tune].mean()})
+    print(f"Abdeckung (beide Teams mit Laufdaten): {np.mean(covered):.0%}")
+    return pd.DataFrame(rows).sort_values("delta_test")

@@ -28,8 +28,8 @@ export const COMPETITIONS: Record<CompCode, Competition> = {
     name: "2. Bundesliga",
     table: "Tabelle",
     note:
-      "Grundlage: dasselbe Modell wie für die CL (Elo und Dixon-Coles über Tore, Kaderwert als Startwert). " +
-      "Für die 2. Bundesliga gibt es kein xG, sie ist deshalb gröber als die Bundesliga-Prognose.",
+      "Grundlage: dasselbe Modell wie für die CL, xG-Modell mit Form (70 %) und Elo (30 %), Kaderwert als " +
+      "Startwert; xG der 2. Liga von FotMob ab 2022/23. Ohne Verletzte und Kader gröber als die Bundesliga-Prognose.",
   },
   DFB: {
     code: "DFB",

@@ -14,14 +14,17 @@ from fussballdb.assistant.tools import SCHEMA_HINT, Toolbox, _json
 INSTRUCTIONS = """Daten und Prognosen zur 1. Fußball-Bundesliga (Ergebnisse seit 1993/94, xG, Prognosen und
 Spielerdaten seit 2014/15), zur Champions League (ab 2024/25,
 Werkzeug `champions_league`), zur 2. Bundesliga, zum DFB-Pokal und zur brasilianischen Série A (Werkzeug `wettbewerb`) und zu Kickbase: Ergebnisse, xG, Schüsse,
-Großchancen, PPDA, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistisches Prognosemodell
-(Dixon-Coles auf xG mit Formkomponente + Elo, Kaderwert als Startstärke, Verletzte eingerechnet).
+Großchancen, PPDA, Ballbesitz, Laufleistung (km, Sprints, je Spieler), Zweikämpfe, Kader, Verletzte, Kaderwerte, Wettquoten sowie ein statistisches Prognosemodell
+(Dixon-Coles auf xG mit Formkomponente + Elo, Kaderwert als Startstärke, Verletzte, Europapokal-Belastung und
+Ballbesitz der letzten 10 Spiele eingerechnet).
 
 - Wahrscheinlichkeiten nur aus `prognose`, `naechste_spiele` oder `spieltag` übernehmen, nie selbst schätzen.
   Einordnen (Form, Ausfälle, Marktquoten) ist erwünscht, die Zahlen nicht verändern.
 - Verletzte sind in den Wahrscheinlichkeiten bereits eingerechnet.
 - Der Tipp ist das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde.
-- Prognosen sind Wahrscheinlichkeiten, keine Wettempfehlung. Ballbesitz liegt nicht vor.
+- Prognosen sind Wahrscheinlichkeiten, keine Wettempfehlung.
+- Ballbesitz, Zweikämpfe und Pässe gibt es für Bundesliga (ab 2014/15), 2. Liga und CL, gelaufene Kilometer und
+  Sprints nur für die Bundesliga (Sportschau, Tabellen match_extra_stats und player_tracking über `sql`).
 - Teamnamen dürfen umgangssprachlich sein (BVB, Gladbach, Bayern).
 - Tipps hängen von der Punkteregel der Kicktipp-Tipprunde ab: `tipprunden` listet die Runden, `spieltag` mit
   `tipprunde` liefert Tipps und Punkte nach ihrer Regel; ohne Angabe gilt die Standardrunde.
@@ -84,7 +87,8 @@ def prognose(heim: str, gast: str) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def team_form(team: str, letzte_spiele: int = 8) -> str:
-    """Letzte Spiele eines Teams mit Ergebnis, xG, Schüssen, Großchancen, PPDA und Durchschnittswerten.
+    """Letzte Spiele eines Teams mit Ergebnis, xG, Schüssen, Großchancen, PPDA, Ballbesitz, Laufleistung (km,
+    auch des Gegners), Sprints, Zweikampfquote und Durchschnittswerten.
     Die letzten Spiele können in die Vorsaison reichen (Feld saison)."""
     return _call("get_team_form", {"team": team, "last_n": letzte_spiele})
 
@@ -187,7 +191,8 @@ def wettbewerb(wettbewerb: str = "D2", saison: int | None = None, runde: int | N
     allein die Rundenliste. Grundlage: Elo und Dixon-Coles über alle Ligen, Kaderwert als Startwert. Ab 2026
     je Spiel `ort` mit Stadion, Kapazität und Wetter wie bei `spieltag`. Im Pokal gelten Wahrscheinlichkeiten und
     Tipp für die 90 Minuten; `weiter` enthält die Chance aufs Weiterkommen (home/away, mit Verlängerung und
-    Elfmeterschießen) und wie oft es in die Verlängerung bzw. ins Elfmeterschießen geht."""
+    Elfmeterschießen) und wie oft es in die Verlängerung bzw. ins Elfmeterschießen geht. Gespielte Spiele mit
+    xG von FotMob (CL ab 2024/25, 2. Liga und Pokal ab 2022/23, in der Série A ab 2023)."""
     from fussballdb.api import comp_round, comp_rounds
 
     try:

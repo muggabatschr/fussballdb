@@ -10,6 +10,7 @@ from fussballdb.db.models import EloRating, PlayerAbsence, Prediction
 from fussballdb.db.session import engine, session_scope
 from fussballdb.features import euro_load
 from fussballdb.features.availability import AvailabilityModel
+from fussballdb.features.running import RunningForm
 from fussballdb.ingest.upsert import upsert
 from fussballdb.model.data import load_matches
 from fussballdb.model.ensemble import MODEL_VERSION, Forecaster
@@ -55,9 +56,10 @@ def store_elo(model: Forecaster, df: pd.DataFrame) -> None:
 def predict_pair(home_id: int, away_id: int, match_id: int | None = None,
                  model: Forecaster | None = None, availability: AvailabilityModel | None = None,
                  absences: dict[int, set[int]] | None = None, kickoff: pd.Timestamp | None = None,
-                 schedule: dict | None = None) -> dict:
-    """Prognose für ein Spiel inkl. Korrektur um die aktuelle Verletztenliste (β = 0,5) und, mit `kickoff`,
-    um die Europapokal-Belastung (features/euro_load.py)."""
+                 schedule: dict | None = None, running: RunningForm | None = None) -> dict:
+    """Prognose für ein Spiel inkl. Korrektur um die aktuelle Verletztenliste (β = 0,5), den Ballbesitz der
+    letzten 10 Spiele (features/running.py) und, mit `kickoff`, um die Europapokal-Belastung
+    (features/euro_load.py)."""
     if model is None:
         model, _ = build_forecaster()
     availability = availability or AvailabilityModel()
@@ -69,6 +71,8 @@ def predict_pair(home_id: int, away_id: int, match_id: int | None = None,
         schedule = schedule if schedule is not None else euro_load.euro_schedule()
         hi = euro_load.apply(hi, home_id, kickoff, schedule)
         ai = euro_load.apply(ai, away_id, kickoff, schedule)
+    running = running or RunningForm()
+    hi, ai = running.apply_active(hi, home_id, now), running.apply_active(ai, away_id, now)
     out = model.predict_match(home_id, away_id, match_id, hi, ai)
     out["absences"] = {"home": hi, "away": ai}
     return out
@@ -123,10 +127,12 @@ def predict_upcoming(matchdays: int | None = None) -> pd.DataFrame:
     absences = active_absences()
     markets = market_probs()
     schedule = euro_load.euro_schedule()
+    running = RunningForm()
     now = pd.Timestamp.now(tz="UTC")
     rows, out = [], []
     for r in upcoming.itertuples():
-        p = predict_pair(r.home_id, r.away_id, r.match_id, model, availability, absences, r.kickoff, schedule)
+        p = predict_pair(r.home_id, r.away_id, r.match_id, model, availability, absences, r.kickoff, schedule,
+                         running)
         rows.append(_row(r.match_id, p, now, "live", r.home, r.away, markets.get(r.match_id)))
         out.append({"spieltag": r.matchday, "anstoss": r.kickoff, "heim": r.home, "gast": r.away, **rows[-1],
                     "ausfaelle_heim": rows[-1]["missing_home"], "ausfaelle_gast": rows[-1]["missing_away"]})
@@ -163,6 +169,7 @@ def backfill(seasons: list[int] | None = None, force: bool = False, progress=Non
     availability = AvailabilityModel()
     markets = market_probs()
     schedule = euro_load.euro_schedule()
+    running = RunningForm()
     total = 0
     for (season, md), games in played.groupby(["season", "matchday"], sort=True):
         todo = games[~games["match_id"].isin(existing)]
@@ -178,8 +185,8 @@ def backfill(seasons: list[int] | None = None, force: bool = False, progress=Non
             for team in (r.home_id, r.away_id):
                 suspended = availability.suspended_as_of(team, cutoff)
                 missing = availability.injured_as_of(team, cutoff, injuries) | suspended
-                impacts.append(euro_load.apply(availability.impact(team, cutoff, missing, suspended),
-                                               team, r.kickoff, schedule))
+                impacts.append(running.apply_active(euro_load.apply(
+                    availability.impact(team, cutoff, missing, suspended), team, r.kickoff, schedule), team, cutoff))
             hi, ai = impacts
             p = model.predict_match(r.home_id, r.away_id, r.match_id, hi, ai)
             p["absences"] = {"home": hi, "away": ai}
@@ -209,6 +216,7 @@ def fill_score_probs(progress=None) -> int:
     values, injuries = load_squad_values(), load_injuries()
     availability = AvailabilityModel()
     schedule = euro_load.euro_schedule()
+    running = RunningForm()
     total = 0
     for (season, md), games in todo.groupby(["season", "matchday"], sort=True):
         cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
@@ -221,8 +229,8 @@ def fill_score_probs(progress=None) -> int:
             for team in (r.home_id, r.away_id):
                 suspended = availability.suspended_as_of(team, cutoff)
                 missing = availability.injured_as_of(team, cutoff, injuries) | suspended
-                impacts.append(euro_load.apply(availability.impact(team, cutoff, missing, suspended),
-                                               team, r.kickoff, schedule))
+                impacts.append(running.apply_active(euro_load.apply(
+                    availability.impact(team, cutoff, missing, suspended), team, r.kickoff, schedule), team, cutoff))
             p = model.predict_match(r.home_id, r.away_id, r.match_id, *impacts)
             s = stored[r.match_id]
             probs = {"p_home": s.p_home, "p_draw": s.p_draw, "p_away": s.p_away}

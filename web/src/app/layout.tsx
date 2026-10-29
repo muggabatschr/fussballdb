@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { UpdateBanner } from "@/components/UpdateBanner";
@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   title: "Fußball-Prognosen",
   description: "Prognosen und Tipps für Bundesliga, 2. Bundesliga, DFB-Pokal und Champions League",
 };
+
+// Die Seite hat einen eigenen Dunkelmodus: so färbt der Browser sie nicht zusätzlich um (Chrome "Auto Dark
+// Mode", Dark Reader), was u. a. die Senderlogos unlesbar macht
+export const viewport: Viewport = { colorScheme: "light dark" };
 
 const nav = [
   { href: "/", label: "Spieltag" },

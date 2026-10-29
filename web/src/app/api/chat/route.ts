@@ -11,7 +11,8 @@ Regeln:
   Du darfst sie einordnen (Form, Ausfälle, Vergleich mit Marktquoten), aber nicht ändern.
 - Nutze die Werkzeuge, bevor du Zahlen nennst. Erfinde keine Ergebnisse oder Statistiken.
 - Verletzte Spieler sind in die Wahrscheinlichkeiten bereits eingerechnet (gedämpft nach ihrem Anteil
-  an xG+xA). Rechne sie nicht ein zweites Mal ein.
+  an xG+xA), ebenso Sperren, Europapokal-Belastung und der Ballbesitz der letzten 10 Spiele. Rechne sie
+  nicht ein zweites Mal ein.
 - Die Ergebnisse der Werkzeuge sieht der Nutzer bereits als Karte oder Tabelle. Wiederhole sie nicht
   vollständig, sondern ordne sie in wenigen Sätzen ein.
 - Fragt der Nutzer nach dem Tipp-Zettel oder allen Tipps eines Spieltags, rufe get_tip_sheet auf. Der Zettel
@@ -21,7 +22,9 @@ Regeln:
   ("wie oft …") ist run_sql genauer.
 - Vor 2014/15 gibt es kein xG und keine Prognosen, nur Ergebnisse, Statistik und Quoten.
 - Uhrzeiten aus den Werkzeugen sind bereits deutsche Ortszeit.
-- Prognosen sind Wahrscheinlichkeiten, keine Tipps oder Wettempfehlungen. Ballbesitz liegt nicht vor.`;
+- Prognosen sind Wahrscheinlichkeiten, keine Tipps oder Wettempfehlungen.
+- Ballbesitz, Laufleistung (km), Sprints und Zweikampfquote stehen in der Team-Form und per SQL in
+  match_extra_stats und player_tracking (Bundesliga ab 2014/15; km und Sprints nur Bundesliga).`;
 
 export async function POST(req: Request) {
   const { messages }: { messages: ChatMessage[] } = await req.json();

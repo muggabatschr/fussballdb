@@ -134,6 +134,21 @@ def logos(force: Annotated[bool, typer.Option(help="Vorhandene Logos neu laden")
         console.print(f"  [yellow]kein Logo gefunden:[/] {name}")
 
 
+@app.command()
+def laufleistung(
+    seasons: Annotated[list[int] | None, typer.Option("--saison", help="Startjahre, z. B. --saison 2014 --saison 2015; ohne: laufende Saison")] = None,
+    comps: Annotated[list[str] | None, typer.Option("--wettbewerb", help="BL, D2, DFB, CL; ohne: alle")] = None,
+) -> None:
+    """Laufleistung, Sprints, Ballbesitz, Zweikämpfe und Pässe von sportschau.de laden (Bundesliga ab 2014/15,
+    ~3 Seiten je Spiel, unter einer je Sekunde)."""
+    from fussballdb.db.session import session_scope
+    from fussballdb.ingest import sportschau
+
+    with session_scope() as s:
+        res = sportschau.ingest(s, tuple(comps or sportschau.COMPS), seasons, log=console.print)
+    console.print(f"Neu geladen: {res}")
+
+
 @app.command("kickbase-login")
 def kickbase_login() -> None:
     """Bei Kickbase anmelden (E-Mail und Passwort werden nur hier abgefragt, gespeichert wird nur das Token)."""
@@ -286,9 +301,10 @@ def europa(
                                              log=lambda m: None)
     console.print(f"Liga-xG (Understat): {res_league['mit_xg']} Spiele")
     with session_scope() as s:
-        res_xg = cl_xg.ingest(s, sorted({y for _, _, y in europe.EURO_COMPETITIONS}), log=console.print)
-    console.print(f"CL-xG: {res_xg['mit_xg']} Spiele" + (f", ohne Zuordnung: {', '.join(res_xg['nicht_zugeordnet'])}"
-                                                       if res_xg["nicht_zugeordnet"] else ""))
+        res_xg = cl_xg.ingest(s, list(range(min(cl_xg.FIRST_SEASON.values()), max(DEFAULT_SEASONS) + 1)),
+                              log=console.print)
+    console.print(f"xG CL, 2. Liga, Pokal (FotMob): {res_xg['mit_xg']} Spiele"
+                  + (f", ohne Zuordnung: {', '.join(res_xg['nicht_zugeordnet'])}" if res_xg["nicht_zugeordnet"] else ""))
     with session_scope() as s:
         res = europe.ingest_logos(s)
     console.print(f"Wappen: {res['geladen']} neu" + (f", fehlen: {', '.join(res['fehlen'])}" if res["fehlen"] else ""))
@@ -387,6 +403,18 @@ def startelf_test() -> None:
                   "Einstellzeitraum nicht schlechter.")
 
 
+@app.command("laufleistung-test")
+def laufleistung_test() -> None:
+    """Laufleistung, Sprints, Ballbesitz und Zweikämpfe der letzten 10 Spiele als Faktor im Rückblick, je
+    Modellvariante samt der verworfenen Erweiterungen (Einstellen 2016–20, Test 2021–26)."""
+    from fussballdb.model.evaluate import compare_running
+
+    res = compare_running(progress=lambda s, md: console.print(f"  {s}/{md}", end="\r"))
+    console.print(res.round(4).to_string(index=False))
+    console.print("delta < 0 = besser. Übernehmen nur, wenn im Test in rund 90 % der Ziehungen besser und im "
+                  "Einstellzeitraum nicht schlechter.")
+
+
 @app.command("cl-xg-test")
 def cl_xg_test() -> None:
     """CL: europaweites xG-Modell (Dixon-Coles, Form, Mischung mit Elo) gegen die bisherige Elo, Rückblick-Test."""
@@ -395,6 +423,17 @@ def cl_xg_test() -> None:
     res = backtest_xg(log=lambda m: None)
     console.print(compare_xg(res).round(4).to_string(index=False))
     console.print(res.groupby("season")[[c for c in res.columns if c.startswith("rps|")]].mean().round(4).T.to_string())
+
+
+@app.command("pokal-xg-test")
+def pokal_xg_test() -> None:
+    """xG von 2. Liga und DFB-Pokal (FotMob) im Modell: Pokal, 2. Liga und CL mit und ohne dieses xG im Rückblick."""
+    from fussballdb.model.europe import german_xg_test
+
+    res = german_xg_test(log=lambda m: console.print(f"  {m}", end="\r"))
+    console.print(res.round(4).to_string(index=False))
+    console.print("Übernehmen nur, wenn im Test in rund 90 % der Ziehungen besser und im Einstellzeitraum nicht "
+                  "schlechter.")
 
 
 @app.command("xg-varianten")

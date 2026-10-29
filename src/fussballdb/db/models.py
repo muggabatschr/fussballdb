@@ -96,7 +96,7 @@ class MatchTeamStats(Base):
     fouls: Mapped[int | None]
     yellow_cards: Mapped[int | None]
     red_cards: Mapped[int | None]
-    # aktuell keine frei zugängliche Quelle
+    # sportschau.de (ingest/sportschau.py), ab 2014/15
     possession: Mapped[float | None] = mapped_column(Float)
 
 
@@ -506,6 +506,44 @@ class PlayerAbsence(Base):
     source: Mapped[str] = mapped_column(String(20))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     active: Mapped[bool] = mapped_column(default=True, index=True)
+
+
+class MatchExtraStats(Base):
+    """Teamwerte je Spiel von sportschau.de (ingest/sportschau.py, competition BL → match, sonst eu_match):
+    Laufleistung und Sprints (nur Bundesliga), Ballbesitz, Zweikämpfe, Pässe. Zwei Zeilen je Spiel, auch leer,
+    wenn die Sportschau nichts hat."""
+
+    __tablename__ = "match_extra_stats"
+    __table_args__ = (UniqueConstraint("competition", "match_id", "is_home"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competition: Mapped[str] = mapped_column(String(4))
+    match_id: Mapped[int] = mapped_column(index=True)
+    is_home: Mapped[bool]
+    sportschau_id: Mapped[int | None]
+    distance_km: Mapped[float | None] = mapped_column(Float)
+    sprints: Mapped[int | None]
+    possession: Mapped[float | None] = mapped_column(Float)  # in %
+    duels_won_pct: Mapped[float | None] = mapped_column(Float)
+    passes: Mapped[int | None]
+    pass_pct: Mapped[float | None] = mapped_column(Float)  # angekommene Pässe in %
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PlayerTracking(Base):
+    """Laufleistung (km) und Höchstgeschwindigkeit (km/h) je Spieler und Spiel von sportschau.de (nur Bundesliga)."""
+
+    __tablename__ = "player_tracking"
+    __table_args__ = (UniqueConstraint("competition", "match_id", "is_home", "player"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competition: Mapped[str] = mapped_column(String(4))
+    match_id: Mapped[int] = mapped_column(index=True)
+    is_home: Mapped[bool]
+    player: Mapped[str] = mapped_column(String(80))
+    minutes: Mapped[int | None]
+    distance_km: Mapped[float | None] = mapped_column(Float)
+    top_speed: Mapped[float | None] = mapped_column(Float)
 
 
 class MatchVenue(Base):

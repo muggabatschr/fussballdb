@@ -385,10 +385,7 @@ def _run_europe() -> str:
         n_eu = europe.ingest_euro(s)
     with session_scope() as s:
         n_league = europe.ingest_domestic(s, [CURRENT_SEASON])
-    from fussballdb.ingest import cl_xg
-
-    with session_scope() as s:
-        n_xg = cl_xg.ingest(s, [CURRENT_SEASON], log=lambda m: None)["mit_xg"]
+    n_xg = 0
     with session_scope() as s:  # Liga-xG der fünf großen Ligen für das xG-Modell
         n_xg += europe.ingest_league_xg(s, [CURRENT_SEASON], log=lambda m: None)["mit_xg"]
     n_values = 0
@@ -399,6 +396,10 @@ def _run_europe() -> str:
                                                log=lambda m: None)
     with session_scope() as s:
         n_de = europe.ingest_germany(s, [CURRENT_SEASON], log=lambda m: None)
+    from fussballdb.ingest import cl_xg
+
+    with session_scope() as s:  # nach den Ergebnissen von 2. Liga und Pokal
+        n_xg += cl_xg.ingest(s, [CURRENT_SEASON], log=lambda m: None)["mit_xg"]  # CL, 2. Liga, Pokal
     from fussballdb.ingest import brazil
 
     with session_scope() as s:  # Série A: Saison = Kalenderjahr, Spielplan, Ergebnisse und xG von FotMob
@@ -507,6 +508,28 @@ def _run_news() -> str:
     return f"{res['neu']} neue Meldungen{emb}"
 
 
+def _need_running() -> str | None:
+    """Laufleistung, Ballbesitz usw. (sportschau.de): gespielte Spiele der laufenden Saisons ohne Werte."""
+    n = _scalar("""
+        WITH games AS (
+            SELECT 'BL' AS c, m.id, m.kickoff, m.finished FROM match m JOIN season s ON s.id = m.season_id
+            WHERE s.start_year = (SELECT max(start_year) FROM season)
+            UNION ALL SELECT competition, id, kickoff, finished FROM eu_match
+            WHERE competition IN ('D2', 'DFB', 'CL') AND season = (SELECT max(season) FROM eu_match WHERE competition = 'CL'))
+        SELECT count(*) FROM games g
+        WHERE g.finished AND g.kickoff < now() - interval '3 hours' AND g.kickoff > now() - interval '30 days'
+          AND NOT EXISTS (SELECT 1 FROM match_extra_stats e WHERE e.competition = g.c AND e.match_id = g.id)""")
+    return f"{n} Spiele ohne Laufleistung und Ballbesitz" if n else None
+
+
+def _run_running() -> str:
+    from fussballdb.ingest import sportschau
+
+    with session_scope() as s:
+        res = sportschau.ingest(s, log=lambda m: None)
+    return "Laufleistung und Ballbesitz für " + ", ".join(f"{n} {c}" for c, n in res.items()) + " Spiele"
+
+
 def _run_weather() -> str:
     from fussballdb.ingest import weather
 
@@ -541,6 +564,8 @@ STEPS = [
     Step("stadien", "Spielorte (Stadion, Kapazität)", _need_venues, _run_venues, timedelta(hours=6)),
     Step("wetter", "Wetter zur Spielzeit", _need_weather, _run_weather, timedelta(hours=3)),
     Step("aufstellungen", "Aufstellung und Momentum (FotMob)", _need_lineups, _run_lineups, timedelta(hours=1)),
+    Step("laufleistung", "Laufleistung, Ballbesitz, Zweikämpfe (Sportschau)", _need_running, _run_running,
+         timedelta(hours=3)),
     Step("nachrichten", "Presse je Verein (Google News)", _need_news, _run_news, timedelta(hours=6)),
     Step("spielberichte", "Spielberichte für die Suche", _need_reports, _run_reports, timedelta(hours=6)),
     Step("verletzungshistorie", "Verletzungshistorie", _need_injury_history, _run_injury_history,

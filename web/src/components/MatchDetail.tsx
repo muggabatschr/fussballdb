@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { DetailAbsence, DetailFormGame, DetailH2H, MatchDetail, MatchStats, Scorer, TipRound } from "@/lib/api";
+import type { DetailAbsence, DetailFormGame, DetailH2H, MatchDetail, MatchStats, RunningPlayer, Scorer, TipRound } from "@/lib/api";
 import { kickoff, num, pct } from "@/lib/format";
 import { shortName } from "@/lib/teams";
 import { AdvanceLine } from "./AdvanceLine";
@@ -289,6 +289,7 @@ function AbsenceBlock({ rows }: { rows: DetailAbsence[] }) {
 
 const STAT_ROWS: [keyof MatchStats, string, number, boolean][] = [
   // Schlüssel, Beschriftung, Nachkommastellen, weniger = besser
+  ["possession", "Ballbesitz %", 1, false],
   ["xg", "xG", 2, false],
   ["shots", "Schüsse", 0, false],
   ["shots_on_target", "aufs Tor", 0, false],
@@ -299,9 +300,14 @@ const STAT_ROWS: [keyof MatchStats, string, number, boolean][] = [
   ["yellow_cards", "Gelb", 0, true],
   ["red_cards", "Rot", 0, true],
   ["xpts", "xPts", 2, false],
+  ["duels_won_pct", "Zweikämpfe gewonnen %", 1, false],
+  ["passes", "Pässe", 0, false],
+  ["pass_pct", "Passquote %", 1, false],
+  ["distance_km", "Laufleistung km", 1, false],
+  ["sprints", "Sprints", 0, false],
 ];
 
-function StatsBlock({ s }: { s: { home: MatchStats; away: MatchStats } }) {
+function StatsBlock({ s }: { s: { home: Partial<MatchStats>; away: Partial<MatchStats> } }) {
   // vor 2000/01 gibt es nur Tore, ohne xG keine PPDA: nur Zeilen mit Werten, sonst gar nichts
   const rows = STAT_ROWS.filter(([k]) => s.home[k] != null && s.away[k] != null);
   if (!rows.length) return null;
@@ -331,6 +337,31 @@ function StatsBlock({ s }: { s: { home: MatchStats; away: MatchStats } }) {
         </ul>
       </Card>
     </Section>
+  );
+}
+
+function RunnerList({ players }: { players: RunningPlayer[] }) {
+  // die fünf mit den meisten Kilometern, dazu der Schnellste, falls er nicht dabei ist
+  const top = players.slice(0, 5);
+  const fastest = players.reduce<RunningPlayer | null>(
+    (best, p) => (p.top_speed != null && (best?.top_speed == null || p.top_speed > best.top_speed) ? p : best),
+    null,
+  );
+  const rows = fastest && !top.includes(fastest) ? [...top, fastest] : top;
+  return (
+    <ul className="space-y-1 text-sm tabular">
+      {rows.map((p) => (
+        <li key={p.player} className="flex justify-between gap-2">
+          <span className="truncate">
+            {lastName(p.player)}
+            {p === fastest && <span className="text-muted"> · schnellster</span>}
+          </span>
+          <span className="shrink-0 text-muted">
+            {num(p.distance_km, 1)} km{p.top_speed != null ? ` · ${num(p.top_speed, 1)} km/h` : ""}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -528,7 +559,7 @@ export function MatchDetailView({
           </TeamColors>
           <p className="mt-2 text-xs text-muted">
             Laut FotMob: wer in welcher Minute Druck gemacht hat (Ballbesitz in gefährlichen Zonen, Schüsse,
-            Standards). Balken nach oben für {shortName(g.home)}, nach unten für {shortName(g.away)}.
+            Standards). Welle nach oben für {shortName(g.home)}, nach unten für {shortName(g.away)}.
           </p>
         </Section>
       )}
@@ -585,6 +616,15 @@ export function MatchDetailView({
         </TeamColors>
       )}
 
+      {d.laufdaten && (
+        <Section title="Laufleistung">
+          <Sides home={g.home} away={g.away} data={d.laufdaten} render={(p) => <RunnerList players={p} />} />
+          <p className="mt-2 text-xs text-muted">
+            Laut Sportschau (Tracking der DFL): gelaufene Kilometer und Höchstgeschwindigkeit in km/h.
+          </p>
+        </Section>
+      )}
+
       {d.quoten && d.quoten.length > 0 && (
         <Section title="Modell und Wettmarkt">
           <OddsBlock d={d} />
@@ -600,7 +640,7 @@ export function MatchDetailView({
           ["Tipp", "Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde"],
           ...(d.tabelle?.zonen ? [] : [TERMS.xpts]),
           ...(d.tabelle?.home?.platz_diff != null ? [TERMS.platz] : []),
-          ...(d.statistik ? [TERMS.ppda] : []),
+          ...(d.statistik?.home.ppda != null ? [TERMS.ppda] : []),
           ...(g.elo_home != null ? [["Elo", "Spielstärke-Wert aus allen Liga- und Europapokalspielen (mehr = besser)"] as [string, string]] : []),
         ]}
       />
