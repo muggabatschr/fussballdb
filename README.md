@@ -391,7 +391,10 @@ Laufleistung ab 3 km und den laufstärksten Spieler (ab 12 km). Ab Oktober 2026 
 zwei Überschriften aus den 36 Stunden nach dem Anpfiff (`news_item`), wörtlich mit Zeitung. Zuerst die, die
 Gegner oder Ergebnis nennen (Lokalzeitung und Vereinsseite vor überregionalen), andere nur aus der
 Lokalzeitung; TV-Hinweise, Ticker, Vorberichte, Fotostrecken, Videos und reine Paarungen fallen weg. Aus den
-Überschriften wird nichts abgeleitet, der übrige Bericht bleibt reine Datenlage. Ältere Spiele haben keine
+Überschriften werden keine Fakten abgeleitet, der übrige Bericht bleibt reine Datenlage. Nur die Wortwahl richtet
+sich nach der Presse (Stilprofil, siehe „Presse je Verein“): Schlagzeilen-Verben wie „überrollt“ oder
+„unterliegt“, Zeitungswörter wie „Befreiungsschlag“, „Krimi“, „Joker“, „Fehlstart“ und Spitznamen wie „die
+Werkself“, jeweils nur, wenn die Presse sie verwendet und die Lage im Spiel passt. Ältere Spiele haben keine
 Pressestimmen, weil Google News nur die letzten Tage liefert. Danach folgt die Zeile „Zahlen zum Spiel“. Die Formulierungen wechseln von Spiel zu Spiel, bleiben für
 ein Spiel aber gleich. Dazu eine Zeile
 **Stichworte** zum Verlauf, je Team zugeordnet („Comeback von Gladbach“, „spätes Siegtor von HSV“,
@@ -749,6 +752,35 @@ Livestreams, der Vereinsnamen in Überschriften packt (erkennbar an unsichtbaren
 Google erlaubt den Feed nur für den persönlichen, nicht kommerziellen Gebrauch in einem Feedreader. Für eine
 öffentliche App bräuchte es direkte RSS-Feeds der Zeitungen.
 
+### Stil der Presse
+
+`press_style.py`, Tabelle `press_style`: Aus den Überschriften aller Quellen (Lokalzeitungen, kicker, Sportschau,
+Sky, BILD …) entsteht ein Stilprofil, nach dem die Spielberichte formulieren. Gespeichert werden nur Zählungen,
+keine fremden Texte (je Verb eine Beispielüberschrift zur Kontrolle).
+
+- **Verben**: Überschriften der 36 Stunden nach einem Bundesliga-Spiel, in denen ein Verein den Gegner direkt
+  anspricht („Elversberg überrollt Mainz“, „FCA unterliegt Freiburg 1:2“, „FC Bayern siegt in Freiburg“). Gezählt
+  wird das Verb mit Präposition und dem Ausgang aus Sicht des Subjekts. Aktiv ab 2 Treffern, wenn mindestens 85 %
+  zum selben Ausgang gehören. Kam ein Verb nur bei Siegen mit drei Toren Abstand vor („überrollt“, „düpiert“),
+  gilt es nur dafür. „siegt in …“ und „gewinnt bei …“ nur für Auswärtssiege. Das Ergebnis hängt so oft an, wie
+  die Presse es bei dem Verb tut. Verben, die eine Ergänzung brauchen („macht … klar“, „schlittert … in die
+  Krise“), zählen nicht.
+- **Zeitungswörter** (ab 3 Überschriften): Befreiungsschlag (Sieg nach mindestens vier sieglosen Spielen), Krimi
+  und Last-Minute (spätes Siegtor), Joker (Tor eines Eingewechselten), Fehlstart (nur Niederlagen zum
+  Saisonstart), Pleite und Krise (Niederlagenserie), Arbeitssieg (knapper Sieg bei ähnlichen Chancen), Dämpfer
+  (Favorit gewinnt nicht), Debakel und Klatsche (ab vier Toren Abstand), Gala (hoher Sieg mit 2 xG Vorsprung),
+  Heimpleite, Derbysieg, Torfestival, Nackenschlag (später Ausgleich).
+- **Spitznamen** (ab 2 Überschriften des Vereins): „die Werkself“, „die Fohlen“, „die Knappen“, „die Rothosen“ …,
+  nur in „Für …“ und „Bei …“, damit Artikel und Verb nie falsch gebeugt werden, und nur jedes zweite Mal.
+- **Form**: Anteil der Schlagzeilen mit dem Ergebnis vorn („0:2 gegen RB Leipzig: Schalke wartet …“). Ab 8 %
+  schreibt der Bericht auch solche Schlagzeilen (Stand November 2026: 1 %, also aus).
+
+Bei jedem Presse-Import (alle 6 Stunden) wird das Profil neu gezählt. Ändert sich etwas, das die Berichte
+betrifft (ein Verb, Wort oder Spitzname wird aktiv oder fällt weg), entsteht eine neue Version mit der Liste der
+Änderungen, und alle Berichte werden neu geschrieben (gut 7 Sekunden, danach neue Embeddings). Sonst werden nur
+die Zahlen der letzten Version aktualisiert. Ohne Profil schreiben die Berichte wie vorher. Anzeigen und neu
+zählen: `fussballdb pressestil` (`--neu`).
+
 ## Brasilianische Série A
 
 Seiten `/brasilien` (Spieltage), `/brasilien/tabelle`, `/brasilien/tipps`, Detailseiten unter
@@ -907,6 +939,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
 | `fussballdb xg-varianten` | xG-Varianten (npxG, Spielstand, Rote Karten) im Rückblick-Test vergleichen |
 | `fussballdb backfill` | Rückblick-Prognosen für gespielte Spieltage ohne Prognose berechnen (`--force` rechnet alle neu) |
+| `fussballdb pressestil` | Stilprofil der Presse für die Spielberichte anzeigen (`--neu`: neu zählen, bei Änderungen Berichte neu schreiben) |
 | `fussballdb chat "Wie stehen die Chancen Freiburg gegen Bayern?"` | Frage an das Sprachmodell; ohne Frage interaktiv |
 | `fussballdb serve` | REST-API für die Web-App starten |
 
@@ -941,7 +974,7 @@ Geprüft werden:
 | Wetter zur Spielzeit | Vorhersage älter als 6 Std. oder Spiel vorbei und noch nicht gemessen | 3 Std. |
 | Aufstellung und Momentum (FotMob) | gespielte Spiele mit FotMob-ID ohne eingefrorene Seite, offene der nächsten 2 Tage älter als 1 Std. | 1 Std. |
 | Laufleistung, Ballbesitz, Zweikämpfe (Sportschau) | gespielte Spiele der laufenden Saisons (letzte 30 Tage), seit 3 Std. vorbei, ohne Werte | 3 Std. |
-| Presse je Verein (Google News) | letzter Abruf älter als 5 Std. | 6 Std. |
+| Presse je Verein (Google News), danach Stilprofil der Presse (bei Änderungen alle Spielberichte neu) | letzter Abruf älter als 5 Std. | 6 Std. |
 | Champions League | CL-Spiel ohne Ergebnis, Ligaspiele älter als 4 Tage, offene Spiele ohne Prognose oder Prognosen älter als 24 Std.; lädt Kaderwerte nach, wenn der neueste älter als 30 Tage ist (nur wenn `fussballdb europa` einmal lief) | 6 Std. |
 | Verletzungshistorie (langsam) | noch nie vollständig geladen | 7 Tage |
 | Kickbase-Punkte (langsam) | neuer Spieltag ohne Punkte oder Spieler älter als 8 Tage | 12 Std. |
@@ -1094,6 +1127,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `tip_round` | Kicktipp-Tipprunden mit Punkteregel, Tippschluss, Bonuspunkten und Standardrunde |
 | `update_log` | jeder Update-Schritt mit Grund, Dauer und Ergebnis |
 | `match_venue` | Spielort je Spiel (`competition` BL → `match`, sonst `eu_match`), nach dem Spiel eingefroren (`frozen`) |
+| `press_style` | Stilprofil der Presse je Version (`profile` JSON mit Verben, Wörtern, Spitznamen, Form; `changes` gegenüber der Vorversion) |
 | `news_item` | Presse-Meldungen je Verein (Überschrift, Quelle, Link, `kind` lokal/verein) mit Volltextindex und Embedding |
 | `match_page` | Aufstellung (JSON mit Formation, Positionen, Noten, Ereignissen), Momentum, Tore/Platzverweise und Teamfarben je Spiel laut FotMob, nach dem Spiel eingefroren |
 | `match_extra_stats` | Teamwerte je Spiel von der Sportschau (`competition` BL → `match`, sonst `eu_match`): km, Sprints, Ballbesitz, Zweikämpfe, Pässe, Passquote |
@@ -1205,6 +1239,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     Ballbesitz der letzten 10 Spiele geht ins Bundesliga-Modell ein, das Momentum ist eine Welle.
 34. **xG für 2. Liga und DFB-Pokal** von FotMob ab 2022/23, auf Kachel und Detailseite; die 2. Liga rechnet
     damit jetzt mit dem xG-Modell (xG/Elo 70/30 + Form) statt der Elo allein.
+35. **Spielberichte im Ton der Presse**: Stilprofil aus den Überschriften (Verben, Zeitungswörter, Spitznamen),
+    bei jedem Presse-Import neu gezählt und versioniert; ändert es sich, werden alle Berichte neu geschrieben.
 Offen:
 
 - **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**

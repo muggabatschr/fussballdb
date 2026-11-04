@@ -499,13 +499,23 @@ def _run_news() -> str:
 
     from fussballdb.ingest import news
 
+    from fussballdb import press_style, reports
+
     with session_scope() as s:
         res = news.ingest(s, days=3, log=lambda m: None)
+    # Stilprofil der Presse neu zählen; ändert sich, was die Berichte betrifft, alle Berichte neu schreiben
+    changes = press_style.update()
+    style = ""
+    if changes:
+        n = reports.generate(only_missing=False)
+        style = f", Pressestil geändert ({'; '.join(changes[:5])}{' …' if len(changes) > 5 else ''}), {n} Berichte neu"
     try:
         emb = f", {news.embed_missing()} Embeddings"
+        if changes:
+            emb += f", {reports.embed_missing()} Bericht-Embeddings"
     except httpx.HTTPError:
         emb = ", Embeddings später (LM Studio nicht erreichbar, Volltextsuche geht)"
-    return f"{res['neu']} neue Meldungen{emb}"
+    return f"{res['neu']} neue Meldungen{style}{emb}"
 
 
 def _need_running() -> str | None:

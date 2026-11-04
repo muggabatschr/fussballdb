@@ -5,7 +5,9 @@ Im Stil einer Sportzeitung: Schlagzeile, Ortszeile, Einstieg im Perfekt (Derby, 
 Siegtor) mit den Formationen (FotMob, falls geladen), Spielverlauf je Halbzeit (Tore mit Minute, Schütze, Vorlage und Art, Pfosten, verschossene Elfmeter,
 vergebene Großchancen, wer die Halbzeit bestimmte, Doppelpack und Saisontore), Spieler des Spiels, Einordnung (verdient oder glücklich
 nach den Chancen, Überraschung), Folgen für Tabelle und Serien, Ausfälle, Stadion und Wetter (ab 2026/27), dazu
-eine Zeile mit den Zahlen und Stichworte für die Suche.
+eine Zeile mit den Zahlen und Stichworte für die Suche. Die Wortwahl folgt dem Stilprofil der Presse
+(press_style.py: Schlagzeilen-Verben, Zeitungswörter wie Befreiungsschlag oder Krimi, Spitznamen der Vereine),
+die Fakten kommen weiter nur aus den Daten.
 
 Gespeichert in match_report mit Volltextindex (Postgres, Deutsch) und Embedding (pgvector, Modell aus LM Studio)
 für die Suche in Chat und MCP (search)."""
@@ -108,6 +110,21 @@ def _vary(rnd: random.Random, key: str, *options: str) -> str:
     return options[i]
 
 
+def _style(m: dict):
+    """Stilprofil der Presse (press_style.py); ohne Profil schreiben die Berichte wie bisher."""
+    from fussballdb.press_style import Style
+
+    return m.get("style") or Style({})
+
+
+def _nick(m: dict, side: str, rnd: random.Random, dative: bool = False) -> str:
+    """Verein für "für …"/"bei …": jedes zweite Mal der Spitzname, den die Presse verwendet ("die Werkself")."""
+    n = _style(m).nick(m[side])
+    if n and rnd.random() < 0.5:
+        return n["dativ"] if dative else n["name"]
+    return _prose(m[f"{side}_short"])
+
+
 def _cap(s: str) -> str:
     return s[0].upper() + s[1:] if s else s
 
@@ -144,6 +161,8 @@ def _goal_sentence(m: dict, g: dict, before: tuple[int, int], after: tuple[int, 
     who = _short(g["player"])
     scorer = f"der eingewechselte {who}" if joker else who
     scorer_dat = f"dem eingewechselten {who}" if joker else who
+    if joker and _style(m).has("Joker") and rnd.random() < 0.5:  # Zeitungssprache: "Joker Beier"
+        scorer = scorer_dat = f"Joker {who}"
     Scorer = _cap(scorer)
     how = METHOD.get(g["situation"], "") or (" per Kopf" if g["shot_type"] == "Head" else "")
     assist = (f" nach Vorlage von {_short(g['player_assisted'])}"
@@ -235,6 +254,9 @@ def _story(m: dict, shots: list[dict], starters: set[str], season_goals: dict,
     """Spielverlauf als zwei Absätze (erste und zweite Halbzeit): Tore, Pfosten, Elfmeter, vergebene Chancen,
     wer die Halbzeit bestimmte, Pausenstand; dazu ein Satz zu Doppelpack und Saisontoren für die Einordnung."""
     goals = [s for s in shots if s["result"] in ("Goal", "OwnGoal")]
+    if not goals and m["home_goals"] + m["away_goals"] > 0:
+        # Schüsse (Understat) noch nicht geladen: kein Verlauf statt "es passierte wenig" bei einem 2:4
+        return ([f"Zur Pause stand es {m['ht_home']}:{m['ht_away']}."] if m["ht_home"] is not None else []), [], []
     for s in shots:  # gehaltener Elfmeter, derselbe Spieler trifft im Nachschuss
         if s["situation"] == "Penalty" and s["result"] != "Goal":
             follow = next((g for g in goals if g["player"] == s["player"] and 0 <= g["minute"] - s["minute"] <= 1
@@ -347,6 +369,8 @@ def _lead(m: dict, goals: list[dict], keywords: list[str], kick, rnd: random.Ran
     if "spätes Siegtor" in kw:
         win = _winning_goal(m, goals)
         if win and win["result"] == "Goal":
+            if _style(m).has("Krimi") and abs(hg - ag) == 1 and hg + ag >= 3:
+                return f"{subj(winner)} {when} einen Krimi {at} {loser} mit {ws} für sich entschieden, {_short(win['player'])} traf spät."
             return f"{subj(winner)} {when} dank eines späten Treffers von {_short(win['player'])} {ws} {at} {loser} gewonnen."
     if abs(hg - ag) >= 3:
         return _pick(rnd, f"{subj(winner)} {loser} {when} mit {ws} deklassiert.",
@@ -379,8 +403,11 @@ def _assessment(m: dict, stats: dict, rnd: random.Random) -> list[str]:
                 out.append(_pick(rnd, f"Der Sieg ging in Ordnung, {winner} erspielte sich Chancen für {de(wx)} Tore, {loser} nur für {de(lx)}.",
                                  f"Ein verdienter Erfolg: {winner} war das gefährlichere Team ({de(wx)} zu {de(lx)} erwartete Tore)."))
             else:
-                out.append(_pick(rnd, f"Viel trennte die beiden Teams nicht, die erwarteten Tore lagen bei {de(hx)} zu {de(ax)}.",
-                                 f"Es war ein enges Spiel, in dem die Chancen fast gleich verteilt waren ({de(hx)} zu {de(ax)} erwartete Tore)."))
+                options = [f"Viel trennte die beiden Teams nicht, die erwarteten Tore lagen bei {de(hx)} zu {de(ax)}.",
+                           f"Es war ein enges Spiel, in dem die Chancen fast gleich verteilt waren ({de(hx)} zu {de(ax)} erwartete Tore)."]
+                if _style(m).has("Arbeitssieg") and abs(hg - ag) == 1 and hg + ag <= 3:
+                    options.append(f"Für {winner} war es ein Arbeitssieg, die erwarteten Tore lagen bei {de(hx)} zu {de(ax)}.")
+                out.append(_pick(rnd, *options))
         else:
             better, bx, ox = (home, hx, ax) if hx > ax else (away, ax, hx)
             out.append(f"{better} hätte nach den Chancen gewinnen müssen ({de(bx)} zu {de(ox)} erwartete Tore)." if abs(hx - ax) >= 0.8
@@ -401,7 +428,8 @@ def _assessment(m: dict, stats: dict, rnd: random.Random) -> list[str]:
         else:
             fav, p_fav = (home, m["p_home"]) if m["p_home"] > m["p_away"] else (away, m["p_away"])
             if p_fav > 0.65:
-                out.append(f"Für Favorit {fav} war das zu wenig.")
+                out.append(_pick(rnd, f"Für Favorit {fav} war das zu wenig.", f"Ein Dämpfer für Favorit {fav}.")
+                           if _style(m).has("Dämpfer") else f"Für Favorit {fav} war das zu wenig.")
     return out
 
 
@@ -442,6 +470,8 @@ def _standing(m: dict, rnd: random.Random) -> list[str]:
         if not c:
             continue
         team = _prose(m[f"{side}_short"])
+        für = _nick(m, side, rnd)  # "Für die Werkself …"
+        style = _style(m)
         res = "S" if gf > ga else "N" if gf < ga else "U"
         form = c["form"]  # Ergebnisse vor dem Spiel, ältestes zuerst
 
@@ -456,20 +486,27 @@ def _standing(m: dict, rnd: random.Random) -> list[str]:
             wins = run(lambda r: r == "S") + 1
             dry = run(lambda r: r != "S")
             if wins >= 3:
-                out.append(_pick(rnd, f"Für {team} war es der {_ord(wins)} Sieg in Folge.",
+                out.append(_pick(rnd, f"Für {für} war es der {_ord(wins)} Sieg in Folge.",
                                  f"{team} bleibt in der Spur, es war der {_ord(wins)} Sieg nacheinander."))
             elif dry >= 4:
-                out.append(_pick(rnd, f"Für {team} endete damit eine Durststrecke von {_num(dry)} Spielen ohne Sieg.",
-                                 f"Nach {_num(dry)} sieglosen Spielen durfte {team} endlich wieder jubeln."))
+                out.append(_pick(rnd, f"Für {für} endete damit eine Durststrecke von {_num(dry)} Spielen ohne Sieg.",
+                                 f"Nach {_num(dry)} sieglosen Spielen durfte {team} endlich wieder jubeln.",
+                                 *([f"Für {für} war es ein Befreiungsschlag nach {_num(dry)} sieglosen Spielen."]
+                                   if style.has("Befreiungsschlag") else [])))
         elif res == "N":
             losses = run(lambda r: r == "N") + 1
             unbeaten = run(lambda r: r != "N")
             winless = run(lambda r: r != "S") + 1
             if unbeaten >= 6:
-                out.append(f"Für {team} riss eine Serie von {_num(unbeaten)} Spielen ohne Niederlage.")
+                out.append(f"Für {für} riss eine Serie von {_num(unbeaten)} Spielen ohne Niederlage.")
+            elif losses == len(form) + 1 and 2 <= losses <= 4 and style.has("Fehlstart"):
+                out.append(_pick(rnd, f"{team} hat einen Fehlstart hingelegt, es war die {_ord(losses)} Niederlage im {_ord(losses)}n Spiel.",
+                                 f"Für {für} ist es ein Fehlstart: {_num(losses)} Spiele, kein Punkt."))
             elif losses >= 3:
-                out.append(_pick(rnd, f"Für {team} war es bereits die {_ord(losses)} Niederlage in Folge.",
-                                 f"{team} steckt in der Krise, es war die {_ord(losses)} Pleite nacheinander."))
+                pleite = "Pleite" if style.has("Pleite") else "Niederlage"
+                krise = (f"{team} steckt in der Krise, es war die {_ord(losses)} {pleite} nacheinander." if style.has("Krise")
+                         else f"{team} kommt nicht aus dem Tief, es war die {_ord(losses)} {pleite} nacheinander.")
+                out.append(_pick(rnd, f"Für {für} war es bereits die {_ord(losses)} Niederlage in Folge.", krise))
             elif winless >= 5:
                 out.append(f"{team} ist nach {_num(winless)} Spielen weiter ohne Saisonsieg." if winless > len(form)
                            else f"{team} wartet nun seit {_num(winless)} Spielen auf einen Sieg.")
@@ -585,12 +622,70 @@ def _numbers_line(s: dict) -> str | None:
     return "Zahlen zum Spiel: " + ", ".join(parts) + "." if parts else None
 
 
+def _press_headlines(m: dict, rnd: random.Random) -> list[str]:
+    """Schlagzeilen mit den Verben, die die Presse für solche Spiele verwendet (press_style.py): "Elversberg überrollt
+    Mainz", "FCA unterliegt Freiburg 1:2", "FC Bayern siegt in Freiburg". Das Ergebnis hängt so oft an, wie die
+    Presse es bei diesem Verb tut."""
+    hg, ag = m["home_goals"], m["away_goals"]
+    if hg == ag:
+        return []
+    style = _style(m)
+    home_won = hg > ag
+    out = []
+    for res, home_subj in (("S", home_won), ("N", not home_won)):
+        subj, obj = ("home", "away") if home_subj else ("away", "home")
+        gf, ga = (hg, ag) if home_subj else (ag, hg)
+        for v in style.verbs[res]:
+            if abs(hg - ag) < v["ab_abstand"]:
+                continue
+            if v["praep"] in ("bei", "in") and subj != "away":
+                continue
+            target = (f"in {m['city']}" if v["praep"] == "in" and m.get("city") else
+                      None if v["praep"] == "in" else
+                      f"{v['praep']} {_prose(m[f'{obj}_short'])}" if v["praep"] else _prose(m[f"{obj}_short"]))
+            if not target:
+                continue
+            score = f" {gf}:{ga}" if rnd.random() < v["mit_ergebnis"] else ""
+            out.append(f"{_prose(m[f'{subj}_short'])} {v['verb']} {target}{score}")
+    return out
+
+
+def _score_front(m: dict, goals: list[dict], rnd: random.Random) -> str | None:
+    """ "3:1 gegen Mainz: Elversberg klettert auf Platz fünf" – Ergebnis vorn, dahinter das Wichtigste, wenn die
+    Presse so titelt (press_style.py, Anteil solcher Schlagzeilen)."""
+    hg, ag = m["home_goals"], m["away_goals"]
+    if hg == ag or not _style(m).score_front:
+        return None
+    wside, lside = ("home", "away") if hg > ag else ("away", "home")
+    winner, loser = _prose(m[f"{wside}_short"]), _prose(m[f"{lside}_short"])
+    front = f"{max(hg, ag)}:{min(hg, ag)} " + (f"gegen {loser}" if wside == "home" else
+                                               f"in {m['city']}" if m.get("city") else f"bei {loser}")
+    tally: dict[str, int] = {}
+    for g in goals:
+        if g["result"] == "Goal" and _for_home(m, g) == (wside == "home"):
+            tally[g["player"]] = tally.get(g["player"], 0) + 1
+    c, lc = m["ctx"].get(wside) or {}, m["ctx"].get(lside) or {}
+    facts = []
+    if tally and max(tally.values()) >= 2:
+        star = max(tally, key=tally.get)
+        facts.append(f"{_short(star)} trifft {'doppelt' if tally[star] == 2 else 'dreifach' if tally[star] == 3 else str(tally[star]) + '-mal'}")
+    if c.get("played", 0) >= 3 and c.get("pos_after") == 1 and c.get("pos_before") != 1:
+        facts.append(f"{winner} übernimmt die Spitze")
+    elif c.get("played", 0) >= 3 and c.get("pos_before", 0) - c.get("pos_after", 0) >= 3:
+        facts.append(f"{winner} klettert auf Platz {c['pos_after']}")
+    if lc.get("form") and lc["form"][-2:] == ["N", "N"]:
+        facts.append(f"{loser} rutscht tiefer in die Krise" if _style(m).has("Krise") else f"{loser} verliert erneut")
+    return f"{front}: {_pick(rnd, *facts)}" if facts else None
+
+
 def _headline(m: dict, goals: list[dict], keywords: list[str], rnd: random.Random) -> str:
+    style = _style(m)
     hg, ag = m["home_goals"], m["away_goals"]
     home, away = _prose(m["home_short"]), _prose(m["away_short"])
     winner, loser = (home, away) if hg > ag else (away, home) if ag > hg else (None, None)
     kw = " ".join(keywords)
     score = f"{hg}:{ag}"
+    wscore = f"{max(hg, ag)}:{min(hg, ag)}"  # aus Sicht des Siegers, wie in der Presse ("Stuttgart schlägt Leverkusen 4:2")
     derby = m["ctx"].get("derby")
     wside = "home" if hg > ag else "away"
     if not winner:
@@ -598,33 +693,55 @@ def _headline(m: dict, goals: list[dict], keywords: list[str], rnd: random.Rando
             return _pick(rnd, f"Nullnummer zwischen {home} und {away}", f"Keine Tore bei {home} gegen {away}",
                          f"{home} und {away} bleiben ohne Treffer")
         if "später Ausgleich" in kw:
-            return _pick(rnd, f"Später Ausgleich: {home} und {away} trennen sich {score}", f"Spätes {score} zwischen {home} und {away}")
+            options = [f"Später Ausgleich: {home} und {away} trennen sich {score}", f"Spätes {score} zwischen {home} und {away}"]
+            if style.has("Nackenschlag") and goals:  # wer den späten Ausgleich kassiert hat
+                options.append(f"Später Nackenschlag für {away if _for_home(m, goals[-1]) else home}")
+            return _pick(rnd, *options)
         if "Aufholjagd" in kw:
             return f"Aufholjagd beim {score} zwischen {home} und {away}"
+        if hg + ag >= 6 and style.has("Torfestival"):
+            return f"Torfestival beim {score} zwischen {home} und {away}"
         return _pick(rnd, f"{home} und {away} trennen sich {score}", f"Punkteteilung beim {score} zwischen {home} und {away}")
     if "Comeback" in kw:
-        return _pick(rnd, f"{winner} dreht das Spiel gegen {loser}", f"{winner} gewinnt nach Rückstand {score}")
+        return _pick(rnd, f"{winner} dreht das Spiel gegen {loser}", f"{winner} gewinnt nach Rückstand {wscore}")
     if "spätes Siegtor" in kw:
         win = _winning_goal(m, goals)
+        options = [f"Später Jubel für {winner} beim {score}"]
         if win and win["result"] == "Goal":
-            return _pick(rnd, f"{_short(win['player'])} erlöst {winner} spät", f"Später Jubel für {winner} beim {score}")
-        return f"Später Jubel für {winner} beim {score}"
+            options.append(f"{_short(win['player'])} erlöst {winner} spät")
+            if style.has("Krimi"):
+                options.append(f"{_short(win['player'])} entscheidet Krimi für {winner}")
+        if style.has("Last-Minute") and win and win["minute"] >= 88:
+            options.append(f"Last-Minute-Sieg für {winner}")
+        return _pick(rnd, *options)
     if derby:
-        return f"{winner} gewinnt {derby[1]}"
+        return _pick(rnd, f"{winner} gewinnt {derby[1]}", f"Derbysieg für {winner}") if style.has("Derbysieg") else f"{winner} gewinnt {derby[1]}"
     c = m["ctx"].get(wside) or {}
     if c.get("pos_after") == 1 and c.get("pos_before") != 1 and c.get("played", 0) >= 3:
         return f"{winner} erobert die Tabellenspitze"
+    press = _press_headlines(m, rnd)
+    if (front := _score_front(m, goals, rnd)):
+        press.append(front)
     if abs(hg - ag) >= 3:
-        return _pick(rnd, f"{winner} überrollt {loser} mit {score}", f"Deutlicher {score}-Erfolg für {winner}",
-                     f"{winner} feiert Kantersieg gegen {loser}")
+        options = [f"Deutlicher {wscore}-Erfolg für {winner}", f"{winner} feiert Kantersieg gegen {loser}"] + press
+        if abs(hg - ag) >= 4 and style.has("Debakel"):
+            options.append(f"{wscore}-Debakel für {loser}")
+        if abs(hg - ag) >= 4 and style.has("Klatsche"):
+            options.append(f"{loser} kassiert Klatsche gegen {winner}")
+        if style.has("Gala") and m["home_xg"] is not None and abs(m["home_xg"] - m["away_xg"]) >= 2:
+            options.append(f"Gala von {winner} beim {wscore} gegen {loser}")
+        return _pick(rnd, *options)
     if "Überraschung" in kw:
-        return f"Überraschung: {winner} schlägt {loser} {score}"
+        return f"Überraschung: {winner} schlägt {loser} {wscore}"
     if "glücklicher Sieg" in kw:
-        return _pick(rnd, f"{winner} siegt glücklich gegen {loser}", f"Glücklicher {score}-Sieg für {winner}")
+        return _pick(rnd, f"{winner} siegt glücklich gegen {loser}", f"Glücklicher {wscore}-Sieg für {winner}")
     if ag > hg:
-        return _pick(rnd, f"{away} gewinnt {ag}:{hg} in {m['city']}" if m.get("city") else f"Auswärtssieg für {away} bei {home}",
-                     f"{away} entführt drei Punkte aus {m['city']}" if m.get("city") else f"{away} entführt drei Punkte bei {home}")
-    return _pick(rnd, f"{home} schlägt {away} {score}", f"Heimsieg für {home} gegen {away}", f"{home} bezwingt {away}")
+        options = [f"{away} gewinnt {ag}:{hg} in {m['city']}" if m.get("city") else f"Auswärtssieg für {away} bei {home}",
+                   f"{away} entführt drei Punkte aus {m['city']}" if m.get("city") else f"{away} entführt drei Punkte bei {home}"]
+        if style.has("Heimpleite"):
+            options.append(f"Heimpleite für {home} gegen {away}")
+        return _pick(rnd, *options, *press)
+    return _pick(rnd, f"{home} schlägt {away} {score}", f"Heimsieg für {home} gegen {away}", f"{home} bezwingt {away}", *press)
 
 
 def _winning_goal(m: dict, goals: list[dict]) -> dict | None:
@@ -737,7 +854,7 @@ def build(m: dict, shots: list[dict], starters: set[str], reds: list[dict], stat
             missing = [_short(n.strip()) for n in m[f"missing_{side}"].split(",")
                        if n.strip() and n.split("(")[0].strip() not in played]
             if missing:
-                close.append(f"Bei {_prose(m[f'{side}_short'])} {'fehlte' if len(missing) == 1 else 'fehlten'} {_join(missing)}.")
+                close.append(f"Bei {_nick(m, side, rnd, dative=True)} {'fehlte' if len(missing) == 1 else 'fehlten'} {_join(missing)}.")
     if close:
         lines.append(" ".join(close))
     if (nums := _numbers_line(stats)):
@@ -849,6 +966,9 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
         for r in conn.execute(text("""SELECT team_id, title, source, kind, published_at FROM news_item
                                        WHERE published_at >= :f"""), {"f": first}):
             press.setdefault(r.team_id, []).append(dict(r._mapping))
+    from fussballdb.press_style import Style
+
+    style = Style()  # Stilprofil der Presse, einmal für alle Berichte
     out = []
     for m in matches:
         m["home_short"], m["away_short"] = short(m["home"]), short(m["away"])
@@ -866,6 +986,7 @@ def _load(where: str, params: dict) -> list[tuple[int, str]]:
         c["tag"] = (derby[0] if derby else
                     "im Spitzenspiel" if hc.get("played", 0) >= 4 and max(hc["pos_before"], ac["pos_before"]) <= 3 else
                     "im Kellerduell" if hc.get("played", 0) >= 4 and min(hc["pos_before"], ac["pos_before"]) >= 15 else None)
+        m["style"] = style
         out.append((m["id"], m, build(m, shots.get(m["id"], []), starters.get(m["id"], set()),
                                       reds.get(m["id"], []), stats.get(m["id"], {}))))
     return out

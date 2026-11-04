@@ -7,6 +7,9 @@ Meldungen aus den Zeitungen und Sendern der Region (LOCAL), "Verein" die vom Ver
 Google erlaubt den Feed nur für den persönlichen, nicht kommerziellen Gebrauch in einem Feedreader. Für eine
 öffentliche App bräuchte es direkte RSS-Feeds der Zeitungen.
 
+Aus den Überschriften zählt press_style.py nach jedem Import das Stilprofil der Presse (Verben, Zeitungswörter,
+Spitznamen), nach dem die Spielberichte formulieren.
+
 Überschriften bekommen ein Embedding (LM Studio wie bei den Spielberichten), damit Chat und MCP nach Bedeutung
 suchen können; ohne LM Studio bleibt die Volltextsuche.
 """

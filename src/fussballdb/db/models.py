@@ -443,6 +443,10 @@ MIGRATIONS = [
         embedding vector(768), embed_model varchar(80), UNIQUE (team_id, title))""",
     "CREATE INDEX IF NOT EXISTS news_item_tsv ON news_item USING gin (tsv)",
     "CREATE INDEX IF NOT EXISTS news_item_team ON news_item (team_id, published_at DESC)",
+    # Stilprofil der Presse (press_style.py): Versionen mit Änderungen, die die Spielberichte betreffen
+    """CREATE TABLE IF NOT EXISTS press_style (
+        id serial PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+        profile jsonb NOT NULL, changes jsonb NOT NULL DEFAULT '[]')""",
     "ALTER TABLE match ADD COLUMN IF NOT EXISTS kicktipp_pos integer",
     "ALTER TABLE match_page ADD COLUMN IF NOT EXISTS colors text",
     "ALTER TABLE prediction ADD COLUMN IF NOT EXISTS score_probs text",

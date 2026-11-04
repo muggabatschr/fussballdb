@@ -253,7 +253,8 @@ def spielberichte(frage: str = "", team: str | None = None, saison: int | None =
                   neueste_zuerst: bool = False) -> str:
     """Spielberichte der Bundesliga ab 2014/15 im Zeitungsstil durchsuchen (Tore mit Minute, Schütze, Vorlage und
     Art, Pfosten und vergebene Chancen, Formation, Spieler des Spiels, Tabelle und Serien, Statistik, Einordnung,
-    Stichworte wie Comeback, spätes Siegtor, Platzverweis, Überraschung). Kombinierte Suche nach
+    Stichworte wie Comeback, spätes Siegtor, Platzverweis, Überraschung); die Wortwahl folgt dem Stil der Presse
+    (Verben, Zeitungswörter und Spitznamen aus den Überschriften), die Fakten kommen aus den Daten. Kombinierte Suche nach
     Bedeutung und Wörtern; team (auch umgangssprachlich) und saison (Startjahr) filtern, ohne frage die jüngsten
     Spiele. Für Fragen zu Spielverläufen und für Zusammenfassungen; die Berichte enthalten nur Fakten aus den
     Daten, nichts darüber hinaus erfinden. Für Zählfragen ("wie oft") ist `sql` genauer. Bei "wann zuletzt …"

@@ -506,6 +506,29 @@ def kalibrierung() -> None:
         console.print(f"{label:13s} vorhergesagt {df[col].mean():.3f}  eingetreten {hit.mean():.3f}")
 
 
+@app.command("pressestil")
+def pressestil(neu: Annotated[bool, typer.Option("--neu", help="Neu zählen und bei Änderungen die Berichte neu schreiben")] = False) -> None:
+    """Stilprofil der Presse (Verben, Zeitungswörter, Spitznamen aus den Überschriften), nach dem die Spielberichte schreiben."""
+    from fussballdb import press_style, reports
+
+    if neu:
+        changes = press_style.update()
+        console.print("\n".join(changes) or "Keine Änderung, nur die Zahlen aktualisiert")
+        if changes:
+            console.print(f"{reports.generate(only_missing=False)} Berichte neu geschrieben")
+    p = press_style.current()
+    console.print(f"Stand {p.get('stand')}: {p.get('ueberschriften')} Überschriften, {p.get('zu_spielen')} zu Spielen")
+    for key, v in sorted(p.get("verben", {}).items(), key=lambda kv: -kv[1]["n"]):
+        if v["aktiv"]:
+            console.print(f"  {v['ausgang']} {key:20s} {v['n']:3d}×{'  nur hohe Siege' if v['ab_abstand'] > 1 else ''}  „{v['beispiel']}“")
+    words = sorted(p.get("woerter", {}).items(), key=lambda kv: -kv[1]["n"])
+    console.print("Wörter: " + ", ".join(f"{w} {v['n']}" for w, v in words if v["aktiv"]))
+    console.print("Spitznamen: " + ", ".join(f"{n['name']} {n['n']}" for ns in p.get("spitznamen", {}).values() for n in ns if n["aktiv"]))
+    console.print(f"Form: {p.get('form')}")
+    for h in press_style.history(5):
+        console.print(f"Version {h['version']} seit {h['seit']}: {len(h['aenderungen'])} Änderungen")
+
+
 @app.command()
 def ensure(
     voll: Annotated[bool, typer.Option("--voll", help="Alle Schritte ausführen, auch wenn die Daten aktuell sind")] = False,
