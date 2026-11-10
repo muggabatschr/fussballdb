@@ -506,6 +506,31 @@ def kalibrierung() -> None:
         console.print(f"{label:13s} vorhergesagt {df[col].mean():.3f}  eingetreten {hit.mean():.3f}")
 
 
+@app.command("ki-tipp-test")
+def ki_tipp_test(
+    variante: Annotated[list[str], typer.Option(help="mit_modell (Daten + Modellprognose) und/oder ohne_modell (nur Daten)")] = ["mit_modell"],  # noqa: B006
+    wettbewerb: Annotated[list[str], typer.Option(help="BL und/oder D2")] = ["BL", "D2"],  # noqa: B006
+    nur_auswertung: Annotated[bool, typer.Option(help="Keine neuen Anfragen, nur auswerten")] = False,
+    parallel: Annotated[int, typer.Option(help="Gleichzeitige Anfragen an LM Studio")] = 2,
+) -> None:
+    """Sprachmodell (LM Studio) bekommt Modellprognose und Daten vom Tippzeitpunkt und passt an: besser als das Modell?"""
+    from fussballdb.model import llm_tip
+
+    if not nur_auswertung:
+        llm_tip.run(tuple(variante), tuple(wettbewerb), workers=parallel, log=console.print)
+    for v in variante:
+        console.print(f"[bold]{v}[/bold]")
+        for label, r in llm_tip.evaluate(v + "none", tuple(wettbewerb)).items():
+            console.print(f"{label}: n={r['pm']['n']}  RPS Modell {r['pm']['rps']:.4f} · KI {r['pl']['rps']:.4f} · Mischung "
+                          f"{r['mix']['rps']:.4f}" + (f" · Markt {r['markt']['rps']:.4f} (Modell dort {r['modell_auf_markt']['rps']:.4f})"
+                                                       if "markt" in r else ""))
+            console.print(f"  Log-Loss Modell {r['pm']['logloss']:.4f} · KI {r['pl']['logloss']:.4f} · Mischung {r['mix']['logloss']:.4f}"
+                          f"  |  Punkte je Spiel Modelltipp {r['punkte']['pts_modell']:.3f} · KI-Tipp {r['punkte']['pts_ki_tipp']:.3f}"
+                          f" · aus KI-Wahrsch. {r['punkte']['pts_ki_p']:.3f} · Mischung {r['punkte']['pts_mix']:.3f}")
+            console.print(f"  KI besser (Bootstrap): RPS {r['ki_besser_rps']:.0%}, Punkte {r['ki_besser_punkte']:.0%}; "
+                          f"mittlere Abweichung vom Modell {r['mittlere_abweichung']:.1%}")
+
+
 @app.command("pressestil")
 def pressestil(neu: Annotated[bool, typer.Option("--neu", help="Neu zählen und bei Änderungen die Berichte neu schreiben")] = False) -> None:
     """Stilprofil der Presse (Verben, Zeitungswörter, Spitznamen aus den Überschriften), nach dem die Spielberichte schreiben."""

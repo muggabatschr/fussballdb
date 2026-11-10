@@ -115,7 +115,9 @@ def predict_upcoming(matchdays: int | None = None) -> pd.DataFrame:
     mit dem heutigen Datenstand. Wird bis zum Anpfiff bei jedem Update überschrieben, danach nie mehr."""
     model, df = build_forecaster()
     store_elo(model, df)
-    upcoming = df[~df["finished"]].sort_values("kickoff")
+    # nur Spiele vor dem Anpfiff: laufende oder gespielte, deren Ergebnis noch fehlt, behalten ihren letzten Tipp
+    # (bis Oktober 2026 wurden sie weiter überschrieben, 17 Tipps stammten von nach dem Anpfiff)
+    upcoming = df[~df["finished"] & (pd.to_datetime(df["kickoff"], utc=True) > pd.Timestamp.now(tz="UTC"))].sort_values("kickoff")
     if upcoming.empty:
         return pd.DataFrame()
     season = upcoming["season"].iloc[0]

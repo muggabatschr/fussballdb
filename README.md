@@ -939,6 +939,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
 | `fussballdb xg-varianten` | xG-Varianten (npxG, Spielstand, Rote Karten) im Rückblick-Test vergleichen |
 | `fussballdb backfill` | Rückblick-Prognosen für gespielte Spieltage ohne Prognose berechnen (`--force` rechnet alle neu) |
+| `fussballdb ki-tipp-test` | Sprachmodell aus LM Studio bekommt die Modellprognose und die Daten vom Tippzeitpunkt und passt an; Vergleich mit dem Modell allein (Antworten in `.cache/ki_tipp.jsonl`, `--nur-auswertung`) |
 | `fussballdb pressestil` | Stilprofil der Presse für die Spielberichte anzeigen (`--neu`: neu zählen, bei Änderungen Berichte neu schreiben) |
 | `fussballdb chat "Wie stehen die Chancen Freiburg gegen Bayern?"` | Frage an das Sprachmodell; ohne Frage interaktiv |
 | `fussballdb serve` | REST-API für die Web-App starten |
@@ -1084,6 +1085,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Formkomponente (40 % Gewicht, Halbwertszeit 5 Wochen) | 2016–26: −0,0002 | übernommen; mit 13 Saisons besser in 91 % der Ziehungen und 7 von 11 Saisons (vorher mit 3 Saisons nur 84 %) |
 | Kürzere Halbwertszeit (2–3 statt 8 Monate) | −0,0004 | ähnlich, schwächer belegt (68–75 %); nicht aktiv |
 | Heimvorteil je Team | ±0 | verworfen |
+| Sprachmodell nach dem Modell (Qwen 3.8 27B lokal bekommt Dixon-Coles-Prognose und Daten vom Tippzeitpunkt, gibt die endgültige Prognose ab; 775 Spiele BL und 2. Liga ab 2025/26) | BL +0,0006, 2. Liga −0,0013, zusammen −0,0004 | verworfen (zusammen nur 72 % der Ziehungen, BL 19 %); Tipp-Punkte aus seinen Wahrscheinlichkeiten 1,363 statt 1,355 je Spiel (62 %), sein eigener Tipp schlechter (1,305); `fussballdb ki-tipp-test` |
 | Tor-Skalierung auf echte Tore (xG liegt ~3 % über den Toren) | 2024/25 −0,0014, 2025–26 +0,0005 bis +0,0017 | verworfen; Durchschnitte stimmen danach, Prognosen werden nicht besser |
 | Remis-Aufschlag (Poisson unterschätzt Remis um ~2,5 Punkte) | +0,0001 | verworfen; pauschal mehr Remis schadet bei klaren Spielen |
 | Tipp nach erwarteten Punkten (Regel der Tipprunde, Remis = 3) | 1,367 statt 1,363 Punkte/Spiel | übernommen; optimiert direkt auf die echte Wertung, ~1 % Remis-Tipps (`fussballdb tipp-test`) |
@@ -1241,6 +1243,9 @@ Was in welcher Reihenfolge entstanden ist und warum.
     damit jetzt mit dem xG-Modell (xG/Elo 70/30 + Form) statt der Elo allein.
 35. **Spielberichte im Ton der Presse**: Stilprofil aus den Überschriften (Verben, Zeitungswörter, Spitznamen),
     bei jedem Presse-Import neu gezählt und versioniert; ändert es sich, werden alle Berichte neu geschrieben.
+36. **Sprachmodell nach dem Modell getestet und verworfen** (`fussballdb ki-tipp-test`, Qwen lokal, nur Spiele nach
+    seinem Wissensstand, Daten nur vom Tippzeitpunkt); dabei behoben: Live-Prognosen wurden nach dem Anpfiff
+    weiter überschrieben, solange das Ergebnis fehlte, jetzt nur noch Spiele vor dem Anpfiff.
 Offen:
 
 - **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**
