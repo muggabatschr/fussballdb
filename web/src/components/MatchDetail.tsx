@@ -244,7 +244,7 @@ function ScorerList({ list }: { list: Scorer[] }) {
 const ROW_LABELS = (rows: number[]) =>
   rows.map((r, i) => (i === 0 ? "Tor" : i === rows.length - 1 ? "Angriff" : i === 1 ? "Abwehr" : "Mittelfeld"));
 
-function Lineup({ players }: { players: { reihe: number | null; name: string }[] }) {
+function Lineup({ players }: { players: { reihe: number | null; name: string; ausfall?: string | null }[] }) {
   if (!players.length) return <p className="text-sm text-muted">Noch keine Aufstellung von Ligainsider.</p>;
   const rows = [...new Set(players.map((p) => p.reihe ?? 0))].sort((a, b) => a - b);
   const labels = ROW_LABELS(rows);
@@ -256,11 +256,31 @@ function Lineup({ players }: { players: { reihe: number | null; name: string }[]
           <dd>
             {players
               .filter((p) => (p.reihe ?? 0) === r)
-              .map((p) => lastName(p.name))
-              .join(", ")}
+              .map((p, j) => (
+                <span key={p.name}>
+                  {j > 0 && ", "}
+                  {p.ausfall ? (
+                    <span className="text-amber-600 dark:text-amber-400" title={`Laut Ausfallliste: ${p.ausfall}`}>
+                      {lastName(p.name)}*
+                    </span>
+                  ) : (
+                    lastName(p.name)
+                  )}
+                </span>
+              ))}
           </dd>
         </div>
       ))}
+      {players.some((p) => p.ausfall) && (
+        <div className="pt-1 text-xs text-amber-600 dark:text-amber-400">
+          * Steht bei Ligainsider in der Startelf, fällt laut Ausfallliste aber aus (
+          {players
+            .filter((p) => p.ausfall)
+            .map((p) => `${lastName(p.name)}: ${p.ausfall}`)
+            .join(", ")}
+          ).
+        </div>
+      )}
     </dl>
   );
 }

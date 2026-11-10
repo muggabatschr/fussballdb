@@ -408,7 +408,7 @@ export type MatchDetail = {
       })
     | null;
   ausfaelle: Sides<DetailAbsence[]> | null;
-  aufstellung?: Sides<{ reihe: number | null; name: string }[]> | null;
+  aufstellung?: Sides<{ reihe: number | null; name: string; ausfall?: string | null }[]> | null;
   statistik?: Sides<Partial<MatchStats>> | null;
   laufdaten?: Sides<RunningPlayer[]> | null; // Bundesliga: km und Höchstgeschwindigkeit je Spieler
   quoten?: { bookmaker: string; is_closing: boolean; p_home: number; p_draw: number; p_away: number }[];

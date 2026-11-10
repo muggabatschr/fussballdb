@@ -494,15 +494,36 @@ def _bl_form(team_id: int, before) -> list[dict]:
         """, t=team_id, k=before, n=FORM_GAMES)
 
 
+def _name_key(name: str) -> str:
+    """Name zum Abgleich zwischen Quellen: Ligainsider schreibt "Proemel", Transfermarkt "Prömel"."""
+    import unicodedata
+
+    low = name.lower()
+    for u, r in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        low = low.replace(u, r)
+    return "".join(c for c in unicodedata.normalize("NFKD", low) if c.isalnum())
+
+
 def _lineup(team_id: int) -> list[dict]:
-    """Voraussichtliche Startelf laut letztem Ligainsider-Abruf (Reihe 1 = Tor)."""
-    return _rows(
+    """Voraussichtliche Startelf laut letztem Ligainsider-Abruf (Reihe 1 = Tor). Ligainsider plant für das nächste
+    Spiel oft schon Verletzte wieder ein (Stiller im November 2026, Wochen vor der Rückkehr); wer laut
+    Transfermarkt/Kickbase aktuell ausfällt, bekommt den Grund in `ausfall`."""
+    players = _rows(
         """
-        SELECT position_row AS reihe, player_name AS name FROM lineup_snapshot
+        SELECT position_row AS reihe, player_name AS name, player_id FROM lineup_snapshot
         WHERE team_id = :t AND status = 'vorschau' AND role = 'start'
           AND fetched_at = (SELECT max(fetched_at) FROM lineup_snapshot WHERE team_id = :t AND status = 'vorschau')
         ORDER BY position_row, id
         """, t=team_id)
+    out = {}
+    for a in _rows("""SELECT player_id, player_name, kind, reason FROM player_absence
+                      WHERE team_id = :t AND active AND kind <> 'doubtful'""", t=team_id):
+        why = a["reason"] or ("gesperrt" if a["kind"] == "suspension" else "verletzt")
+        out[("name", _name_key(a["player_name"]))] = why
+        if a["player_id"]:
+            out[("id", a["player_id"])] = why
+    return [{"reihe": p["reihe"], "name": p["name"],
+             "ausfall": out.get(("id", p["player_id"])) or out.get(("name", _name_key(p["name"])))} for p in players]
 
 
 def _implied(odds: list[dict]) -> list[dict]:
