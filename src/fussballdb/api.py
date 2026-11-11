@@ -20,6 +20,7 @@ from fussballdb.ingest.venues import for_matches as venues_for
 from fussballdb.model.tips import apply_rule
 from fussballdb.model.tips import summary as tip_summary
 from fussballdb.maintenance import STATUS, check, ensure_in_background
+from fussballdb.model.alt_tip import ALT_VERSION
 from fussballdb.model.ensemble import MODEL_VERSION
 
 toolbox = Toolbox()
@@ -115,21 +116,27 @@ def predictions_review(limit: Annotated[int, Query(ge=1, le=200)] = 50):
                round(p.p_away::numeric, 3) AS p_away
         FROM prediction p JOIN match m ON m.id = p.match_id
         JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
-        WHERE m.finished ORDER BY m.kickoff DESC LIMIT :limit
+        WHERE m.finished AND p.model_version NOT LIKE 'alt-%' ORDER BY m.kickoff DESC LIMIT :limit
         """,
         limit=limit,
     )
 
 
 WIN_TENDENCY, WIN_DIFF, EXACT, DRAW_TENDENCY = TIPP_PUNKTE
-POINTS_SQL = f"""
-    CASE WHEN NOT m.finished OR p.tip_home IS NULL THEN NULL
-         WHEN p.tip_home = m.home_goals AND p.tip_away = m.away_goals THEN {EXACT}
-         WHEN sign(p.tip_home - p.tip_away) <> sign(m.home_goals - m.away_goals) THEN 0
+
+
+def _points_sql(t: str = "p") -> str:
+    return f"""
+    CASE WHEN NOT m.finished OR {t}.tip_home IS NULL THEN NULL
+         WHEN {t}.tip_home = m.home_goals AND {t}.tip_away = m.away_goals THEN {EXACT}
+         WHEN sign({t}.tip_home - {t}.tip_away) <> sign(m.home_goals - m.away_goals) THEN 0
          WHEN m.home_goals = m.away_goals THEN {DRAW_TENDENCY}
-         WHEN p.tip_home - p.tip_away = m.home_goals - m.away_goals THEN {WIN_DIFF}
+         WHEN {t}.tip_home - {t}.tip_away = m.home_goals - m.away_goals THEN {WIN_DIFF}
          ELSE {WIN_TENDENCY} END
 """
+
+
+POINTS_SQL = _points_sql()
 
 
 @app.get("/seasons")
@@ -174,17 +181,41 @@ def _bl_games(where: str, **params) -> list[dict]:
                round(p.p_away::numeric, 3) AS p_away,
                round(p.exp_home_goals::numeric, 2) AS exp_home_goals, round(p.exp_away_goals::numeric, 2) AS exp_away_goals,
                p.tip_home, p.tip_away, p.basis, p.as_of, p.missing_home, p.missing_away, p.explanation,
-               p.score_probs, {POINTS_SQL} AS points
+               p.score_probs, {POINTS_SQL} AS points,
+               a.tip_home AS alt_tip_home, a.tip_away AS alt_tip_away, a.score_probs AS alt_score_probs,
+               a.explanation AS alt_explanation, a.basis AS alt_basis,
+               round(a.p_home::numeric, 3) AS alt_p_home, round(a.p_draw::numeric, 3) AS alt_p_draw,
+               round(a.p_away::numeric, 3) AS alt_p_away, {_points_sql("a")} AS alt_points
         FROM match m JOIN season s ON s.id = m.season_id
         JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
         LEFT JOIN match_team_stats hs ON hs.match_id = m.id AND hs.team_id = m.home_team_id
         LEFT JOIN match_team_stats as_ ON as_.match_id = m.id AND as_.team_id = m.away_team_id
         LEFT JOIN prediction p ON p.match_id = m.id AND p.model_version = :v
+        LEFT JOIN prediction a ON a.match_id = m.id AND a.model_version = :alt
         WHERE {where}
         ORDER BY m.matchday, m.kicktipp_pos NULLS LAST, m.kickoff, m.id  -- Reihenfolge wie bei Kicktipp
         """,
-        v=MODEL_VERSION, **params,
+        v=MODEL_VERSION, alt=ALT_VERSION, **params,
     )
+
+
+def _alternative(g: dict, rule) -> None:
+    """Alternativtipp (model/alt_tip.py) als eigenes Feld: Tipp, Punkte, Wahrscheinlichkeiten und Begründung nach
+    der Punkteregel der Tipprunde; ohne Alternativtipp None."""
+    alt = {"tip_home": g.pop("alt_tip_home"), "tip_away": g.pop("alt_tip_away"), "score_probs": g.pop("alt_score_probs"),
+           "points": g.pop("alt_points"), "basis": g.pop("alt_basis"), "finished": g["finished"],
+           "home_goals": g["home_goals"], "away_goals": g["away_goals"],
+           "p_home": g.pop("alt_p_home"), "p_draw": g.pop("alt_p_draw"), "p_away": g.pop("alt_p_away")}
+    expl = g.pop("alt_explanation")
+    alt["explanation"] = json.loads(expl) if expl else []
+    if alt["tip_home"] is None:
+        g["alternativ"] = None
+        return
+    apply_rule(alt, rule)
+    for k in ("finished", "home_goals", "away_goals"):
+        alt.pop(k)
+    alt["gleich"] = (alt["tip_home"], alt["tip_away"]) == (g["tip_home"], g["tip_away"])
+    g["alternativ"] = alt
 
 
 def _tip_round(slug: str | None) -> dict:
@@ -221,6 +252,7 @@ def _decorate_bl(games: list[dict], rule=TIPP_PUNKTE) -> None:
         if sc:
             g["torschuetzen"] = {"home": sc.get(g["home_team_id"], []), "away": sc.get(g["away_team_id"], [])}
         apply_rule(g, rule)
+        _alternative(g, rule)
 
 
 @app.get("/matchday/{season}/{matchday}")
@@ -254,6 +286,10 @@ def matchday(season: int, matchday: int, runde: str | None = None):
     )[0]
     _decorate_bl(games, rule)
     scored = [g["points"] for g in games if g["points"] is not None]
+    played = _bl_games("s.start_year = :y AND m.matchday <= :md AND m.finished", y=season, md=matchday)
+    for g in played:
+        apply_rule(g, rule)
+        _alternative(g, rule)
     return {
         "season": season,
         "matchday": matchday,
@@ -262,7 +298,22 @@ def matchday(season: int, matchday: int, runde: str | None = None):
         "punkteregel": _punkteregel(rule),
         "tipprunde": _round_info(rnd),
         "season_summary": season_summary,
+        "alternativ": {"spieltag": _alt_compare(games), "saison": _alt_compare(played)},
     }
+
+
+def _alt_compare(games: list[dict]) -> dict | None:
+    """Punkte von Haupt- und Alternativtipp auf denselben gespielten Spielen; nur Live-Alternativtipps zählen für
+    den Nachtest, der Rest ist Rückblick."""
+    both = [g for g in games if g["points"] is not None and g.get("alternativ") and g["alternativ"]["points"] is not None]
+    if not both:
+        return None
+    live = [g for g in both if g["alternativ"]["basis"] == "live"]
+    return {"spiele": len(both), "haupt": sum(g["points"] for g in both),
+            "alternativ": sum(g["alternativ"]["points"] for g in both),
+            "verschieden": sum(not g["alternativ"]["gleich"] for g in both),
+            "live_spiele": len(live), "live_haupt": sum(g["points"] for g in live),
+            "live_alternativ": sum(g["alternativ"]["points"] for g in live)}
 
 
 # Wettbewerbe mit eigener Prognose aus dem Europa-Modell (model/europe.py)

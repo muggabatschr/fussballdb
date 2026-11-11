@@ -116,7 +116,7 @@ def _cases() -> list[dict]:
             WHERE s.start_year >= :f AND m.finished"""), {"f": FIRST_SEASON}).all()
         preds = {r.match_id: r for r in conn.execute(text("""
             SELECT p.* FROM prediction p JOIN match m ON m.id = p.match_id
-            WHERE m.finished AND (p.as_of IS NULL OR p.as_of <= m.kickoff)""")).all()}
+            WHERE m.finished AND (p.as_of IS NULL OR p.as_of <= m.kickoff) AND p.model_version NOT LIKE 'alt-%'""")).all()}
         odds = {r.match_id: r for r in conn.execute(text("""
             SELECT match_id, home, draw, away FROM odds WHERE bookmaker = 'Avg' AND is_closing""")).all()}
         news: dict = {}

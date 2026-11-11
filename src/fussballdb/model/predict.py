@@ -11,8 +11,10 @@ from fussballdb.db.session import engine, session_scope
 from fussballdb.features import euro_load
 from fussballdb.features.availability import AvailabilityModel
 from fussballdb.features.running import RunningForm
+from fussballdb.features.stat_form import StatForm
 from fussballdb.ingest.upsert import upsert
 from fussballdb.model.data import load_matches
+from fussballdb.model import alt_tip
 from fussballdb.model.ensemble import MODEL_VERSION, Forecaster
 from fussballdb.model.explain import explain
 
@@ -98,10 +100,11 @@ def score_json(matrix: np.ndarray) -> str:
 
 
 def _row(match_id: int, p: dict, as_of: pd.Timestamp, basis: str, home: str = "", away: str = "",
-         market: tuple[float, float, float] | None = None) -> dict:
+         market: tuple[float, float, float] | None = None, version: str = MODEL_VERSION,
+         explanation: str | None = None) -> dict:
     return {
-        "explanation": json.dumps(explain(p, home, away, market), ensure_ascii=False) if home else None,
-        "match_id": int(match_id), "model_version": MODEL_VERSION, **{k: float(p[k]) for k in PRED_FIELDS},
+        "explanation": explanation or (json.dumps(explain(p, home, away, market), ensure_ascii=False) if home else None),
+        "match_id": int(match_id), "model_version": version, **{k: float(p[k]) for k in PRED_FIELDS},
         "as_of": as_of, "basis": basis, "tip_home": p["tip"][0], "tip_away": p["tip"][1],
         "score_probs": score_json(p["score_probs"]) if "score_probs" in p else None,
         # "" statt None, damit ein Update eine leere Ausfallliste auch wirklich speichert
@@ -131,18 +134,73 @@ def predict_upcoming(matchdays: int | None = None) -> pd.DataFrame:
     schedule = euro_load.euro_schedule()
     running = RunningForm()
     now = pd.Timestamp.now(tz="UTC")
-    rows, out = [], []
+    alt_model, stats = alt_tip.alt_forecaster().fit(df, now), StatForm()
+    rows, alt_rows, out = [], [], []
     for r in upcoming.itertuples():
         p = predict_pair(r.home_id, r.away_id, r.match_id, model, availability, absences, r.kickoff, schedule,
                          running)
         rows.append(_row(r.match_id, p, now, "live", r.home, r.away, markets.get(r.match_id)))
+        alt_rows.append(_alt_row(r, p, alt_model, stats, now, "live"))
         out.append({"spieltag": r.matchday, "anstoss": r.kickoff, "heim": r.home, "gast": r.away, **rows[-1],
                     "ausfaelle_heim": rows[-1]["missing_home"], "ausfaelle_gast": rows[-1]["missing_away"]})
     with session_scope() as s:
-        upsert(s, Prediction, rows, ["match_id", "model_version"])
+        upsert(s, Prediction, rows + alt_rows, ["match_id", "model_version"])
         s.execute(text("UPDATE prediction SET created_at = now() WHERE match_id = ANY(:ids)"),
                   {"ids": [r["match_id"] for r in rows]})
     return pd.DataFrame(out)
+
+
+def _alt_row(r, p: dict, alt_model: Forecaster, stats: StatForm, cutoff: pd.Timestamp, basis: str) -> dict:
+    """Alternativtipp (model/alt_tip.py) zu einem Spiel: Wirkungen des Hauptmodells `p` plus Statistik-Faktoren."""
+    hi, ai, info = alt_tip.adjust(p["absences"]["home"], p["absences"]["away"], stats, r.home_id, r.away_id,
+                                  cutoff, r.kickoff)
+    a = alt_model.predict_match(r.home_id, r.away_id, r.match_id, hi, ai)
+    a["absences"] = {"home": hi, "away": ai}
+    return _row(r.match_id, a, cutoff, basis, version=alt_tip.ALT_VERSION,
+                explanation=alt_tip.explanation_json(p, a, info, r.home, r.away))
+
+
+def backfill_alt(seasons: list[int] | None = None, progress=None) -> int:
+    """Alternativtipps im Rückblick für gespielte Spieltage ohne Alternativtipp (wie backfill: je Spieltag nur
+    Daten vor dem ersten Anpfiff). Gespeicherte Live-Alternativtipps bleiben unberührt."""
+    from fussballdb.model.data import load_squad_values
+    from fussballdb.model.evaluate import load_injuries
+
+    df = load_matches()
+    with engine.connect() as conn:
+        existing = {r[0] for r in conn.execute(
+            text("SELECT match_id FROM prediction WHERE model_version = :v"), {"v": alt_tip.ALT_VERSION})}
+    played = df[df["finished"] & ~df["match_id"].isin(existing)]
+    if seasons:
+        played = played[played["season"].isin(seasons)]
+    values, injuries = load_squad_values(), load_injuries()
+    availability = AvailabilityModel()
+    schedule = euro_load.euro_schedule()
+    running, stats = RunningForm(), StatForm()
+    total = 0
+    for (season, md), games in played.groupby(["season", "matchday"], sort=True):
+        cutoff = df.loc[(df["season"] == season) & (df["matchday"] == md), "kickoff"].min()
+        if not (df["finished"] & (df["kickoff"] < cutoff)).any():
+            continue
+        model = Forecaster(values=values).fit(df, cutoff)
+        alt_model = alt_tip.alt_forecaster(values).fit(df, cutoff)
+        rows = []
+        for r in games.itertuples():
+            impacts = []
+            for team in (r.home_id, r.away_id):
+                suspended = availability.suspended_as_of(team, cutoff)
+                missing = availability.injured_as_of(team, cutoff, injuries) | suspended
+                impacts.append(running.apply_active(euro_load.apply(
+                    availability.impact(team, cutoff, missing, suspended), team, r.kickoff, schedule), team, cutoff))
+            p = model.predict_match(r.home_id, r.away_id, r.match_id, *impacts)
+            p["absences"] = {"home": impacts[0], "away": impacts[1]}
+            rows.append(_alt_row(r, p, alt_model, stats, cutoff, "rueckblick"))
+        with session_scope() as s:
+            upsert(s, Prediction, rows, ["match_id", "model_version"])
+        total += len(rows)
+        if progress:
+            progress(season, md, len(rows))
+    return total
 
 
 def backfill(seasons: list[int] | None = None, force: bool = False, progress=None) -> int:

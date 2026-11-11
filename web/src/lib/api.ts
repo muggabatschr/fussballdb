@@ -195,6 +195,31 @@ export type MatchdayGame = {
   tv?: Partial<Record<"DE" | "AT", string[]>>;
   torschuetzen?: { home: Scorer[]; away: Scorer[] };
   ort?: Venue | null;
+  // Alternativtipp (Bundesliga): zweites Modell mit Tor-Skalierung, Schüssen, Ecken und Ruhetagen, wird live geprüft
+  alternativ?: Alternativ | null;
+};
+
+export type Alternativ = {
+  tip_home: number;
+  tip_away: number;
+  points: number | null;
+  basis: "live" | "rueckblick";
+  p_home: number;
+  p_draw: number;
+  p_away: number;
+  explanation: string[];
+  gleich: boolean;
+};
+
+/** Punkte von Haupt- und Alternativtipp auf denselben gespielten Spielen; live = nur Tipps von vor dem Anpfiff. */
+export type AltVergleich = {
+  spiele: number;
+  haupt: number;
+  alternativ: number;
+  verschieden: number;
+  live_spiele: number;
+  live_haupt: number;
+  live_alternativ: number;
 };
 
 /** Spielort laut FotMob (Name und Kapazität wie am Spieltag) mit Wetter von Open-Meteo zur Spielzeit. */
@@ -229,6 +254,7 @@ export type Matchday = {
   season_summary: Bilanz;
   punkteregel: Punkteregel;
   tipprunde?: TipRoundInfo;
+  alternativ?: { spieltag: AltVergleich | null; saison: AltVergleich | null };
 };
 
 export const getSeasons = () => api<Season[]>("/seasons");

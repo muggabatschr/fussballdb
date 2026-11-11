@@ -147,7 +147,7 @@ class Toolbox:
                    round(p.exp_home_goals::numeric, 2) AS exp_home_goals, round(p.exp_away_goals::numeric, 2) AS exp_away_goals,
                    p.created_at AS prediction_from
             FROM match m JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
-            LEFT JOIN prediction p ON p.match_id = m.id
+            LEFT JOIN prediction p ON p.match_id = m.id AND p.model_version NOT LIKE 'alt-%'
             WHERE NOT m.finished ORDER BY m.kickoff LIMIT :limit
             """, limit=limit)
 

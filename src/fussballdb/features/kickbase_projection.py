@@ -38,7 +38,7 @@ FIXTURES_SQL = text(
            ht.name AS home, at.name AS away, p.exp_home_goals, p.exp_away_goals, p.p_home, p.p_draw, p.p_away
     FROM match m JOIN season s ON s.id = m.season_id
     JOIN team ht ON ht.id = m.home_team_id JOIN team at ON at.id = m.away_team_id
-    LEFT JOIN prediction p ON p.match_id = m.id AND p.basis = 'live'
+    LEFT JOIN prediction p ON p.match_id = m.id AND p.basis = 'live' AND p.model_version NOT LIKE 'alt-%'
     WHERE s.start_year = :y AND NOT m.finished
     ORDER BY m.kickoff
     """

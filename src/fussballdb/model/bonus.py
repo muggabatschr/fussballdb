@@ -127,7 +127,7 @@ def top_scorer(season: int, cutoff: datetime | None = None, n: int = TOP_SCORER_
         fixtures = pd.read_sql(text("""
             SELECT m.home_team_id, m.away_team_id, p.exp_home_goals, p.exp_away_goals
             FROM match m JOIN season s ON s.id = m.season_id
-            LEFT JOIN prediction p ON p.match_id = m.id AND p.basis = 'live'
+            LEFT JOIN prediction p ON p.match_id = m.id AND p.basis = 'live' AND p.model_version NOT LIKE 'alt-%'
             WHERE s.start_year = :y AND NOT m.finished"""), engine, params={"y": season})
     # Torerwartung je Team im Schnitt der letzten Spiele, um die Torerwartung je Spiel darauf zu beziehen
     team_xg = apps.groupby(["team_id", "match_id"])["xg"].sum().groupby("team_id").mean()

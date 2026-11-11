@@ -254,6 +254,41 @@ def backfill(
     console.print(f"[green]{n} Prognosen gespeichert.[/]")
 
 
+@app.command("alternativ-rueckblick")
+def alternativ_rueckblick(seasons: SeasonsOpt = None) -> None:
+    """Alternativtipps (model/alt_tip.py) im Rückblick für gespielte Spieltage ohne Alternativtipp nachtragen."""
+    from fussballdb.model.predict import backfill_alt
+
+    n = backfill_alt(seasons, progress=lambda y, md, k: console.print(f"  {y}/{(y + 1) % 100:02d} Spieltag {md}: {k}", end="\r"))
+    console.print(f"[green]{n} Alternativtipps gespeichert.[/]")
+
+
+@app.command("alternativ-bilanz")
+def alternativ_bilanz() -> None:
+    """Haupt- gegen Alternativtipp: Punkte nach der Standardregel und RPS je Saison, getrennt nach Rückblick und
+    Live (für den Nachtest am Saisonende 2026/27 zählen nur die Live-Alternativtipps)."""
+    import pandas as pd
+    from sqlalchemy import text
+
+    from fussballdb.api import POINTS_SQL, _points_sql
+    from fussballdb.db.session import engine
+    from fussballdb.model.alt_tip import ALT_VERSION
+    from fussballdb.model.ensemble import MODEL_VERSION
+
+    rps = lambda t: f"""(power({t}.p_home - (m.home_goals > m.away_goals)::int, 2)
+        + power({t}.p_home + {t}.p_draw - (m.home_goals >= m.away_goals)::int, 2)) / 2"""  # noqa: E731
+    df = pd.read_sql(text(f"""
+        SELECT s.start_year AS saison, a.basis = 'live' AND a.as_of <= m.kickoff AS live, count(*) AS spiele,
+               sum({POINTS_SQL}) AS punkte_haupt, sum({_points_sql("a")}) AS punkte_alternativ,
+               count(*) FILTER (WHERE (p.tip_home, p.tip_away) <> (a.tip_home, a.tip_away)) AS anderer_tipp,
+               round(avg({rps("p")})::numeric, 4) AS rps_haupt, round(avg({rps("a")})::numeric, 4) AS rps_alternativ
+        FROM match m JOIN season s ON s.id = m.season_id
+        JOIN prediction p ON p.match_id = m.id AND p.model_version = :v
+        JOIN prediction a ON a.match_id = m.id AND a.model_version = :alt
+        WHERE m.finished GROUP BY 1, 2 ORDER BY 2, 1"""), engine, params={"v": MODEL_VERSION, "alt": ALT_VERSION})
+    console.print(df.to_string(index=False))
+
+
 @app.command()
 def backtest(
     seasons: SeasonsOpt = None,
@@ -415,6 +450,26 @@ def laufleistung_test() -> None:
                   "Einstellzeitraum nicht schlechter.")
 
 
+@app.command("statistik-test")
+def statistik_test(
+    kombi: Annotated[bool, typer.Option("--kombi", help="auch mit jeder verworfenen Erweiterung und allen zusammen")] = False,
+    kennzahl: Annotated[list[str] | None, typer.Option(help="nur diese Kennzahl=beta (z. B. ecken=0.03), mehrere zusammen")] = None,
+) -> None:
+    """Schüsse, aufs Tor, Großchancen, Ecken, PPDA, Deep, Passquote und Ruhetage der letzten 10 Spiele als Faktor
+    im Rückblick, zusätzlich zum aktuellen Modell (Einstellen 2016–20, Test 2021–26)."""
+    from fussballdb.model.evaluate import compare_team_stats, finishing_combo_configs
+
+    variants = None
+    if kennzahl:
+        betas = {k: float(v) for k, v in (x.split("=") for x in kennzahl)}
+        variants = {" ".join(kennzahl): betas}
+    res = compare_team_stats(fit_configs=finishing_combo_configs() if kombi else None, variants=variants,
+                             progress=lambda s, md: console.print(f"  {s}/{md}", end="\r"))
+    console.print(res.round(4).to_string(index=False))
+    console.print("delta < 0 = besser. Übernehmen nur, wenn im Test in rund 90 % der Ziehungen besser und im "
+                  "Einstellzeitraum nicht schlechter.")
+
+
 @app.command("cl-xg-test")
 def cl_xg_test() -> None:
     """CL: europaweites xG-Modell (Dixon-Coles, Form, Mischung mit Elo) gegen die bisherige Elo, Rückblick-Test."""
@@ -498,7 +553,8 @@ def kalibrierung() -> None:
     from fussballdb.db.session import engine
 
     df = pd.read_sql(text("""SELECT p.p_home, p.p_draw, p.p_away, p.p_over25, m.home_goals hg, m.away_goals ag
-        FROM prediction p JOIN match m ON m.id = p.match_id WHERE m.finished AND p.basis = 'rueckblick'"""), engine)
+        FROM prediction p JOIN match m ON m.id = p.match_id WHERE m.finished AND p.basis = 'rueckblick'
+        AND p.model_version NOT LIKE 'alt-%'"""), engine)
     checks = [("Heimsieg", "p_home", df.hg > df.ag), ("Remis", "p_draw", df.hg == df.ag),
               ("Auswärtssieg", "p_away", df.hg < df.ag), ("Über 2,5", "p_over25", df.hg + df.ag > 2.5)]
     console.print(f"{len(df)} Spiele")

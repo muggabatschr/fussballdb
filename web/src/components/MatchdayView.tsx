@@ -1,4 +1,4 @@
-import type { Bilanz, Matchday, MatchdayGame, Punkteregel, Scorer, Season, TipRound } from "@/lib/api";
+import type { AltVergleich, Bilanz, Matchday, MatchdayGame, Punkteregel, Scorer, Season, TipRound } from "@/lib/api";
 import Image from "next/image";
 import Link from "next/link";
 import { kickoff, num } from "@/lib/format";
@@ -81,6 +81,15 @@ export function Game({ g, regel, href }: { g: MatchdayGame; regel: Punkteregel; 
               {g.points} P.
             </span>
           )}
+          {g.alternativ && !g.alternativ.gleich && (
+            <span title="Alternativtipp aus dem zweiten Modell (Tor-Skalierung, Schüsse, Ecken, Ruhetage)">
+              Alt.{" "}
+              <span className="font-semibold text-foreground">
+                {g.alternativ.tip_home}:{g.alternativ.tip_away}
+              </span>
+              {g.alternativ.points != null && <> · {g.alternativ.points} P.</>}
+            </span>
+          )}
         </span>
       </div>
 
@@ -121,6 +130,13 @@ export function Game({ g, regel, href }: { g: MatchdayGame; regel: Punkteregel; 
           <AdvanceLine g={g} />
           <div className="relative space-y-3 empty:hidden">
             {g.tip_home != null && <WhyTip tip={`${g.tip_home}:${g.tip_away}`} lines={g.explanation} />}
+            {g.alternativ && !g.alternativ.gleich && (
+              <WhyTip
+                tip={`${g.alternativ.tip_home}:${g.alternativ.tip_away}`}
+                title={`Alternativtipp ${g.alternativ.tip_home}:${g.alternativ.tip_away}, warum?`}
+                lines={g.alternativ.explanation}
+              />
+            )}
             {!g.finished && <Scorers s={g.torschuetzen} home={g.home} away={g.away} />}
           </div>
           <VenueLine ort={g.ort} />
@@ -229,6 +245,23 @@ export function TvLine({ tv }: { tv?: MatchdayGame["tv"] }) {
   );
 }
 
+/** Haupt- gegen Alternativtipp in Punkten, für den Spieltag und die Saison bis hier. */
+function AltLine({ a, label }: { a?: Matchday["alternativ"]; label?: string }) {
+  if (!a?.saison) return null;
+  const part = (v: AltVergleich | null, name: string) =>
+    v ? `${name} ${v.alternativ} statt ${v.haupt} Punkte (${v.verschieden} von ${v.spiele} Tipps anders)` : null;
+  const live = a.saison.live_spiele
+    ? ` Live seit dem 11.11.2026: ${a.saison.live_alternativ} statt ${a.saison.live_haupt} Punkte in ${a.saison.live_spiele} Spielen.`
+    : "";
+  return (
+    <p className="text-xs text-muted sm:col-span-2">
+      Alternativtipp: {[part(a.spieltag, "Spieltag"), part(a.saison, `Saison ${label ?? ""} bis hier`)].filter(Boolean).join(" · ")}.
+      {live} Das Alternativmodell (Tor-Skalierung, Schüsse, Ecken, Ruhetage) war im Rückblick 2021–26 knapp besser und
+      wird bis Saisonende live geprüft.
+    </p>
+  );
+}
+
 export function BilanzText({ label, b }: { label: string; b: Bilanz }) {
   if (!b.spiele) return null;
   const stats: [string, string][] = [
@@ -268,6 +301,7 @@ export function MatchdayView({ seasons, data, rounds = [] }: { seasons: Season[]
         <Card className="grid gap-4 sm:grid-cols-2">
           <BilanzText label="Tipps dieses Spieltags" b={data.summary} />
           <BilanzText label={`Saison ${label} bis hier`} b={data.season_summary} />
+          <AltLine a={data.alternativ} label={label} />
           <p className="text-xs text-muted sm:col-span-2">
             Punkteregel der Tipprunde{data.tipprunde?.name ? ` ${data.tipprunde.name}` : ""}: Sieg {data.punkteregel.sieg_tendenz} Tendenz, {data.punkteregel.sieg_tordifferenz}{" "}
             Tordifferenz, {data.punkteregel.exakt} exakt · Remis {data.punkteregel.remis_tendenz} Tendenz,{" "}
@@ -275,6 +309,11 @@ export function MatchdayView({ seasons, data, rounds = [] }: { seasons: Season[]
             Rückblick-Prognosen nutzen nur Daten bis zum ersten Anpfiff des Spieltags, als Ausfälle die damals gemeldeten
             Verletzten (ab 2023/24).
           </p>
+        </Card>
+      )}
+      {data.summary.spiele === 0 && data.alternativ?.saison && (
+        <Card>
+          <AltLine a={data.alternativ} label={label} />
         </Card>
       )}
       <div className="grid gap-3 sm:grid-cols-2">

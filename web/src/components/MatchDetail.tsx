@@ -471,6 +471,15 @@ function Header({ d, meta }: { d: MatchDetail; meta: string }) {
                 {g.points != null && <span className="ml-2">{g.points} P.</span>}
               </span>
             )}
+            {g.alternativ && !g.alternativ.gleich && (
+              <span title="Alternativtipp aus dem zweiten Modell (Tor-Skalierung, Schüsse, Ecken, Ruhetage)">
+                Alternativ{" "}
+                <span className="font-semibold text-foreground">
+                  {g.alternativ.tip_home}:{g.alternativ.tip_away}
+                </span>
+                {g.alternativ.points != null && <span className="ml-2">{g.alternativ.points} P.</span>}
+              </span>
+            )}
           </div>
           <AdvanceLine g={g} />
           {(g.elo_home != null || d.kaderwert) && (
@@ -530,6 +539,18 @@ export function MatchDetailView({
           <Card>
             <ul className="list-disc space-y-1 pl-4 text-sm text-muted">
               {g.explanation.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          </Card>
+        </Section>
+      )}
+
+      {g.alternativ && !g.alternativ.gleich && g.alternativ.explanation.length > 0 && (
+        <Section title={`Alternativtipp ${g.alternativ.tip_home}:${g.alternativ.tip_away}`}>
+          <Card>
+            <ul className="list-disc space-y-1 pl-4 text-sm text-muted">
+              {g.alternativ.explanation.map((l) => (
                 <li key={l}>{l}</li>
               ))}
             </ul>

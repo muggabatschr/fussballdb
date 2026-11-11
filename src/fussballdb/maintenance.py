@@ -166,11 +166,12 @@ def _need_backfill() -> str | None:
         WHERE m.finished AND s.start_year >= :first
           AND m.kickoff > (SELECT min(x.kickoff) FROM match x JOIN season xs ON xs.id = x.season_id
                            WHERE xs.start_year >= :first) + interval '10 days'
-          AND NOT EXISTS (SELECT 1 FROM prediction p WHERE p.match_id = m.id)
+          AND (NOT EXISTS (SELECT 1 FROM prediction p WHERE p.match_id = m.id AND p.model_version NOT LIKE 'alt-%')
+               OR NOT EXISTS (SELECT 1 FROM prediction p WHERE p.match_id = m.id AND p.model_version LIKE 'alt-%'))
         """,
         first=MODEL_FIRST_SEASON,
     )
-    return f"{n} gespielte Spiele ohne Prognose" if n else None
+    return f"{n} gespielte Spiele ohne Prognose oder Alternativtipp" if n else None
 
 
 def _need_predictions() -> str | None:
@@ -366,9 +367,9 @@ def _run_injury_history() -> str:
 
 
 def _run_backfill() -> str:
-    from fussballdb.model.predict import backfill
+    from fussballdb.model.predict import backfill, backfill_alt
 
-    return f"{backfill()} Rückblick-Prognosen"
+    return f"{backfill()} Rückblick-Prognosen, {backfill_alt()} Alternativtipps"
 
 
 def _run_predictions() -> str:

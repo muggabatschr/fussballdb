@@ -22,6 +22,9 @@ Ballbesitz der letzten 10 Spiele eingerechnet).
   Einordnen (Form, Ausfälle, Marktquoten) ist erwünscht, die Zahlen nicht verändern.
 - Verletzte sind in den Wahrscheinlichkeiten bereits eingerechnet.
 - Der Tipp ist das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde.
+- Bundesliga-Spiele haben zusätzlich einen `alternativ`-Tipp aus einem zweiten Modell (Tor-Skalierung, Schüsse,
+  Ecken, Ruhetage), das im Rückblick knapp besser war und bis Saisonende 2026/27 live geprüft wird. Haupttipp ist
+  immer `tip_home`/`tip_away`; den Alternativtipp nur nennen und als solchen kennzeichnen, mit seiner Begründung.
 - Prognosen sind Wahrscheinlichkeiten, keine Wettempfehlung.
 - Ballbesitz, Zweikämpfe und Pässe gibt es für Bundesliga (ab 2014/15), 2. Liga und CL, gelaufene Kilometer und
   Sprints nur für die Bundesliga (Sportschau, Tabellen match_extra_stats und player_tracking über `sql`).
@@ -69,7 +72,10 @@ def spieltag(saison: int, spieltag: int, tipprunde: str | None = None) -> str:
     erst ab 2014. Ab 2026 je Spiel `ort`: Stadion und Kapazität wie am Spieltag, Wetter zur Spielzeit
     (art vorhersage oder gemessen, temp_c, regen_mm, regen_pct, wind_kmh, code = WMO-Wettercode).
     tipprunde = Kurzname einer Kicktipp-Tipprunde (siehe `tipprunden`): Tipps, Punkte und Bilanz nach ihrer
-    Punkteregel; ohne Angabe die Standardrunde."""
+    Punkteregel; ohne Angabe die Standardrunde. Je Spiel `alternativ` (Alternativtipp aus dem zweiten Modell mit
+    Punkten, Wahrscheinlichkeiten, Begründung und `gleich` = wie der Haupttipp) und für Spieltag und Saison der
+    Punktevergleich Haupt- gegen Alternativtipp (`alternativ.spieltag`, `alternativ.saison`, live = nur Tipps
+    ab dem 11.11.2026)."""
     from fussballdb.api import matchday
 
     try:

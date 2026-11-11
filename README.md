@@ -235,6 +235,14 @@ nach der Punkteregel der Tipprunde samt Bilanz des Spieltags und der Saison:
   Tore mit Elo, Form der letzten Wochen (ab ±5 %), Ausfälle mit ihrem Effekt (ab 3 %), erwartete Punkte
   des Tipps im Vergleich zu den nächstbesten und, falls vorhanden, die Eröffnungsquoten. Im Rückblick
   mit dem damaligen Datenstand.
+- **Alternativtipp** (Bundesliga, `model/alt_tip.py`): ein zweites Modell rechnet neben dem Hauptmodell mit,
+  dazu die Tor-Skalierung (xG auf das Torniveau der Liga) und Schüsse, Schüsse aufs Tor, Ecken und Ruhetage der
+  letzten 10 Spiele. Weicht sein Tipp ab, steht er in der Kachel als „Alt. 2:1“ (bei gespielten Spielen mit
+  Punkten) mit aufklappbarer Begründung, ebenso auf der Detailseite; ist er gleich, steht er nirgends. Die Bilanz am Spieltag vergleicht die
+  Punkte von Haupt- und Alternativtipp für den Spieltag und die Saison, getrennt die Live-Tipps ab dem
+  11.11.2026. Im MCP steht er unter `alternativ` im Werkzeug `spieltag`. Gespeichert als eigene
+  `model_version` (`alt-schuss-ruhe-v1`), live bei jedem `fussballdb predict`, im Rückblick mit
+  `fussballdb alternativ-rueckblick` (auch in der Wartung). Herkunft siehe „Was getestet und verworfen wurde“.
 - **Tipp**: das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde
   (`TIPP_PUNKTE` in `.env`, Standard `2,3,4,3` = Sieg 2 Tendenz / 3 Tordifferenz / 4 exakt, Remis 3
   Tendenz / 4 exakt; für weitere Tipprunden siehe „Tipprunden“ unter Web-App). Remis-Tipps sind trotzdem selten (~1 %): Das Modell erkennt nicht, welche
@@ -933,6 +941,9 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb elo-historie-test` | Elo mit Vorgeschichte ab 1993/94 gegen Elo ab 2014/15 (verworfen) |
 | `fussballdb laufleistung` | Laufleistung, Sprints, Ballbesitz, Zweikämpfe und Pässe von der Sportschau (`--saison 2014`, `--wettbewerb BL`; ohne: laufende Saison aller vier Wettbewerbe) |
 | `fussballdb laufleistung-test` | Laufleistung, Sprints, Ballbesitz und Zweikämpfe der letzten 10 Spiele als Faktor im Rückblick, auch zusammen mit den verworfenen Erweiterungen |
+| `fussballdb statistik-test` | Schüsse, aufs Tor, Großchancen, Ecken, PPDA, Deep, Passquote und Ruhetage der letzten 10 Spiele als Faktor im Rückblick (`--kombi` auch mit den verworfenen Erweiterungen, `--kennzahl deep=0.03` für eigene Gewichte) |
+| `fussballdb alternativ-rueckblick` | Alternativtipps im Rückblick für gespielte Spieltage nachtragen |
+| `fussballdb alternativ-bilanz` | Haupt- gegen Alternativtipp: Punkte und RPS je Saison, getrennt nach Rückblick und Live |
 | `fussballdb startelf-test` | Startelf-Korrektur (Kickbase-Punkte, FotMob-Noten, xG+xA) im Rückblick, auch zusammen mit den verworfenen Erweiterungen (verworfen) |
 | `fussballdb abschluss-test` | Über-/Unterperformance (Tore gegenüber xG) als Faktor im Rückblick-Test (`--kombi`: zusammen mit den verworfenen Erweiterungen) |
 | `fussballdb kombi-test` | alle Erweiterungen zusammen, jeweils eine weggelassen |
@@ -1110,6 +1121,9 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Startelf-Korrektur zusammen mit den verworfenen Erweiterungen (Heimvorteil je Team, Duelle, Remis-Kalibrierung, Halbwertszeit 3 Mon., Tor-Skalierung, alle zusammen) | bestes Paar Tor-Skalierung + Note k 0,1: −0,0005 (91 %), Tor-Skalierung allein ebenso −0,0005 (90 %) | verworfen; der Gewinn kommt allein von der Tor-Skalierung (besser in 5–6 von 11 Saisons, siehe oben), die Note fügt nichts hinzu. Direkte Duelle über 2016–26 ±0 |
 | Ballbesitz der letzten 10 Spiele (Unterschied zum Gegner, z-Wert) als Faktor e^(β·z), β 0,03 (`fussballdb laufleistung-test`, Einstellen 2016–20, Test 2021–26, 98 % der Spiele mit Daten) | Einstellen −0,0005, Test −0,0005 | übernommen; 96 % der Ziehungen, 8 von 11 Saisons, 1,347 statt 1,335 Tipp-Punkte je Spiel. β 0,06 ähnlich (−0,0006), aber nur 85 % |
 | Laufleistung (km), Sprints, Zweikampfquote der letzten 10 Spiele, einzeln (β 0,03 und 0,06) und alle vier zusammen (β 0,02) | Test −0,0003 bis +0,0011 | verworfen; mehr laufen als der Gegner sagt nichts über künftige Tore. Mit den verworfenen Erweiterungen kombiniert ebenso; Tor-Skalierung + Ballbesitz kam auf −0,0010 (98 %), der Gewinn über den Ballbesitz hinaus kommt aber von der Tor-Skalierung, die im Einstellzeitraum schlechter ist |
+| Schüsse, Schüsse aufs Tor, Großchancen, Ecken, PPDA, Deep, Passquote und Ruhetage der letzten 10 Spiele (Unterschied zum Gegner, z-Wert) als Faktor e^(β·z), je Kennzahl β ±0,03 und ±0,06, zusätzlich zum Modell mit Ballbesitz (`fussballdb statistik-test`, Einstellen 2016–20, Test 2021–26) | einzeln Test −0,0003 bis +0,0023 | verworfen; keine Kennzahl einzeln besser in 90 % der Ziehungen und im Einstellzeitraum besser. Schüsse, aufs Tor und Ecken helfen im Einstellzeitraum (−0,0005), im Test kaum noch (65–70 %), xG gewichtet die Schüsse schon nach Qualität. Ruhetage −0,03 kommt auf 91 %, aber nur 6 von 11 Saisons und mit verkehrtem Vorzeichen (mehr Pause = minimal schlechter). Großchancen, PPDA und Passquote bringen nichts |
+| Dieselben Kennzahlen kombiniert und mit den verworfenen Erweiterungen (Ruhetage + Deep, Schuss-Kennzahlen zusammen, alle mit dem Vorzeichen aus dem Einstellzeitraum; jeweils mit Tor-Skalierung, Duellen, Heimvorteil je Team, Remis-Kalibrierung, Halbwertszeit 3 Mon., allen zusammen) | Ruhetage + Deep −0,0005 (92 %), mit Tor-Skalierung −0,0009 (97 %); alle Kennzahlen zusammen +0,0004 | verworfen; Ruhetage und Deep wurden nach dem Testzeitraum ausgewählt, die 92 % sind damit zu optimistisch. Nur 6 von 11 Saisons besser, Tipp-Punkte nicht besser (1,344 statt 1,347), die Tor-Skalierung bleibt im Einstellzeitraum schlecht. Wer alle Kennzahlen zusammennimmt, wird schlechter |
+| Alle 255 Teilmengen von Schüssen, aufs Tor, Ecken, Deep, Großchancen, PPDA, Passquote und Ruhetagen (Vorzeichen aus dem Einstellzeitraum, Gewicht 0,03 geteilt durch die Zahl bzw. ihre Wurzel), jeweils ohne und mit Tor-Skalierung; die beste nur nach dem Einstellzeitraum ausgewählt | ohne Tor-Skalierung beste Schüsse + aufs Tor + Ecken: Einstellen −0,0008, Test −0,0001 (56 %); mit Tor-Skalierung beste + Schüsse + aufs Tor + Ecken + Ruhetage (je 0,015): Einstellen −0,0006, Test −0,0007 (91 %, 9 von 11 Saisons) | nicht ins Modell, läuft als **Alternativtipp** mit (siehe Web-App). Knapp an der Schwelle und nach über 1.000 Varianten gefunden; ein Großteil kommt von der Tor-Skalierung, mehr Pause zählt verkehrt herum. Punkte nach der Standardregel 2021–26: 2.186 statt 2.170 (+3 je Saison; Tor-Skalierung allein 2.201). 79 % aller Teilmengen sind im Test minimal besser, Einstellen und Test hängen aber kaum zusammen (Korrelation 0,26). Nachtest am Saisonende 2026/27 nur mit den Live-Alternativtipps ab dem 11.11.2026 (`fussballdb alternativ-bilanz`) |
 | Elo mit Vorgeschichte ab 1993/94 statt ab 2014/15 (nur die Elo, `fussballdb elo-historie-test`) | Einstellen 2015–19: −0,0003, Test 2020–26: +0,0005 | verworfen; im Test in keiner der 7 Saisons besser, 9 % der Ziehungen. Die alten Ergebnisse bleiben reine Anzeige |
 
 ## Datenbank
@@ -1249,8 +1263,14 @@ Was in welcher Reihenfolge entstanden ist und warum.
     weiter überschrieben, solange das Ergebnis fehlte, jetzt nur noch Spiele vor dem Anpfiff.
 37. **Sprachmodell mit allen Statistiken getestet und verworfen** (`--variante alles` und `alles_ohne_modell`):
     mehr Daten machen Qwen schlechter, ohne die Modellprognose liegt es klar hinter dem Modell.
+38. **Übrige Teamstatistik im Modell getestet** (`fussballdb statistik-test`): Schüsse, aufs Tor, Großchancen,
+    Ecken, PPDA, Deep, Passquote und Ruhetage, einzeln, in allen 255 Kombinationen und mit den verworfenen
+    Erweiterungen. Nichts davon ins Hauptmodell; die beste Kombination mit Tor-Skalierung läuft als
+    **Alternativtipp** mit eigener Begründung in Web-App und MCP und wird live geprüft.
 Offen:
 
+- **Alternativtipp am Saisonende 2026/27 auswerten** (`fussballdb alternativ-bilanz`, nur Zeilen mit live):
+  mehr Punkte und besserer RPS als der Haupttipp → ins Hauptmodell übernehmen, sonst Alternativtipp abschalten
 - **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**
   (`fussballdb cl-xg-test`); hält es nicht, `ACTIVE_XG` in `model/europe.py` auf `None` setzen
 - Verletzte der CL-Teams ins Modell nehmen, sobald genug Spieltage zum Testen gesammelt sind
