@@ -939,7 +939,7 @@ er per HTTP (`streamable-http`) und mit Anmeldung im Netz erreichbar sein.
 | `fussballdb erweiterungen-test` | Form, Heimvorteil je Team und direkte Duelle im Rückblick-Test |
 | `fussballdb xg-varianten` | xG-Varianten (npxG, Spielstand, Rote Karten) im Rückblick-Test vergleichen |
 | `fussballdb backfill` | Rückblick-Prognosen für gespielte Spieltage ohne Prognose berechnen (`--force` rechnet alle neu) |
-| `fussballdb ki-tipp-test` | Sprachmodell aus LM Studio bekommt die Modellprognose und die Daten vom Tippzeitpunkt und passt an; Vergleich mit dem Modell allein (Antworten in `.cache/ki_tipp.jsonl`, `--nur-auswertung`) |
+| `fussballdb ki-tipp-test` | Sprachmodell aus LM Studio bekommt die Modellprognose und die Daten vom Tippzeitpunkt und passt an; `--variante alles` gibt zusätzlich alle Statistiken mit, `alles_ohne_modell` dieselben ohne Modellprognose; Vergleich mit dem Modell allein (Antworten in `.cache/ki_tipp.jsonl`, `--nur-auswertung`) |
 | `fussballdb pressestil` | Stilprofil der Presse für die Spielberichte anzeigen (`--neu`: neu zählen, bei Änderungen Berichte neu schreiben) |
 | `fussballdb chat "Wie stehen die Chancen Freiburg gegen Bayern?"` | Frage an das Sprachmodell; ohne Frage interaktiv |
 | `fussballdb serve` | REST-API für die Web-App starten |
@@ -1086,6 +1086,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | Kürzere Halbwertszeit (2–3 statt 8 Monate) | −0,0004 | ähnlich, schwächer belegt (68–75 %); nicht aktiv |
 | Heimvorteil je Team | ±0 | verworfen |
 | Sprachmodell nach dem Modell (Qwen 3.8 27B lokal bekommt Dixon-Coles-Prognose und Daten vom Tippzeitpunkt, gibt die endgültige Prognose ab; 775 Spiele BL und 2. Liga ab 2025/26) | BL +0,0006, 2. Liga −0,0013, zusammen −0,0004 | verworfen (zusammen nur 72 % der Ziehungen, BL 19 %); Tipp-Punkte aus seinen Wahrscheinlichkeiten 1,363 statt 1,355 je Spiel (62 %), sein eigener Tipp schlechter (1,305); `fussballdb ki-tipp-test` |
+| Sprachmodell mit allen Statistiken (wie oben, dazu je Team Heim/Auswärts-Schnitt, Schüsse, Großchancen, Ecken, PPDA, Ballbesitz, Laufleistung, Sprints, Zweikämpfe, Passquote der letzten 5, Tore minus xG, Ruhetage, Kaderwert, Ligainsider-Startelf, direkte Duelle, Wetter) | mit Modellprognose zusammen +0,0006 (BL +0,0003, 2. Liga +0,0009); ohne Modellprognose +0,0087 | verworfen (mit Modellprognose 18 % der Ziehungen, schlechter als mit wenigen Daten; ohne 0 %); Punkte mit Modellprognose 1,356 statt 1,355, ohne 1,183; einzelne Gruppen weglassen lohnt nicht; `fussballdb ki-tipp-test --variante alles --variante alles_ohne_modell` |
 | Tor-Skalierung auf echte Tore (xG liegt ~3 % über den Toren) | 2024/25 −0,0014, 2025–26 +0,0005 bis +0,0017 | verworfen; Durchschnitte stimmen danach, Prognosen werden nicht besser |
 | Remis-Aufschlag (Poisson unterschätzt Remis um ~2,5 Punkte) | +0,0001 | verworfen; pauschal mehr Remis schadet bei klaren Spielen |
 | Tipp nach erwarteten Punkten (Regel der Tipprunde, Remis = 3) | 1,367 statt 1,363 Punkte/Spiel | übernommen; optimiert direkt auf die echte Wertung, ~1 % Remis-Tipps (`fussballdb tipp-test`) |
@@ -1246,6 +1247,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
 36. **Sprachmodell nach dem Modell getestet und verworfen** (`fussballdb ki-tipp-test`, Qwen lokal, nur Spiele nach
     seinem Wissensstand, Daten nur vom Tippzeitpunkt); dabei behoben: Live-Prognosen wurden nach dem Anpfiff
     weiter überschrieben, solange das Ergebnis fehlte, jetzt nur noch Spiele vor dem Anpfiff.
+37. **Sprachmodell mit allen Statistiken getestet und verworfen** (`--variante alles` und `alles_ohne_modell`):
+    mehr Daten machen Qwen schlechter, ohne die Modellprognose liegt es klar hinter dem Modell.
 Offen:
 
 - **CL-xG-Modell nach der Ligaphase 2026/27 (ab Ende Januar 2027) erneut gegen die Elo testen**

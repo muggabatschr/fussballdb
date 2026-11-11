@@ -508,7 +508,7 @@ def kalibrierung() -> None:
 
 @app.command("ki-tipp-test")
 def ki_tipp_test(
-    variante: Annotated[list[str], typer.Option(help="mit_modell (Daten + Modellprognose) und/oder ohne_modell (nur Daten)")] = ["mit_modell"],  # noqa: B006
+    variante: Annotated[list[str], typer.Option(help="mit_modell (Daten + Modellprognose), alles (alle Statistiken + Modellprognose), alles_ohne_modell")] = ["mit_modell"],  # noqa: B006
     wettbewerb: Annotated[list[str], typer.Option(help="BL und/oder D2")] = ["BL", "D2"],  # noqa: B006
     nur_auswertung: Annotated[bool, typer.Option(help="Keine neuen Anfragen, nur auswerten")] = False,
     parallel: Annotated[int, typer.Option(help="Gleichzeitige Anfragen an LM Studio")] = 2,

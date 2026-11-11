@@ -15,7 +15,10 @@ Kein Vorwissen aus der Zukunft:
 
 Gemessen: RPS, Brier, Log-Loss je Wettbewerb und zusammen, dazu die Tipp-Punkte nach der Standardregel für den
 Modelltipp, den Tipp des Sprachmodells und den Tipp mit den meisten erwarteten Punkten aus den Wahrscheinlichkeiten
-des Sprachmodells. Antworten werden zwischengespeichert (.cache/ki_tipp.jsonl), ein Abbruch verliert nichts.
+des Sprachmodells. Varianten: mit_modell (Modellprognose, Tabelle, Form, Ausfälle, Überschriften), alles (dazu
+Saisonschnitt Heim/Auswärts, Teamstatistik der letzten 5, Tore minus xG, Ruhetage, Kaderwert, Ligainsider-Startelf,
+direkte Duelle, Temperatur und Wind) und alles_ohne_modell (dieselben Daten ohne Modellprognose). Ergebnis 11/2026:
+alle drei verworfen, mehr Daten machen es schlechter, ohne Modellprognose liegt es klar hinter dem Modell. Antworten werden zwischengespeichert (.cache/ki_tipp.jsonl), ein Abbruch verliert nichts.
 """
 
 import hashlib
@@ -49,6 +52,10 @@ statistischen Modells (Dixon-Coles auf xG mit Form und Elo, Ausfälle schon eing
 Anpfiff. Deine Aufgabe: die Wahrscheinlichkeiten für Heimsieg, Remis und Auswärtssieg so angeben, wie du sie nach
 allen Informationen einschätzt, und einen Ergebnistipp abgeben. Weiche nur vom Modell ab, wenn die Daten einen Grund
 liefern, den das Modell nicht kennt oder falsch gewichtet. Punkteregel: {rule}. Antworte nur mit dem JSON."""
+SYSTEM_ALONE = """Du bist Fußball-Analyst und gibst Tipps für eine Kicktipp-Runde. Du bekommst die Daten vor dem Anpfiff
+(Tabelle, Form, Statistiken, Ausfälle, Kaderwerte, Aufstellung, Meldungen). Deine Aufgabe: die Wahrscheinlichkeiten
+für Heimsieg, Remis und Auswärtssieg so angeben, wie du sie nach allen Informationen einschätzt, und einen
+Ergebnistipp abgeben. Punkteregel: {rule}. Antworte nur mit dem JSON."""
 RULE = "Tendenz richtig {0} Punkte, Tordifferenz richtig {1}, exaktes Ergebnis {2}, richtiges Remis mit falschem Ergebnis {3}"
 
 SCHEMA = {"type": "json_schema", "json_schema": {"name": "tipp", "strict": True, "schema": {
@@ -116,6 +123,7 @@ def _cases() -> list[dict]:
         for r in conn.execute(text("SELECT team_id, title, source, published_at FROM news_item WHERE published_at >= :d"),
                               {"d": "2025-07-01"}):
             news.setdefault(r.team_id, []).append(r)
+        x = _extra_data(conn, "BL")
         for m in bl:
             p = preds.get(m.id)
             if not p:
@@ -131,7 +139,8 @@ def _cases() -> list[dict]:
                         "tabelle": _table(season_rows, m.kickoff), "ids": (m.h, m.a),
                         "form": (_form(season_rows, m.h, m.kickoff, names), _form(season_rows, m.a, m.kickoff, names)),
                         "presse": tuple(_news(news.get(t, []), m.kickoff) for t in (m.h, m.a)),
-                        "markt": _market(o) if o else None})
+                        "markt": _market(o) if o else None,
+                        "mehr": _extra_lines(x, m, season_rows, names)})
         eu_names = {r.id: r.name for r in conn.execute(text("SELECT id, name FROM eu_team"))}
         d2 = conn.execute(text("""
             SELECT m.id, m.season, m.round_no, m.kickoff, m.home_id AS h, m.away_id AS a, m.home_goals AS hg,
@@ -143,6 +152,7 @@ def _cases() -> list[dict]:
                 WHERE m.competition = 'D2' AND m.finished AND p.as_of <= m.kickoff""")).all():
             if r.match_id not in eup or r.basis == "live":  # live vor dem Anpfiff vor Rückblick
                 eup[r.match_id] = r
+        x = _extra_data(conn, "D2")
         for m in d2:
             p = eup.get(m.id)
             if not p:
@@ -155,8 +165,127 @@ def _cases() -> list[dict]:
                         "begruendung": json.loads(p.explanation) if p.explanation else [],
                         "fehlen": (None, None), "tabelle": _table(season_rows, m.kickoff), "ids": (m.h, m.a),
                         "form": (_form(season_rows, m.h, m.kickoff, eu_names), _form(season_rows, m.a, m.kickoff, eu_names)),
-                        "presse": ([], []), "markt": None})
+                        "presse": ([], []), "markt": None,
+                        "mehr": _extra_lines(x, m, season_rows, eu_names)})
     return sorted(out, key=lambda c: c["kickoff"])
+
+
+def _extra_data(conn, comp: str) -> dict:
+    """Alle Statistiken, die es außer der Modellprognose gibt (auch die fürs Modell verworfenen): Spiele aller
+    Saisons (direkte Duelle, Abschluss gegenüber xG), Schüsse, Großchancen, Ecken, PPDA, Laufdaten der Sportschau,
+    Kaderwerte, voraussichtliche Aufstellung (Ligainsider), Temperatur und Wind zum Anpfiff."""
+    if comp == "BL":
+        games = conn.execute(text("""
+            SELECT m.id, m.kickoff, m.home_team_id AS h, m.away_team_id AS a, m.home_goals AS hg, m.away_goals AS ag,
+                   hs.xg AS hx, as_.xg AS ax FROM match m
+            LEFT JOIN match_team_stats hs ON hs.match_id = m.id AND hs.team_id = m.home_team_id
+            LEFT JOIN match_team_stats as_ ON as_.match_id = m.id AND as_.team_id = m.away_team_id
+            WHERE m.finished""")).all()
+        team_stats = {(r.match_id, r.team_id): r for r in conn.execute(text("""
+            SELECT match_id, team_id, shots, shots_on_target, big_chances, corners, ppda FROM match_team_stats""")).all()}
+        values = conn.execute(text("SELECT team_id, stichtag, value_eur FROM squad_value ORDER BY stichtag")).all()
+        lineups: dict = {}
+        for r in conn.execute(text("""SELECT team_id, fetched_at, player_name FROM lineup_snapshot
+                                       WHERE status = 'vorschau' AND role = 'start' ORDER BY id""")):
+            lineups.setdefault(r.team_id, {}).setdefault(r.fetched_at, []).append(r.player_name)
+        weather = {r.match_id: r for r in conn.execute(text("""
+            SELECT match_id, temp_c, wind_kmh FROM match_weather WHERE competition = 'BL'""")).all()}
+    else:
+        games = conn.execute(text("""
+            SELECT id, kickoff, home_id AS h, away_id AS a, home_goals AS hg, away_goals AS ag, home_xg AS hx, away_xg AS ax,
+                   competition FROM eu_match WHERE finished AND competition IN ('D2', 'DFB')""")).all()
+        team_stats, lineups = {}, {}
+        values = conn.execute(text("SELECT team_id, stichtag, value_eur FROM eu_squad_value ORDER BY stichtag")).all()
+        weather = {r.match_id: r for r in conn.execute(text("""
+            SELECT match_id, temp_c, wind_kmh FROM match_weather WHERE competition = 'D2'""")).all()}
+    extra = {(r.match_id, r.is_home): r for r in conn.execute(text("""
+        SELECT match_id, is_home, distance_km, sprints, possession, duels_won_pct, pass_pct FROM match_extra_stats
+        WHERE competition = :c"""), {"c": comp}).all()}
+    vals: dict = {}
+    for r in values:
+        vals.setdefault(r.team_id, []).append((r.stichtag, r.value_eur))
+    return {"games": sorted(games, key=lambda g: g.kickoff), "stats": team_stats, "extra": extra, "values": vals,
+            "lineups": lineups, "weather": weather, "comp": comp}
+
+
+def _avg(xs: list) -> float | None:
+    xs = [x for x in xs if x is not None]
+    return sum(xs) / len(xs) if xs else None
+
+
+def _f(v, digits: int = 1) -> str:
+    return "–" if v is None else f"{v:.{digits}f}"
+
+
+def _extra_lines(x: dict, m, season_rows: list, names: dict) -> list[str]:
+    """Zusätzliche Zeilen für die Variante "alles", nur mit Daten vor dem Anpfiff."""
+    k = m.kickoff
+    out = []
+    before = [g for g in x["games"] if g.kickoff < k and g.hg is not None]
+    league = [g for g in before if getattr(g, "competition", "D2") == "D2"] if x["comp"] == "D2" else before
+    for t in (m.h, m.a):
+        name = names[t]
+        # Saison bisher, getrennt nach Heim und Auswärts
+        parts = []
+        for label, mine in (("zu Hause", lambda r: r.h == t), ("auswärts", lambda r: r.a == t)):
+            gs = [r for r in season_rows if r.kickoff < k and r.hg is not None and mine(r)]
+            if gs:
+                home = label == "zu Hause"
+                gf = _avg([r.hg if home else r.ag for r in gs])
+                ga = _avg([r.ag if home else r.hg for r in gs])
+                xf = _avg([(r.hx if home else r.ax) for r in gs])
+                xa = _avg([(r.ax if home else r.hx) for r in gs])
+                parts.append(f"{label} {len(gs)} Spiele, Tore {_f(gf)}:{_f(ga)}, xG {_f(xf)}:{_f(xa)} je Spiel")
+        if parts:
+            out.append(f"Saison bisher {name}: " + "; ".join(parts) + ".")
+        last = [g for g in league if t in (g.h, g.a)][-5:]
+        if last:
+            def side(g, own: bool):
+                return (g.h == t) == own
+            st = [(x["stats"].get((g.id, t)), x["stats"].get((g.id, g.a if g.h == t else g.h))) for g in last]
+            ex = [(x["extra"].get((g.id, g.h == t)), x["extra"].get((g.id, g.h != t))) for g in last]
+            bits = []
+            if any(a for a, _ in st):
+                for label, attr, d in (("Schüsse", "shots", 1), ("aufs Tor", "shots_on_target", 1),
+                                       ("Großchancen", "big_chances", 1), ("Ecken", "corners", 1)):
+                    bits.append(f"{label} {_f(_avg([getattr(a, attr) for a, _ in st if a]), d)}:"
+                                f"{_f(_avg([getattr(b, attr) for _, b in st if b]), d)}")
+                bits.append(f"PPDA {_f(_avg([a.ppda for a, _ in st if a]))}")
+            if any(a for a, _ in ex):
+                for label, attr, d, unit, both in (("Ballbesitz", "possession", 0, " %", False),
+                                                   ("Laufleistung", "distance_km", 1, " km", True),
+                                                   ("Sprints", "sprints", 0, "", True),
+                                                   ("Zweikämpfe gewonnen", "duels_won_pct", 0, " %", False),
+                                                   ("Passquote", "pass_pct", 0, " %", False)):
+                    own = _avg([getattr(a, attr) for a, _ in ex if a])
+                    if own is None:  # 2. Liga: Laufdaten fehlen bei der Sportschau
+                        continue
+                    opp = _avg([getattr(b, attr) for _, b in ex if b]) if both else None
+                    bits.append(f"{label} {_f(own, d)}" + (f":{_f(opp, d)}" if opp is not None else "") + unit)
+            if bits:
+                out.append(f"Letzte {len(last)} Spiele {name} im Schnitt (eigene:gegnerische): " + ", ".join(bits) + ".")
+            rest = (k - last[-1].kickoff).days
+            out.append(f"{name}: {rest} Tage seit dem letzten Ligaspiel.")
+        ten = [g for g in league if t in (g.h, g.a) and g.hx is not None][-10:]
+        if len(ten) >= 5:
+            diff = sum((g.hg - g.hx) if g.h == t else (g.ag - g.ax) for g in ten)
+            conc = sum((g.ag - g.ax) if g.h == t else (g.hg - g.hx) for g in ten)
+            out.append(f"{name} in den letzten {len(ten)} Spielen: Tore minus xG {diff:+.1f}, Gegentore minus xG des Gegners {conc:+.1f}.")
+        v = [val for day, val in x["values"].get(t, []) if day <= k.date()]
+        if v:
+            out.append(f"Kaderwert {name}: {v[-1] / 1e6:.0f} Mio. €.")
+        snaps = {at: ps for at, ps in x["lineups"].get(t, {}).items() if k - _days(4) <= at < k}
+        if snaps:
+            at = max(snaps)
+            out.append(f"Voraussichtliche Startelf {name} (Ligainsider, {at:%d.%m. %H:%M}): " + ", ".join(snaps[at]) + ".")
+    h2h = [g for g in before if {g.h, g.a} == {m.h, m.a}][-5:]
+    if h2h:
+        out.append("Direkte Duelle (zuletzt): " + "; ".join(
+            f"{g.kickoff:%d.%m.%Y} {names.get(g.h, '?')} {g.hg}:{g.ag} {names.get(g.a, '?')}" for g in reversed(h2h)) + ".")
+    w = x["weather"].get(m.id)
+    if w and w.temp_c is not None:  # gemessen, Regen weggelassen (stünde nicht sicher in der Vorhersage)
+        out.append(f"Wetter zum Anpfiff: {w.temp_c:.0f} Grad, Wind {_f(w.wind_kmh, 0)} km/h.")
+    return out
 
 
 def _news(items: list, kickoff) -> list[str]:
@@ -186,7 +315,7 @@ def _market(o) -> tuple | None:
     return tuple(inv / inv.sum())
 
 
-def prompt(c: dict, with_model: bool = True) -> str:
+def prompt(c: dict, with_model: bool = True, full: bool = False) -> str:
     """Alles, was zum Tippzeitpunkt bekannt war, als Text."""
     h, a = c["heim"], c["gast"]
     th, ta = (c["tabelle"].get(t) for t in c["ids"])
@@ -215,6 +344,8 @@ def prompt(c: dict, with_model: bool = True) -> str:
     for team, n in zip((h, a), c["presse"]):
         if n:
             lines.append(f"Überschriften der letzten {NEWS_DAYS} Tage zu {team}: " + " | ".join(n))
+    if full:
+        lines += c["mehr"]
     return "\n".join(lines)
 
 
@@ -228,9 +359,9 @@ def _cache() -> dict:
     return {d["key"]: d for d in map(json.loads, CACHE.read_text().splitlines()) if d.get("key")}
 
 
-def ask(body: str, reasoning: str = "none", timeout: float = 600) -> dict:
+def ask(body: str, reasoning: str = "none", timeout: float = 600, system: str = SYSTEM) -> dict:
     payload = {"model": LOCAL_LLM_MODEL, "temperature": 0, "max_tokens": 4000, "response_format": SCHEMA,
-               "messages": [{"role": "system", "content": SYSTEM.format(rule=RULE.format(*TIPP_PUNKTE))},
+               "messages": [{"role": "system", "content": system.format(rule=RULE.format(*TIPP_PUNKTE))},
                             {"role": "user", "content": body}]}
     if reasoning:
         payload["reasoning_effort"] = reasoning
@@ -242,7 +373,9 @@ def ask(body: str, reasoning: str = "none", timeout: float = 600) -> dict:
 
 def run(variants: tuple[str, ...] = ("mit_modell",), comps: tuple[str, ...] = ("BL", "D2"), limit: int | None = None,
         workers: int = 2, reasoning: str = "none", log=print) -> None:
-    """Fehlende Antworten holen (Varianten: mit_modell = Daten + Modellprognose, ohne_modell = nur Daten)."""
+    """Fehlende Antworten holen. Varianten: mit_modell (Modellprognose + Tabelle, Form, Ausfälle, Überschriften),
+    alles (dazu alle übrigen Statistiken, auch die fürs Modell verworfenen), alles_ohne_modell (alle Daten, aber
+    ohne die Modellprognose: kann das Sprachmodell allein mithalten?)."""
     cases = [c for c in _cases() if c["comp"] in comps]
     if limit:
         cases = cases[-limit:]
@@ -250,7 +383,7 @@ def run(variants: tuple[str, ...] = ("mit_modell",), comps: tuple[str, ...] = ("
     todo = []
     for v in variants:
         for c in cases:
-            body = prompt(c, with_model=v == "mit_modell")
+            body = prompt(c, with_model=v in ("mit_modell", "alles"), full=v.startswith("alles"))
             k = _key(c, v + reasoning, body)
             if k not in cache:
                 todo.append((k, c, v, body))
@@ -260,7 +393,7 @@ def run(variants: tuple[str, ...] = ("mit_modell",), comps: tuple[str, ...] = ("
     def one(item):
         k, c, v, body = item
         try:
-            ans = ask(body, reasoning)
+            ans = ask(body, reasoning, system=SYSTEM_ALONE if v == "alles_ohne_modell" else SYSTEM)
         except Exception as exc:  # einzelne Antwort kaputt: beim nächsten Lauf erneut
             return None, f"{c['comp']} {c['id']}: {type(exc).__name__}"
         return {"key": k, "comp": c["comp"], "id": c["id"], "variante": v + reasoning, "antwort": ans}, None
