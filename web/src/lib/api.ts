@@ -220,6 +220,7 @@ export type AltVergleich = {
   live_spiele: number;
   live_haupt: number;
   live_alternativ: number;
+  bilanz: Bilanz; // Bilanz des Alternativtipps wie die des Haupttipps
 };
 
 /** Spielort laut FotMob (Name und Kapazität wie am Spieltag) mit Wetter von Open-Meteo zur Spielzeit. */

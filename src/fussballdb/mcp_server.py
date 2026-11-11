@@ -74,7 +74,8 @@ def spieltag(saison: int, spieltag: int, tipprunde: str | None = None) -> str:
     tipprunde = Kurzname einer Kicktipp-Tipprunde (siehe `tipprunden`): Tipps, Punkte und Bilanz nach ihrer
     Punkteregel; ohne Angabe die Standardrunde. Je Spiel `alternativ` (Alternativtipp aus dem zweiten Modell mit
     Punkten, Wahrscheinlichkeiten, Begründung und `gleich` = wie der Haupttipp) und für Spieltag und Saison der
-    Punktevergleich Haupt- gegen Alternativtipp (`alternativ.spieltag`, `alternativ.saison`, live = nur Tipps
+    Punktevergleich Haupt- gegen Alternativtipp mit eigener Bilanz des Alternativtipps (`alternativ.spieltag`,
+    `alternativ.saison`, je mit `bilanz`; live = nur Tipps
     ab dem 11.11.2026)."""
     from fussballdb.api import matchday
 

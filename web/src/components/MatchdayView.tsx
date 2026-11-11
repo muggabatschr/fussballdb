@@ -248,14 +248,14 @@ export function TvLine({ tv }: { tv?: MatchdayGame["tv"] }) {
 /** Haupt- gegen Alternativtipp in Punkten, für den Spieltag und die Saison bis hier. */
 function AltLine({ a, label }: { a?: Matchday["alternativ"]; label?: string }) {
   if (!a?.saison) return null;
-  const part = (v: AltVergleich | null, name: string) =>
-    v ? `${name} ${v.alternativ} statt ${v.haupt} Punkte (${v.verschieden} von ${v.spiele} Tipps anders)` : null;
+  const part = (v: AltVergleich | null, name: string) => (v ? `${name} in ${v.verschieden} von ${v.spiele}` : null);
   const live = a.saison.live_spiele
     ? ` Live seit dem 11.11.2026: ${a.saison.live_alternativ} statt ${a.saison.live_haupt} Punkte in ${a.saison.live_spiele} Spielen.`
     : "";
   return (
     <p className="text-xs text-muted sm:col-span-2">
-      Alternativtipp: {[part(a.spieltag, "Spieltag"), part(a.saison, `Saison ${label ?? ""} bis hier`)].filter(Boolean).join(" · ")}.
+      Gewertet wird der Haupttipp. Der Alternativtipp ist anders{" "}
+      {[part(a.spieltag, "an diesem Spieltag"), part(a.saison, `in der Saison ${label ?? ""}`)].filter(Boolean).join(", ")} Spielen.
       {live} Das Alternativmodell (Tor-Skalierung, Schüsse, Ecken, Ruhetage) war im Rückblick 2021–26 knapp besser und
       wird bis Saisonende live geprüft.
     </p>
@@ -301,6 +301,8 @@ export function MatchdayView({ seasons, data, rounds = [] }: { seasons: Season[]
         <Card className="grid gap-4 sm:grid-cols-2">
           <BilanzText label="Tipps dieses Spieltags" b={data.summary} />
           <BilanzText label={`Saison ${label} bis hier`} b={data.season_summary} />
+          {data.alternativ?.spieltag && <BilanzText label="Alternativtipp dieses Spieltags" b={data.alternativ.spieltag.bilanz} />}
+          {data.alternativ?.saison && <BilanzText label={`Alternativtipp Saison ${label} bis hier`} b={data.alternativ.saison.bilanz} />}
           <AltLine a={data.alternativ} label={label} />
           <p className="text-xs text-muted sm:col-span-2">
             Punkteregel der Tipprunde{data.tipprunde?.name ? ` ${data.tipprunde.name}` : ""}: Sieg {data.punkteregel.sieg_tendenz} Tendenz, {data.punkteregel.sieg_tordifferenz}{" "}
@@ -312,7 +314,9 @@ export function MatchdayView({ seasons, data, rounds = [] }: { seasons: Season[]
         </Card>
       )}
       {data.summary.spiele === 0 && data.alternativ?.saison && (
-        <Card>
+        <Card className="grid gap-4 sm:grid-cols-2">
+          <BilanzText label={`Saison ${label} bis hier`} b={data.season_summary} />
+          <BilanzText label={`Alternativtipp Saison ${label} bis hier`} b={data.alternativ.saison.bilanz} />
           <AltLine a={data.alternativ} label={label} />
         </Card>
       )}

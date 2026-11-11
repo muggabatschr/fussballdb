@@ -238,9 +238,9 @@ nach der Punkteregel der Tipprunde samt Bilanz des Spieltags und der Saison:
 - **Alternativtipp** (Bundesliga, `model/alt_tip.py`): ein zweites Modell rechnet neben dem Hauptmodell mit,
   dazu die Tor-Skalierung (xG auf das Torniveau der Liga) und Schüsse, Schüsse aufs Tor, Ecken und Ruhetage der
   letzten 10 Spiele. Weicht sein Tipp ab, steht er in der Kachel als „Alt. 2:1“ (bei gespielten Spielen mit
-  Punkten) mit aufklappbarer Begründung, ebenso auf der Detailseite; ist er gleich, steht er nirgends. Die Bilanz am Spieltag vergleicht die
-  Punkte von Haupt- und Alternativtipp für den Spieltag und die Saison, getrennt die Live-Tipps ab dem
-  11.11.2026. Im MCP steht er unter `alternativ` im Werkzeug `spieltag`. Gespeichert als eigene
+  Punkten) mit aufklappbarer Begründung, ebenso auf der Detailseite; ist er gleich, steht er nirgends. Gewertet wird der Haupttipp; die Bilanz am Spieltag
+  zeigt darunter eine eigene Bilanz des Alternativtipps (Punkte, Tendenz, exakt, je Spiel) für den Spieltag und
+  die Saison, dazu wie oft er abweicht und getrennt die Punkte der Live-Tipps ab dem 11.11.2026. Im MCP steht er unter `alternativ` im Werkzeug `spieltag`. Gespeichert als eigene
   `model_version` (`alt-schuss-ruhe-v1`), live bei jedem `fussballdb predict`, im Rückblick mit
   `fussballdb alternativ-rueckblick` (auch in der Wartung). Herkunft siehe „Was getestet und verworfen wurde“.
 - **Tipp**: das Ergebnis mit den meisten erwarteten Punkten nach der Punkteregel der Tipprunde

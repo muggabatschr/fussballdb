@@ -298,11 +298,11 @@ def matchday(season: int, matchday: int, runde: str | None = None):
         "punkteregel": _punkteregel(rule),
         "tipprunde": _round_info(rnd),
         "season_summary": season_summary,
-        "alternativ": {"spieltag": _alt_compare(games), "saison": _alt_compare(played)},
+        "alternativ": {"spieltag": _alt_compare(games, rule), "saison": _alt_compare(played, rule)},
     }
 
 
-def _alt_compare(games: list[dict]) -> dict | None:
+def _alt_compare(games: list[dict], rule=TIPP_PUNKTE) -> dict | None:
     """Punkte von Haupt- und Alternativtipp auf denselben gespielten Spielen; nur Live-Alternativtipps zählen für
     den Nachtest, der Rest ist Rückblick."""
     both = [g for g in games if g["points"] is not None and g.get("alternativ") and g["alternativ"]["points"] is not None]
@@ -313,7 +313,8 @@ def _alt_compare(games: list[dict]) -> dict | None:
             "alternativ": sum(g["alternativ"]["points"] for g in both),
             "verschieden": sum(not g["alternativ"]["gleich"] for g in both),
             "live_spiele": len(live), "live_haupt": sum(g["points"] for g in live),
-            "live_alternativ": sum(g["alternativ"]["points"] for g in live)}
+            "live_alternativ": sum(g["alternativ"]["points"] for g in live),
+            "bilanz": tip_summary([g["alternativ"]["points"] for g in both], rule)}
 
 
 # Wettbewerbe mit eigener Prognose aus dem Europa-Modell (model/europe.py)
