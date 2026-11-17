@@ -286,6 +286,18 @@ class KbLeagueEntry(Base):
     kind: Mapped[str] = mapped_column(String(10), primary_key=True)  # markt | kader
     price: Mapped[float | None] = mapped_column(Float)
     expires_in: Mapped[int | None]  # Sekunden bis Ablauf des Angebots
+    lineup_pos: Mapped[int | None]  # nur Kader: Platz 0–10 in der aufgestellten Elf, None = Bank
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class KbLeagueInfo(Base):
+    """Eigener Stand in der Kickbase-Liga: Budget (negativ = am Spieltag keine Punkte) und Kadergrenze."""
+
+    __tablename__ = "kb_league_info"
+
+    league_id: Mapped[int] = mapped_column(primary_key=True)
+    budget: Mapped[float | None] = mapped_column(Float)
+    max_players: Mapped[int | None]
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -423,6 +435,7 @@ class KbSession(Base):
 
 # Spalten, die nach dem ersten Anlegen dazugekommen sind (create_all ergänzt keine Spalten)
 MIGRATIONS = [
+    "ALTER TABLE kb_league_entry ADD COLUMN IF NOT EXISTS lineup_pos integer",
     # Spielberichte (reports.py): Text, Volltextindex (Deutsch) und Embedding für die Suche
     "CREATE EXTENSION IF NOT EXISTS vector",
     """CREATE TABLE IF NOT EXISTS match_report (

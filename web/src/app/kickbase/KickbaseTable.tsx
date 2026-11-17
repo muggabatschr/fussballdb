@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Card } from "@/components/Card";
 import { TeamLogo } from "@/components/TeamLogo";
 import { TeamName } from "@/components/TeamName";
-import type { KickbaseRow } from "@/lib/api";
+import type { KickbaseRow, KickbaseSwap } from "@/lib/api";
 import { num } from "@/lib/format";
 import { Legend } from "@/components/Legend";
 
@@ -25,6 +25,11 @@ const COLUMNS: { key: SortKey; label: string; title: string; fmt: (v: number) =>
 
 const mio = (v: number | null) => (v == null ? "–" : `${num(v / 1e6, 1)} Mio`);
 
+function swapTitle(s: KickbaseSwap): string {
+  const f = s.formation_nachher !== s.formation_vorher ? `Formation ${s.formation_vorher} → ${s.formation_nachher}` : `Formation bleibt ${s.formation_nachher}`;
+  return `${s.verkauf} (${s.verkauf_position}) für ${mio(s.verkauf_wert)} an Kickbase, ${s.kauf} (${s.kauf_position}, ${s.kauf_team}) ab ${mio(s.kauf_preis)} kaufen: beste Elf +${num(s.mehr_punkte, 0)} erwartete Punkte, ${f}, Budget danach ${mio(s.budget_danach)}`;
+}
+
 function sellReasons(r: KickbaseRow, median: number): string[] {
   const out: string[] = [];
   if (r.ausfall === "suspension") out.push("gesperrt");
@@ -35,7 +40,7 @@ function sellReasons(r: KickbaseRow, median: number): string[] {
   return out;
 }
 
-export function KickbaseTable({ rows, matchdays }: { rows: KickbaseRow[]; matchdays: number }) {
+export function KickbaseTable({ rows, matchdays, swaps = [] }: { rows: KickbaseRow[]; matchdays: number; swaps?: KickbaseSwap[] }) {
   const router = useRouter();
   const [pos, setPos] = useState<(typeof POSITIONS)[number]>("alle");
   const [scope, setScope] = useState<keyof typeof SCOPES>("alle");
@@ -99,15 +104,28 @@ export function KickbaseTable({ rows, matchdays }: { rows: KickbaseRow[]; matchd
           <h2 className="mb-2 whitespace-nowrap text-sm font-medium">Verkaufskandidaten in deinem Kader</h2>
           {sell.length ? (
             <ul className="space-y-1.5 text-sm">
-              {sell.map(({ r, reasons }) => (
-                <li key={r.player_id} className="flex items-center justify-between gap-2 whitespace-nowrap">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <TeamLogo name={r.team_name} size={16} />
-                    <span className="truncate">{r.name}</span>
-                  </span>
-                  <span className="truncate text-xs text-away" title={reasons.join(", ")}>{reasons.join(", ")}</span>
-                </li>
-              ))}
+              {sell.map(({ r, reasons }) => {
+                const swap = swaps.find((s) => s.verkauf_id === r.player_id);
+                return (
+                  <li key={r.player_id} className="space-y-0.5">
+                    <div className="flex items-center justify-between gap-2 whitespace-nowrap">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <TeamLogo name={r.team_name} size={16} />
+                        <span className="truncate">{r.name}</span>
+                        <span className="text-xs text-muted">{r.position}</span>
+                        {r.aufgestellt && <span className="text-xs text-muted" title="steht in deiner aktuellen Kickbase-Elf">· in der Elf</span>}
+                      </span>
+                      <span className="truncate text-xs text-away" title={reasons.join(", ")}>{reasons.join(", ")}</span>
+                    </div>
+                    {swap && (
+                      <p className="truncate pl-[22px] text-xs text-muted" title={swapTitle(swap)}>
+                        → {swap.kauf} ({swap.kauf_position}, ab {mio(swap.kauf_preis)}): +{num(swap.mehr_punkte, 0)} Pkt
+                        {swap.formation_nachher !== swap.formation_vorher ? `, ${swap.formation_nachher}` : ""}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="text-sm text-muted">Kein Spieler deines Kaders fällt auf.</p>

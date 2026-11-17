@@ -18,6 +18,8 @@ Großchancen, PPDA, Ballbesitz, Laufleistung (km, Sprints, je Spieler), Zweikäm
 (Dixon-Coles auf xG mit Formkomponente + Elo, Kaderwert als Startstärke, Verletzte, Europapokal-Belastung und
 Ballbesitz der letzten 10 Spiele eingerechnet).
 
+- Kickbase: `kickbase` für Spielerlisten (Markt, Kader), `kickbase_aufstellung` für aktuelle und beste Elf,
+  Budget und Tauschvorschläge (Verkauf plus Kauf, auch mit Formationswechsel).
 - Wahrscheinlichkeiten nur aus `prognose`, `naechste_spiele` oder `spieltag` übernehmen, nie selbst schätzen.
   Einordnen (Form, Ausfälle, Marktquoten) ist erwünscht, die Zahlen nicht verändern.
 - Verletzte sind in den Wahrscheinlichkeiten bereits eingerechnet.
@@ -145,8 +147,21 @@ def kickbase(spieltage: int = 3, auswahl: str = "alle", position: str | None = N
     if position:
         df = df[df["position"] == position.upper()]
     cols = ["name", "team_name", "position", "kb_punkte", "punkte_pro_mio", "marktwert", "trend_7t", "einsatz",
-            "tore", "vorlagen", "zu_null", "ausfall", "markt_preis", "im_kader", "gegner"]
+            "tore", "vorlagen", "zu_null", "ausfall", "markt_preis", "im_kader", "aufgestellt", "gegner"]
     return df.sort_values("kb_punkte", ascending=False)[cols].head(anzahl).to_json(orient="records", force_ascii=False)
+
+
+@mcp.tool(annotations=READ_ONLY)
+def kickbase_aufstellung() -> str:
+    """Kickbase, eigene Liga, nächster Spieltag: die in Kickbase gesetzte Elf (`aktuell`, Formation und erwartete
+    Punkte, Ausfälle zählen 0), die beste Elf aus dem eigenen Kader (`formation`, `elf`, `bank`, `fehlt` = leere
+    Plätze mangels fitter Spieler), das Budget (negativ = keine Punkte am Spieltag) und `tausch`: je Kaderspieler
+    der Kauf vom Transfermarkt, der die beste Elf am meisten verbessert, auch mit Formationswechsel
+    (`formation_vorher`/`formation_nachher`), nur wenn das Budget danach nicht negativ ist (Verkauf an Kickbase zum
+    Marktwert, Kauf zum Angebotspreis)."""
+    from fussballdb.features.kickbase_lineup import lineup
+
+    return json.dumps(lineup(), ensure_ascii=False, default=str)
 
 
 @mcp.tool(annotations=READ_ONLY)

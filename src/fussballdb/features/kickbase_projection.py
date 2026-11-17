@@ -60,7 +60,8 @@ KB_SQL = text(
             ORDER BY v.day DESC LIMIT 1) AS mv_7d,
            (SELECT e.price FROM kb_league_entry e WHERE e.kb_id = k.kb_id AND e.kind = 'markt' LIMIT 1) AS markt_preis,
            (SELECT e.expires_in FROM kb_league_entry e WHERE e.kb_id = k.kb_id AND e.kind = 'markt' LIMIT 1) AS markt_ablauf,
-           EXISTS (SELECT 1 FROM kb_league_entry e WHERE e.kb_id = k.kb_id AND e.kind = 'kader') AS im_kader
+           EXISTS (SELECT 1 FROM kb_league_entry e WHERE e.kb_id = k.kb_id AND e.kind = 'kader') AS im_kader,
+           (SELECT e.lineup_pos FROM kb_league_entry e WHERE e.kb_id = k.kb_id AND e.kind = 'kader' LIMIT 1) AS lineup_pos
     FROM kb_player k WHERE k.player_id IS NOT NULL
     """
 )
@@ -233,11 +234,12 @@ def _aggregate(df: pd.DataFrame) -> pd.DataFrame:
         kb_punkte=("kb_punkte", lambda x: x.sum(min_count=1)), kb_id=("kb_id", "first"))
     agg["torbeteiligung"] = agg["tore"] + agg["vorlagen"]
     agg = agg.merge(kb.reset_index()[["player_id", "market_value", "mv_7d", "avg_points", "markt_preis", "markt_ablauf",
-                                      "im_kader"]], on="player_id", how="left")
+                                      "im_kader", "lineup_pos"]], on="player_id", how="left")
     agg["marktwert"] = agg["market_value"]
     agg["trend_7t"] = (agg["market_value"] / agg["mv_7d"] - 1).where(agg["mv_7d"] > 0)
     agg["punkte_pro_mio"] = (agg["kb_punkte"] / (agg["market_value"] / 1e6)).where(agg["market_value"] > 0)
     agg["im_kader"] = agg["im_kader"].fillna(False).astype(bool)
+    agg["aufgestellt"] = agg["lineup_pos"].notna()  # steht in der aktuellen Kickbase-Elf
     agg = agg.drop(columns=["market_value", "mv_7d"])
     return agg.sort_values("kb_punkte", ascending=False).round(
         {"einsatz": 2, "tore": 2, "vorlagen": 2, "zu_null": 2, "gelb": 2, "torbeteiligung": 2, "kb_punkte": 0,

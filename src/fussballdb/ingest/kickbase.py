@@ -246,18 +246,24 @@ def ingest_league(session: Session) -> dict:
     """Transfermarkt und eigener Kader in der aktiven Liga (gewählt, sonst die erste). Einträge anderer Ligen
     werden entfernt: Auswertung, Aufstellung und Erinnerung sollen nur die aktive Liga sehen, sonst würden
     sich nach einem Ligawechsel Markt und Kader beider Ligen vermischen."""
-    from fussballdb.db.models import KbLeagueEntry
+    from fussballdb.db.models import KbLeagueEntry, KbLeagueInfo
 
     league_id = int(session_info_league())
     session.execute(delete(KbLeagueEntry))
+    session.execute(delete(KbLeagueInfo))
     market = get(f"/v4/leagues/{league_id}/market").get("it", [])
-    squad = get(f"/v4/leagues/{league_id}/squad").get("it", [])
+    squad_resp = get(f"/v4/leagues/{league_id}/squad")
+    squad = squad_resp.get("it", [])
+    budget = get(f"/v4/leagues/{league_id}/me/budget").get("b")
     for p in market:
         session.add(KbLeagueEntry(league_id=league_id, kb_id=int(p["i"]), kind="markt", price=p.get("prc"),
                                   expires_in=p.get("exs")))
     for p in squad:
-        session.add(KbLeagueEntry(league_id=league_id, kb_id=int(p["i"]), kind="kader", price=p.get("mv")))
-    return {"markt": len(market), "kader": len(squad)}
+        # lo = Platz in der aufgestellten Elf (0 = Torwart … 10), fehlt bei Bankspielern
+        session.add(KbLeagueEntry(league_id=league_id, kb_id=int(p["i"]), kind="kader", price=p.get("mv"),
+                                  lineup_pos=p.get("lo")))
+    session.add(KbLeagueInfo(league_id=league_id, budget=budget, max_players=squad_resp.get("mppu")))
+    return {"markt": len(market), "kader": len(squad), "budget": budget}
 
 
 def session_info_league() -> str:

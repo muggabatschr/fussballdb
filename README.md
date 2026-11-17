@@ -547,9 +547,19 @@ uv run fussballdb kickbase      # alle Spieler mit Punkte- und Marktwert-Verlauf
 
 Die Datenbank ist nur vom eigenen Rechner aus erreichbar (`127.0.0.1:5442`), weil sie das Token enthält.
 
-**Aufstellung** (oben im Kickbase-Tab, `features/kickbase_lineup.py`): die Elf mit den meisten erwarteten
-Punkten am nächsten Spieltag aus dem eigenen Kader, über alle Kickbase-Formationen (3-4-3 bis 5-4-1, immer
-ein Torwart). Verletzte oder gesperrte eigene Spieler stehen rot darüber und spielen nicht mit.
+**Aufstellung** (oben im Kickbase-Tab, `features/kickbase_lineup.py`): zuerst die in Kickbase gesetzte Elf
+(Platz in der Elf aus dem Kader, `kb_league_entry.lineup_pos`) mit Formation und erwarteten Punkten, Ausfälle rot
+mit 0 Punkten. Darunter die Elf mit den meisten erwarteten Punkten am nächsten Spieltag aus dem eigenen Kader,
+über alle Kickbase-Formationen (3-4-3 bis 5-4-1, immer ein Torwart), mit dem Unterschied zur gesetzten Elf.
+Reichen die fitten Spieler für keine Formation, bleiben Plätze „leer“. Verletzte oder gesperrte eigene Spieler
+stehen rot darüber und spielen nicht mit. Das Budget steht darüber (`kb_league_info`); ist es negativ, gibt es
+am Spieltag keine Punkte.
+
+**Tauschvorschläge**: je Kaderspieler der Kauf vom eigenen Transfermarkt, der die beste Elf am meisten
+verbessert, auch wenn dafür die Formation wechselt (Mittelfeldspieler raus, Stürmer rein, 4-4-2 → 4-3-3).
+Gerechnet mit dem Verkauf an Kickbase zum Marktwert und dem Angebotspreis auf dem Markt (Gebote können höher
+liegen); nur Tausche, nach denen das Budget nicht negativ ist. Die Verkaufskandidaten zeigen die Position, ob der
+Spieler in der Elf steht, und darunter den passenden Tausch. Im MCP: Werkzeug `kickbase_aufstellung`.
 
 **Erwartete Punkte**: Ein lineares Modell je Position (`features/kickbase_points.py`) erklärt echte
 Kickbase-Punkte aus Einsatz, Startelf, Minuten, Toren, Vorlagen, Gegentoren, zu null, Sieg/Remis und
@@ -1152,7 +1162,7 @@ Alle Tests im Rückblick, also pro Spieltag nur mit Daten davor, 2024/25 bis heu
 | `match_weather` | Wetter je Spiel zur Spielzeit (`kind` vorhersage oder gemessen) |
 | `tv_listing` | TV-Sender je Spiel und Land (`competition` BL → `match`, CL, D2, DFB → `eu_match`), wie bei FotMob gelistet; Land `LS` = LiveOnSat |
 | `kb_session` | Kickbase-Anmeldung: Token, Ablauf, Ligen, gewählte Liga (nie das Passwort) |
-| `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der aktiven Liga |
+| `kb_player`, `kb_points`, `kb_market_value`, `kb_league_entry`, `kb_league_info` | Kickbase: Spieler, Punkte je Spiel, Marktwert-Verlauf, Markt und Kader der aktiven Liga (mit Platz in der gesetzten Elf), Budget und Kadergrenze |
 | `eu_team`, `eu_team_alias` | Champions League: Vereine aus ganz Europa (Transfermarkt-ID bei Europapokal-Teilnehmern), Namen je Quelle |
 | `eu_match` | Liga- (`competition` = football-data-Kürzel) und Europapokalspiele (`CL`, `EL`) |
 | `eu_squad_value` | Kaderwerte je Verein und Stichtag (quartalsweise) |
@@ -1267,6 +1277,8 @@ Was in welcher Reihenfolge entstanden ist und warum.
     Ecken, PPDA, Deep, Passquote und Ruhetage, einzeln, in allen 255 Kombinationen und mit den verworfenen
     Erweiterungen. Nichts davon ins Hauptmodell; die beste Kombination mit Tor-Skalierung läuft als
     **Alternativtipp** mit eigener Begründung in Web-App und MCP und wird live geprüft.
+39. **Kickbase: aktuelle Elf, Budget und Tauschvorschläge**: gesetzte Elf aus Kickbase neben der besten Elf,
+    Verkaufskandidaten mit Position und passendem Kauf, auch mit Formationswechsel.
 Offen:
 
 - **Alternativtipp am Saisonende 2026/27 auswerten** (`fussballdb alternativ-bilanz`, nur Zeilen mit live):

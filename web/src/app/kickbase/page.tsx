@@ -15,7 +15,7 @@ async function Content({ searchParams }: { searchParams: PageProps<"/kickbase">[
     <div className="space-y-4">
       <KickbaseLogin initial={status} />
       {status.angemeldet && <KickbaseLineup l={lineup} />}
-      <KickbaseTable rows={rows} matchdays={matchdays} />
+      <KickbaseTable rows={rows} matchdays={matchdays} swaps={status.angemeldet ? lineup.tausch ?? [] : []} />
     </div>
   );
 }

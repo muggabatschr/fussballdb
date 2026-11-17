@@ -337,6 +337,7 @@ export type KickbaseRow = {
   markt_preis: number | null;
   markt_ablauf: number | null;
   im_kader: boolean;
+  aufgestellt?: boolean; // steht in der aktuellen Kickbase-Elf
 };
 
 export const getKickbaseProjections = (matchdays: number) =>
@@ -350,6 +351,34 @@ export type KickbaseLineup = {
   bank: LineupPlayer[];
   ausfaelle: { name: string; position: string; grund: string }[];
   hinweis?: string;
+  fehlt?: Partial<Record<"TW" | "ABW" | "MF" | "ST", number>>; // leere Plätze der besten Elf mangels fitter Spieler
+  // die in Kickbase gesetzte Elf (Ausfälle zählen 0 Punkte)
+  aktuell?: {
+    formation: string | null;
+    punkte: number;
+    elf: { name: string; position: string; team_name: string; kb_punkte: number | null; ausfall: string | null }[];
+  } | null;
+  budget?: number | null; // negativ = am Spieltag keine Punkte
+  max_spieler?: number | null;
+  tausch?: KickbaseSwap[];
+};
+
+/** Verkauf an Kickbase zum Marktwert und Kauf vom Transfermarkt, der die beste Elf am meisten verbessert. */
+export type KickbaseSwap = {
+  verkauf_id: number;
+  verkauf: string;
+  verkauf_position: string;
+  verkauf_wert: number | null;
+  kauf: string;
+  kauf_position: string;
+  kauf_team: string;
+  kauf_preis: number;
+  kauf_punkte: number;
+  mehr_punkte: number;
+  formation_vorher: string | null;
+  formation_nachher: string | null;
+  budget_danach: number | null;
+  bezahlbar: boolean;
 };
 export const getKickbaseLineup = () => api<KickbaseLineup>("/kickbase/aufstellung");
 
